@@ -1,0 +1,211 @@
+/**
+ * Typography. Imported before Tailwind so the @font-face rules land first.
+ *
+ * Three families, each doing one job:
+ *   Rajdhani  - figures. Athletic, condensed, tabular-friendly; a bid has to
+ *               read from across a room.
+ *   Outfit    - names and headings. Geometric and calm, so it does not fight
+ *               the numerals for attention.
+ *   Inter     - tables and labels. Built for small sizes and dense rows.
+ *
+ * `display=swap` so a slow font never blanks the console mid-auction.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * Signature patterns lifted from auction-console.html so that JSX can stay
+ * readable. Anything used in more than two places lives here; one-offs stay as
+ * utility classes at the call site.
+ */
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  body {
+    @apply bg-paper text-ink font-body text-base antialiased;
+  }
+  button,
+  input,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+  button {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid theme("colors.teal.DEFAULT");
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: #cde7df;
+  }
+}
+
+@layer components {
+  /* Tabular numerals — every figure in the console is column-aligned. */
+  .num {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+
+  /* The console's ubiquitous small-caps label. */
+  .eyebrow {
+    @apply font-mono text-eyebrow uppercase text-muted;
+    letter-spacing: 0.13em;
+  }
+
+  /* Card surface with a hairline rule, used for every framed region. */
+  .panel {
+    @apply border border-rule bg-card;
+  }
+  .panel-head {
+    @apply flex items-center justify-between gap-3 border-b border-rule-soft px-3 py-2;
+  }
+
+  /* Toggle / filter chip. Pressed state inverts to ink, as in the prototype. */
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-sm border border-rule bg-paper
+           px-2.5 py-[3px] text-mini text-ink-soft transition-colors;
+  }
+  .chip:hover {
+    border-color: #b9c2bb;
+  }
+  .chip[aria-pressed="true"] {
+    @apply border-ink bg-ink text-paper;
+  }
+
+  /* Status pill. */
+  .tag {
+    @apply inline-flex items-center rounded-sm border px-1.5 py-[2px] font-mono
+           text-eyebrow uppercase;
+    letter-spacing: 0.06em;
+  }
+  .tag-neutral {
+    @apply border-rule text-muted;
+  }
+  .tag-sold {
+    @apply bg-sold-tint text-sold;
+    border-color: #b6d8c6;
+  }
+  .tag-unsold {
+    @apply bg-unsold-tint text-unsold;
+    border-color: #e3c3bd;
+  }
+  .tag-live {
+    @apply bg-live-tint text-live;
+    border-color: #e2c68f;
+  }
+
+  /* 17px role square with the role's initials. */
+  .roleglyph {
+    @apply grid h-[17px] w-[17px] place-items-center rounded-sm font-mono
+           text-[9px] font-bold text-white;
+    letter-spacing: 0;
+  }
+
+  /* Rating: condensed numeral plus a short progress track. */
+  .ratebar {
+    @apply inline-flex items-center gap-1.5;
+  }
+  .ratebar-v {
+    @apply min-w-[30px] text-right font-display text-[15px] font-bold;
+  }
+  .ratebar-t {
+    @apply h-1 w-11 overflow-hidden rounded-sm bg-rule-soft;
+  }
+  .ratebar-t > i {
+    @apply block h-full bg-teal;
+  }
+
+  /* Sheet table: sticky teal header, hairline rows. */
+  .sheet {
+    @apply w-full border-collapse;
+  }
+  .sheet thead th {
+    @apply sticky top-0 z-[5] whitespace-nowrap bg-teal px-2 py-[7px] text-left
+           font-mono text-eyebrow font-medium uppercase;
+    color: #eaf4f0;
+    letter-spacing: 0.1em;
+    border-right: 1px solid rgba(255, 255, 255, 0.14);
+  }
+  .sheet thead th:last-child {
+    border-right: 0;
+  }
+  .sheet td {
+    @apply whitespace-nowrap border-b border-rule-soft px-2 py-[5px] align-middle;
+  }
+  .sheet tbody tr:hover td {
+    background: #fafbf9;
+  }
+  .sheet .c-num {
+    @apply text-right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Small secondary action. */
+  .mini {
+    @apply rounded-sm border border-rule bg-card px-2 py-[2px] text-tiny text-ink-soft transition-colors;
+  }
+  .mini:hover {
+    @apply border-teal text-teal-ink;
+  }
+
+  /* Inline text action. */
+  .linkbtn {
+    @apply border-0 bg-transparent p-0.5 text-mini text-teal-ink underline;
+  }
+
+  /* Text input matching the prototype's search bar. */
+  .field {
+    @apply w-full rounded-sm border border-rule bg-paper px-2.5 py-1.5 text-base
+           text-ink placeholder:text-muted focus:border-teal focus:outline-none;
+  }
+
+  /* Primary action. */
+  .btn {
+    @apply rounded-sm border border-teal bg-teal px-3.5 py-1.5 font-mono text-eyebrow
+           uppercase text-white transition-colors;
+    letter-spacing: 0.1em;
+  }
+  .btn:hover:not(:disabled) {
+    @apply border-teal-ink bg-teal-ink;
+  }
+  .btn:disabled {
+    @apply cursor-not-allowed border-rule bg-rule-soft text-muted;
+  }
+
+  /* View tab in the masthead. */
+  .tab {
+    @apply -mb-px inline-flex items-center gap-1.5 border-b-2 border-transparent
+           px-3 py-2 font-mono text-eyebrow uppercase text-muted transition-colors;
+    letter-spacing: 0.13em;
+  }
+  .tab:hover {
+    @apply text-ink-soft;
+  }
+  .tab[aria-selected="true"] {
+    @apply border-teal text-teal-ink;
+  }
+}
+
+@layer utilities {
+  /* Clamp a summary to two lines without a plugin. */
+  .clamp-2 {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .motion-safe-pulse {
+      animation: none;
+    }
+  }
+}

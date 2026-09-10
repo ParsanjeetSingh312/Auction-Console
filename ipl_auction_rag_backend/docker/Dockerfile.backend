@@ -1,0 +1,60 @@
+# Build context is the REPOSITORY ROOT, not this directory — the image needs
+# both the frontend sources and the backend package:
+#
+#     docker build -f ipl_auction_rag_backend/docker/Dockerfile.backend -t ipl-auction .
+#     docker run -p 8001:8001 --env-file ipl_auction_rag_backend/.env ipl-auction
+#
+# One container serves everything on port 8001: the console at /, the API at
+# /api/v1/*, the schema at /docs.
+
+# --- Stage 1: build the console -------------------------------------------
+# The backend serves dist/, so without this stage the image would answer the
+# API correctly and return 503 for every page request.
+FROM node:20-slim AS frontend
+
+WORKDIR /build
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY tsconfig.json tsconfig.node.json vite.config.ts postcss.config.js tailwind.config.js ./
+COPY index.html main.tsx App.tsx styles.css ./
+COPY components ./components
+COPY console ./console
+RUN npm run build
+
+
+# --- Stage 2: the service --------------------------------------------------
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY ipl_auction_rag_backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY ipl_auction_rag_backend/ ./
+
+# api/main.py resolves the frontend as ../../dist relative to itself, so the
+# built console lands one level above the package — matching the layout the
+# repository has when run from source.
+COPY --from=frontend /build/dist /dist
+
+RUN mkdir -p data/raw data/database/chroma_db
+
+# The embedding and reranker models are ~2.4 GB and are NOT baked into the
+# image. They download on first use, or mount a host cache to avoid that:
+#     -v ${HOME}/.cache/huggingface:/root/.cache/huggingface
+ENV HF_HOME=/root/.cache/huggingface
+
+# The vector store and player database are state, not image content. Mount them
+# or run POST /api/v1/ingest once against a fresh container.
+VOLUME ["/app/data"]
+
+EXPOSE 8001
+
+# No --reload: it doubles memory for a 2.4 GB model process and has no place in
+# a container.
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8001"]
