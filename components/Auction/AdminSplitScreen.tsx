@@ -578,6 +578,25 @@ function RunControls({
     );
   }
 
+  if (phase === "finished") {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="rounded-lg border border-line bg-surface-sunken px-2.5 py-1.5 font-ui text-[9.5px] uppercase tracking-[0.1em] text-slate-muted">
+          finished
+        </span>
+        <motion.button
+          {...(reduced ? {} : pressable)}
+          type="button"
+          onClick={socket.resetRoom}
+          className={quiet}
+          title="Clear the auction and return every client to the lobby"
+        >
+          Reset room
+        </motion.button>
+      </div>
+    );
+  }
+
   return (
     <span className="rounded-lg border border-line bg-surface-sunken px-2.5 py-1.5 font-ui text-[9.5px] uppercase tracking-[0.1em] text-slate-muted">
       {phase}

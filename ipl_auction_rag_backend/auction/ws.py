@@ -267,6 +267,9 @@ async def _dispatch(client_id: str, message: Any) -> None:
     elif kind == "undo":
         await room.undo(client_id)
 
+    elif kind == "reset":
+        await room.reset(client_id)
+
     elif kind == "finish":
         await room.finish(client_id)
         await manager.send(client_id, {"type": "report", "report": room.report()})

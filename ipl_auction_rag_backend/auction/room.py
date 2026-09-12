@@ -579,6 +579,29 @@ class AuctionRoom:
             self._note("Auction closed")
             self.version += 1
 
+    async def reset(self, client_id: str) -> None:
+        """
+        Back to an empty lobby, keeping the pool and everyone's seat.
+
+        Seats are deliberately kept: the people in the room are still in the
+        room, and making ten franchises re-pick their teams after a practice
+        run would be a worse experience than the reset is worth. The undo stack
+        goes, because undoing across a reset would restore an auction that no
+        longer exists.
+        """
+        self._require_auctioneer(client_id, "reset the room")
+        async with self._lock:
+            for pid in self.records:
+                self.records[pid] = Record()
+            self.lot = None
+            self.log = []
+            self.seq = 0
+            self.undo_stack = []
+            self.phase = "lobby"
+            self.countdown_ends_at = None
+            self._note("Room reset")
+            self.version += 1
+
     # ---------------------------------------------------------------- #
     # Bidding
     # ---------------------------------------------------------------- #

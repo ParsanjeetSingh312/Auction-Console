@@ -153,6 +153,8 @@ export interface AuctionSocket {
   markUnsold: () => void;
   undo: () => void;
   finish: () => void;
+  /** Auctioneer: wipe the auction back to an empty lobby, keeping seats. */
+  resetRoom: () => void;
 
   /** Convenience readings derived from `state` and `seat`. */
   myTeam: TeamState | null;
@@ -336,6 +338,7 @@ export function useAuctionSocket(): AuctionSocket {
       markUnsold: () => send({ type: "unsold" }),
       undo: () => send({ type: "undo" }),
       finish: () => send({ type: "finish" }),
+      resetRoom: () => send({ type: "reset" }),
     }),
     [send],
   );

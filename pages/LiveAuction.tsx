@@ -127,7 +127,13 @@ export default function LiveAuction() {
   if (phase === "finished") {
     return (
       <>
-        <PostAuctionReport onLeave={leaveSeat} />
+        <PostAuctionReport
+          onLeave={leaveSeat}
+          // Only the auctioneer is offered the reset, and the room enforces
+          // that regardless — this just avoids showing a franchise a button
+          // that would be refused.
+          onReset={role === "auctioneer" ? socket.resetRoom : undefined}
+        />
         {toastLayer}
       </>
     );

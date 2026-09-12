@@ -71,9 +71,15 @@ export interface PostAuctionReportProps {
   /** Passed in when the socket already delivered it; otherwise fetched. */
   report?: AuctionReport | null;
   onLeave?: () => void;
+  /** Auctioneer only: clear the auction and send everyone back to the lobby. */
+  onReset?: () => void;
 }
 
-export default function PostAuctionReport({ report, onLeave }: PostAuctionReportProps) {
+export default function PostAuctionReport({
+  report,
+  onLeave,
+  onReset,
+}: PostAuctionReportProps) {
   const reduced = useReducedMotion();
   const [fetched, setFetched] = useState<AuctionReport | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -139,7 +145,7 @@ export default function PostAuctionReport({ report, onLeave }: PostAuctionReport
     data.totals.purse_pool > 0 ? (data.totals.spent / data.totals.purse_pool) * 100 : 0;
 
   return (
-    <Shell onLeave={onLeave}>
+    <Shell onLeave={onLeave} onReset={onReset}>
       <motion.div
         variants={reduced ? undefined : viewVariants}
         initial={reduced ? false : "initial"}
@@ -180,9 +186,11 @@ export default function PostAuctionReport({ report, onLeave }: PostAuctionReport
 function Shell({
   children,
   onLeave,
+  onReset,
 }: {
   children: React.ReactNode;
   onLeave?: () => void;
+  onReset?: () => void;
 }) {
   return (
     <div className="min-h-screen bg-surface bg-dots px-5 py-8">
@@ -201,6 +209,16 @@ function Shell({
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {onReset && (
+              <button
+                type="button"
+                onClick={onReset}
+                title="Clear the auction and return every client to the lobby"
+                className="rounded-lg border border-slate-ink bg-slate-ink px-3.5 py-2 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-white transition-colors hover:bg-slate-ink/90"
+              >
+                New auction
+              </button>
+            )}
             {onLeave && (
               <button
                 type="button"

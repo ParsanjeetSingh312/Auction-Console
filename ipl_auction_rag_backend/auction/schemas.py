@@ -136,6 +136,21 @@ class FinishAuction(BaseModel):
     type: Literal["finish"]
 
 
+class ResetRoom(BaseModel):
+    """
+    Auctioneer: wipe the auction and go back to the lobby.
+
+    Needed for a reason that is not only convenience. Without it the only way
+    out of `finished` is restarting the server, which means a practice run and
+    the real auction cannot happen in the same session -- and the practice run
+    is exactly how an auctioneer learns the controls before ten franchises are
+    watching.
+    """
+
+    model_config = Strict
+    type: Literal["reset"]
+
+
 class Ping(BaseModel):
     """Keepalive. Answered with a pong; touches no state."""
 
@@ -153,6 +168,7 @@ ClientMessage = Annotated[
     | MarkUnsold
     | Undo
     | FinishAuction
+    | ResetRoom
     | Ping,
     Field(discriminator="type"),
 ]
