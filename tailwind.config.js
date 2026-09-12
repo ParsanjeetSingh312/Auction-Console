@@ -15,6 +15,11 @@ export default {
     "./*.tsx",
     "./components/**/*.{ts,tsx}",
     "./console/**/*.{ts,tsx}",
+    // Phase 4 adds routed pages and the socket hook. Tailwind only emits a
+    // class it has seen in a scanned file, so a directory missing from this
+    // list produces a page with no styles and no error to explain it.
+    "./pages/**/*.{ts,tsx}",
+    "./hooks/**/*.{ts,tsx}",
   ],
   theme: {
     extend: {
