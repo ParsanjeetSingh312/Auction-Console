@@ -37,6 +37,7 @@ import { EASE, pressable, viewVariants } from "../../console/motion";
 import type { AuctionEngine } from "../../console/useAuctionEngine";
 import type { ConsolePlayer, PoolFilters, SortKey } from "../../console/types";
 import type { ScoutState } from "../../console/useScout";
+import type { AuctionSocket } from "../../hooks/useAuctionSocket";
 
 import ReloadPoolButton from "../ReloadPoolButton";
 import BlockPanel from "../Console/BlockPanel";
@@ -72,12 +73,21 @@ export interface AdminSplitScreenProps {
   engine: AuctionEngine;
   scout: ScoutState;
   onNotice: (message: string, kind?: "err") => void;
+  /**
+   * The live room, when this screen is driving one.
+   *
+   * Optional so the split screen remains usable on the offline engine. Given
+   * one, the control bar grows the three actions only an auctioneer has: open
+   * the waiting room, start, and close the auction.
+   */
+  socket?: AuctionSocket;
 }
 
 export default function AdminSplitScreen({
   engine,
   scout,
   onNotice,
+  socket,
 }: AdminSplitScreenProps) {
   const reduced = useReducedMotion();
 
@@ -251,6 +261,8 @@ export default function AdminSplitScreen({
           <span className="hidden font-ui text-[10px] uppercase tracking-[0.1em] text-slate-faint sm:inline">
             {engine.counts.sold} sold · {money(engine.counts.spent)} spent
           </span>
+
+          {socket && <RunControls socket={socket} reduced={!!reduced} />}
 
           {/*
             Re-fetch the pool from the backend.
@@ -467,5 +479,108 @@ function Divider({
         <i className="block h-[2px] w-[2px] rounded-full bg-slate-faint" />
       </span>
     </div>
+  );
+}
+
+/**
+ * The three buttons only the auctioneer has.
+ *
+ * Which one is shown depends on the phase, because at any given moment exactly
+ * one of them is the thing to do. Offering "start" while the auction is already
+ * running, or "finish" before it has begun, is how an auctioneer clicks the
+ * wrong control in front of a room.
+ *
+ * `finish` is the only destructive one here — it closes the auction and
+ * generates the report — so it is the only one that asks first.
+ */
+function RunControls({
+  socket,
+  reduced,
+}: {
+  socket: AuctionSocket;
+  reduced: boolean;
+}) {
+  const [confirmingFinish, setConfirmingFinish] = useState(false);
+  const phase = socket.state?.phase ?? "lobby";
+
+  const primary =
+    "rounded-lg border border-slate-ink bg-slate-ink px-3.5 py-1.5 font-ui text-[10px] font-semibold uppercase tracking-[0.12em] text-white transition-colors hover:bg-slate-ink/90";
+  const quiet =
+    "rounded-lg border border-line px-3 py-1.5 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-body transition-colors hover:border-slate-faint/60 hover:text-slate-ink";
+
+  if (phase === "lobby") {
+    return (
+      <div className="flex items-center gap-2">
+        <motion.button
+          {...(reduced ? {} : pressable)}
+          type="button"
+          onClick={() => socket.openWaitingRoom(600)}
+          className={primary}
+          title="Summon the franchises and start a ten-minute countdown"
+        >
+          Open waiting room
+        </motion.button>
+        <motion.button
+          {...(reduced ? {} : pressable)}
+          type="button"
+          onClick={socket.startAuction}
+          className={quiet}
+          title="Skip the waiting room and begin immediately"
+        >
+          Start now
+        </motion.button>
+      </div>
+    );
+  }
+
+  if (phase === "live") {
+    if (confirmingFinish) {
+      return (
+        <div className="flex items-center gap-2">
+          <span className="font-ui text-[10px] uppercase tracking-[0.1em] text-slate-muted">
+            Close the auction?
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              socket.finish();
+              setConfirmingFinish(false);
+            }}
+            className="rounded-lg border border-unsold bg-unsold px-3 py-1.5 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-white"
+          >
+            Yes, finish
+          </button>
+          <button type="button" onClick={() => setConfirmingFinish(false)} className={quiet}>
+            Cancel
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex items-center gap-2">
+        <span className="flex items-center gap-1.5 rounded-lg border border-line bg-surface-sunken px-2.5 py-1.5">
+          <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-sold" />
+          <span className="font-ui text-[9.5px] uppercase tracking-[0.1em] text-slate-muted">
+            live · {socket.state?.connected ?? 0} in room
+          </span>
+        </span>
+        <motion.button
+          {...(reduced ? {} : pressable)}
+          type="button"
+          onClick={() => setConfirmingFinish(true)}
+          className={quiet}
+          title="Close the auction and generate the report"
+        >
+          Finish auction
+        </motion.button>
+      </div>
+    );
+  }
+
+  return (
+    <span className="rounded-lg border border-line bg-surface-sunken px-2.5 py-1.5 font-ui text-[9.5px] uppercase tracking-[0.1em] text-slate-muted">
+      {phase}
+    </span>
   );
 }

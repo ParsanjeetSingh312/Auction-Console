@@ -660,6 +660,20 @@ class AuctionRoom:
         """The room as every client sees it. No player pool — see RoomState."""
         connected = self.connected_team_ids()
 
+        # Who bought whom, so a client can rebuild squads and the price column
+        # without a second request. Sent as [player_id, price] pairs rather than
+        # whole player rows: the client already holds the pool from
+        # GET /api/v1/players and only needs the auction's verdict on it. Two
+        # hundred and fifty pairs is a few kilobytes, where the equivalent in
+        # player objects would be most of a megabyte on every bid.
+        buys: dict[int, list[list[int]]] = {team["id"]: [] for team in self.teams}
+        unsold: list[int] = []
+        for pid, rec in self.records.items():
+            if rec.status == "sold" and rec.team_id in buys:
+                buys[rec.team_id].append([pid, rec.price or 0])
+            elif rec.status == "unsold":
+                unsold.append(pid)
+
         teams = []
         for team in self.teams:
             summary = self.summary_for(team["id"])
@@ -670,6 +684,7 @@ class AuctionRoom:
                     "code": team["code"],
                     "color": team["color"],
                     "connected": team["id"] in connected,
+                    "buys": buys[team["id"]],
                     **summary,
                 }
             )
@@ -701,6 +716,7 @@ class AuctionRoom:
             "teams": teams,
             "lot": lot,
             "log": self.log[:40],
+            "unsold": unsold,
             "counts": self.counts(),
             "countdown_ends_at": self.countdown_ends_at,
             "connected": len(self.seats),

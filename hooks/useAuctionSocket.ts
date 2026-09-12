@@ -54,6 +54,8 @@ export interface TeamState {
   spent: number;
   left: number;
   size: number;
+  /** [playerId, price] pairs for everything this franchise has bought. */
+  buys?: [number, number][];
   overseas: number;
   max_bid: number;
   connected: boolean;
@@ -90,6 +92,7 @@ export interface RoomState {
   lot: LotState | null;
   log: LogItem[];
   counts: { available: number; sold: number; unsold: number; spent: number };
+  unsold?: number[];
   countdown_ends_at: number | null;
   connected: number;
 }
