@@ -28,6 +28,7 @@ import { EASE, pressable } from "../console/motion";
 import { useAuctionEngine } from "../console/useAuctionEngine";
 import { useScout } from "../console/useScout";
 
+import ReloadPoolButton from "../components/ReloadPoolButton";
 import AdminSplitScreen from "../components/Auction/AdminSplitScreen";
 import LiveBlock from "../components/Auction/LiveBlock";
 
@@ -162,12 +163,24 @@ function SeatPicker({
                 : `${engine.players.length} players · ${money(engine.rules.purse)} a franchise · squad cap ${engine.rules.maxSquad}`}
             </p>
           </div>
-          <Link
-            to="/"
-            className="shrink-0 rounded-lg border border-line bg-surface-card px-3 py-1.5 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-body transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
-          >
-            ← AUCTIQ
-          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            {/*
+              The lobby is where a stale pool is cheapest to notice and most
+              annoying to discover later: the counts and purses on this screen
+              are the last thing anyone reads before the auction starts.
+            */}
+            <ReloadPoolButton
+              loading={engine.isLoadingRoster}
+              onReload={engine.reloadRoster}
+              className="flex items-center gap-1.5 rounded-lg border border-line bg-surface-card px-3 py-1.5 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-body transition-colors hover:border-slate-faint/60 hover:text-slate-ink disabled:cursor-not-allowed disabled:opacity-60"
+            />
+            <Link
+              to="/"
+              className="rounded-lg border border-line bg-surface-card px-3 py-1.5 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-body transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
+            >
+              ← AUCTIQ
+            </Link>
+          </div>
         </header>
 
         <motion.button

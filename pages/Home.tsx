@@ -16,7 +16,7 @@
  * user finding that out *after* choosing is a worse experience than a small
  * honest line before they choose, so the landing states what it knows.
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { fetchHealth } from "../console/ragClient";
 import WelcomeHero, { type BackendStatus } from "../components/WelcomeHero";
@@ -26,6 +26,21 @@ export default function Home() {
 
   useEffect(() => {
     document.title = "AUCTIQ · IPL 2026 Mega Auction";
+  }, []);
+
+  /**
+   * Bumped to re-run the probe.
+   *
+   * Landing while the backend is starting is the normal case, not an edge one:
+   * uvicorn takes a few seconds and the console is usually opened straight
+   * after it. Without this the only way to re-check is a full page reload,
+   * which is a silly thing to ask of someone staring at a status line that
+   * says "offline" about a server they just started.
+   */
+  const [probe, setProbe] = useState(0);
+  const recheck = useCallback(() => {
+    setStatus({ state: "checking" });
+    setProbe((n) => n + 1);
   }, []);
 
   useEffect(() => {
@@ -55,7 +70,7 @@ export default function Home() {
       });
 
     return () => controller.abort();
-  }, []);
+  }, [probe]);
 
-  return <WelcomeHero status={status} />;
+  return <WelcomeHero status={status} onRecheck={recheck} />;
 }

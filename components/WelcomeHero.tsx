@@ -28,7 +28,7 @@ import { Link } from "react-router-dom";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
 
 import { money } from "../console/format";
-import { EASE } from "../console/motion";
+import { EASE, SPRING } from "../console/motion";
 import { DEFAULT_RULES } from "../console/useAuctionEngine";
 
 /**
@@ -45,6 +45,8 @@ export type BackendStatus =
 
 export interface WelcomeHeroProps {
   status: BackendStatus;
+  /** Re-run the backend probe. Surfaced on the pill only when it is worth it. */
+  onRecheck?: () => void;
 }
 
 /**
@@ -67,7 +69,7 @@ const rise: Variants = {
   animate: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE } },
 };
 
-export default function WelcomeHero({ status }: WelcomeHeroProps) {
+export default function WelcomeHero({ status, onRecheck }: WelcomeHeroProps) {
   const reduced = useReducedMotion();
 
   return (
@@ -111,7 +113,7 @@ export default function WelcomeHero({ status }: WelcomeHeroProps) {
           </span>
         </div>
 
-        <StatusPill status={status} />
+        <StatusPill status={status} onRecheck={onRecheck} />
       </header>
 
       {/* ---------------------------------------------------------------- *
@@ -354,7 +356,13 @@ function OptionCard({
  * the deterministic local analyst and still answers, so calling it an error
  * would be a lie that sends someone hunting for a problem they do not have.
  */
-function StatusPill({ status }: { status: BackendStatus }) {
+function StatusPill({
+  status,
+  onRecheck,
+}: {
+  status: BackendStatus;
+  onRecheck?: () => void;
+}) {
   const tone =
     status.state === "up" ? "#1E6B47" : status.state === "down" ? "#A2382C" : "#94A3B8";
 
@@ -367,11 +375,16 @@ function StatusPill({ status }: { status: BackendStatus }) {
           ? "pool ready · Scout live"
           : "pool ready · local analyst";
 
-  return (
-    <span
-      className="flex items-center gap-2 rounded-full border border-line bg-surface-card px-3 py-1.5 shadow-chip"
-      title={status.state === "down" ? status.message : undefined}
-    >
+  /*
+    The pill becomes a button only when re-checking would tell you something
+    new. While a probe is in flight there is nothing to retry, and when the
+    backend is up there is nothing to fix — making it clickable in those states
+    would be an affordance that leads nowhere.
+  */
+  const canRetry = status.state === "down" && typeof onRecheck === "function";
+
+  const body = (
+    <>
       <span
         aria-hidden
         className={`h-1.5 w-1.5 rounded-full ${status.state === "checking" ? "animate-pulse" : ""}`}
@@ -380,7 +393,37 @@ function StatusPill({ status }: { status: BackendStatus }) {
       <span className="font-ui text-[10px] uppercase tracking-[0.12em] text-slate-muted">
         {label}
       </span>
-    </span>
+      {canRetry && (
+        <span className="font-ui text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-ink">
+          · retry
+        </span>
+      )}
+    </>
+  );
+
+  const shell =
+    "flex items-center gap-2 rounded-full border border-line bg-surface-card px-3 py-1.5 shadow-chip";
+
+  if (!canRetry) {
+    return (
+      <span className={shell} title={status.state === "down" ? status.message : undefined}>
+        {body}
+      </span>
+    );
+  }
+
+  return (
+    <motion.button
+      whileHover={{ scale: 1.03 }}
+      whileTap={{ scale: 0.97 }}
+      transition={SPRING}
+      type="button"
+      onClick={onRecheck}
+      title={`${status.message} — click to check again`}
+      className={`${shell} transition-colors hover:border-slate-faint/60`}
+    >
+      {body}
+    </motion.button>
   );
 }
 

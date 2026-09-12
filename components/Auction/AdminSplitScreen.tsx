@@ -38,6 +38,7 @@ import type { AuctionEngine } from "../../console/useAuctionEngine";
 import type { ConsolePlayer, PoolFilters, SortKey } from "../../console/types";
 import type { ScoutState } from "../../console/useScout";
 
+import ReloadPoolButton from "../ReloadPoolButton";
 import BlockPanel from "../Console/BlockPanel";
 import CommandSearch from "../Console/CommandSearch";
 import LedgerPanel from "../Console/LedgerPanel";
@@ -250,6 +251,22 @@ export default function AdminSplitScreen({
           <span className="hidden font-ui text-[10px] uppercase tracking-[0.1em] text-slate-faint sm:inline">
             {engine.counts.sold} sold · {money(engine.counts.spent)} spent
           </span>
+
+          {/*
+            Re-fetch the pool from the backend.
+
+            The auctioneer needs this more than anyone else does: they are the
+            one who will have re-run ingestion, or noticed a player missing, and
+            they are also the one who cannot afford to reload the page — a full
+            refresh costs them the split they set up and whatever they had open
+            in the left pane, mid-lot.
+          */}
+          <ReloadPoolButton
+            loading={engine.isLoadingRoster}
+            onReload={engine.reloadRoster}
+            reduced={!!reduced}
+          />
+
           <Link
             to="/"
             className="rounded-lg border border-line px-3 py-1.5 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-body transition-colors hover:border-slate-faint/60 hover:text-slate-ink"

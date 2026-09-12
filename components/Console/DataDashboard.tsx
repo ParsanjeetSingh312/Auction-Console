@@ -26,12 +26,13 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 
 import { money } from "../../console/format";
-import { pressable, viewVariants } from "../../console/motion";
+import { viewVariants } from "../../console/motion";
 import { readOnlyEngine } from "../../console/readOnlyEngine";
 import type { ConsolePlayer, PoolFilters, SortKey } from "../../console/types";
 import { useAuctionEngine } from "../../console/useAuctionEngine";
 import { useScout } from "../../console/useScout";
 
+import ReloadPoolButton from "../ReloadPoolButton";
 import CommandSearch from "./CommandSearch";
 import LedgerPanel from "./LedgerPanel";
 import PoolTable from "./PoolTable";
@@ -223,15 +224,18 @@ export default function DataDashboard() {
             Read-only
           </span>
 
-          <motion.button
-            {...pressable}
-            type="button"
-            className="util"
-            title="Reload the pool from the RAG backend"
-            onClick={engine.reloadRoster}
-          >
-            Reload pool
-          </motion.button>
+          {/*
+            The pool is the one piece of state this screen does not own, and
+            re-running ingestion changes it underneath an open browser. The
+            shared button carries the loading state, which matters here because
+            a cold fetch takes seconds and an unchanged button invites a second
+            click and a second in-flight request.
+          */}
+          <ReloadPoolButton
+            loading={engine.isLoadingRoster}
+            onReload={engine.reloadRoster}
+            className="util flex items-center gap-1.5"
+          />
 
           <Link to="/auction" className="util" style={{ textDecoration: "none" }}>
             Live bidding →
