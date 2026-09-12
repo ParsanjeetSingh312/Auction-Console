@@ -26,6 +26,8 @@ if package_root not in sys.path:
 from config.env_check import check_environment, log_report
 from config.settings import get_settings
 from api.routes import router as api_router
+from auction.room import room as auction_room
+from auction.ws import router as auction_router
 
 # Configure logging
 logging.basicConfig(
@@ -66,6 +68,26 @@ async def lifespan(app: FastAPI):
             "Starting anyway so the problem can be fixed through the API, but "
             "player queries will fail until it is resolved."
         )
+    # Hand the auction room its player pool.
+    #
+    # Read once, at startup, from the same SQLite table the console hydrates
+    # from - so the room and every client agree on base prices and roles. A
+    # failure here is logged and survived: the API and the console still work,
+    # and the room refuses to start an auction rather than running one on an
+    # empty pool.
+    try:
+        from db.sqlite_manager import SQLiteManager
+
+        rows = SQLiteManager().get_all_players(limit=1000, offset=0)
+        loaded = auction_room.load_players(rows)
+        logger.info("Auction room: %d players loaded", loaded)
+    except Exception as exc:  # noqa: BLE001 - startup must not die here
+        logger.warning(
+            "Auction room has no player pool (%s). Run POST /api/v1/ingest, "
+            "then restart to enable live bidding.",
+            exc,
+        )
+
     logger.info("=" * 60)
 
     yield
@@ -97,6 +119,11 @@ app.add_middleware(
 # Mount API routes. These are registered before the frontend catch-all below,
 # so /api/v1/* always resolves here rather than being swallowed by the SPA.
 app.include_router(api_router)
+
+# The live auction room: WebSocket at /api/v1/auction/ws, plus two read-only
+# REST views of the same state. Registered here for the same reason as the API
+# router - before the SPA catch-all, so its paths are never swallowed.
+app.include_router(auction_router)
 
 
 # ---------------------------------------------------------------------------
