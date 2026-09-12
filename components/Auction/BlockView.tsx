@@ -26,7 +26,7 @@
  * Data flows one way: state in, GSAP reacts. Animations never drive state, so a
  * killed tween cannot desynchronise the display from the auction.
  */
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 
@@ -72,6 +72,13 @@ export interface BlockViewProps {
   blockedReason?: string | null;
   /** Rendered top-left; lets the host offer a way back to the main console. */
   corner?: React.ReactNode;
+  /**
+   * Commit an arbitrary figure, skipping the increment ladder.
+   *
+   * Optional: supplying it is what makes the jumpbid control appear. The Phase
+   * 3 demo and the single-operator console do not, and are unchanged.
+   */
+  onJumpBid?: (amount: number) => void;
 }
 
 export default function BlockView({
@@ -85,6 +92,7 @@ export default function BlockView({
   onBid,
   blockedReason = null,
   corner,
+  onJumpBid,
 }: BlockViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const bidValueRef = useRef<HTMLSpanElement>(null);
@@ -371,6 +379,23 @@ export default function BlockView({
             <span className="mt-3 font-mono text-[11px] uppercase tracking-[0.25em] text-neutral-600">
               {stance === "counter" ? "space to bid" : button.hint}
             </span>
+
+            {/*
+              The jumpbid.
+
+              Rendered only when a host supplies `onJumpBid`, so the Phase 3
+              demo and the single-operator console are untouched. It sits below
+              the main button and is deliberately small: skipping the ladder is
+              a tactic, not the default, and a room where jumping is as easy as
+              bidding is a room where the ladder stops meaning anything.
+            */}
+            {onJumpBid && (
+              <JumpBid
+                floor={nextBid}
+                disabled={stance === "blocked" && barred}
+                onJump={onJumpBid}
+              />
+            )}
           </>
         ) : (
           <div className="text-center">
@@ -472,5 +497,108 @@ function Chip({ children }: { children: React.ReactNode }) {
     <span className="rounded border border-neutral-800 bg-neutral-900 px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.08em] text-neutral-400">
       {children}
     </span>
+  );
+}
+
+/**
+ * Name your own price.
+ *
+ * Held in crore because that is how the room talks — "eleven crore" is said
+ * aloud, "1100 lakh" is not — and converted on submit, since every figure the
+ * engine and the room handle is an integer of lakh.
+ *
+ * The floor is enforced here as well as on the server, for the ordinary reason
+ * that a control which lets you type an impossible number and then rejects it
+ * is worse than one that will not let you. The server checks regardless; this
+ * is courtesy, not security.
+ */
+function JumpBid({
+  floor,
+  disabled,
+  onJump,
+}: {
+  /** ₹ lakh: the standard next ask, which a jump must beat. */
+  floor: number;
+  disabled: boolean;
+  onJump: (amount: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+
+  const crores = Number(text);
+  const lakh = Math.round(crores * 100);
+  const valid = text.trim() !== "" && Number.isFinite(crores) && lakh >= floor;
+
+  const submit = () => {
+    if (!valid) return;
+    onJump(lakh);
+    setText("");
+    setOpen(false);
+  };
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen(true)}
+        className="mt-4 rounded-md border border-neutral-800 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.25em] text-neutral-500 transition-colors hover:border-neutral-600 hover:text-neutral-300 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        jumpbid
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-4 flex items-center gap-2">
+      <div className="flex items-center gap-1.5 rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1.5">
+        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-600">
+          ₹
+        </span>
+        <input
+          autoFocus
+          type="number"
+          inputMode="decimal"
+          step="0.25"
+          min={floor / 100}
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") submit();
+            if (event.key === "Escape") setOpen(false);
+            // The view binds Space to bid; typing a figure must not also
+            // place one.
+            event.stopPropagation();
+          }}
+          placeholder={(floor / 100).toFixed(2)}
+          aria-label="Jumpbid amount in crore"
+          className="w-24 bg-transparent font-display text-lg font-bold text-neutral-100 outline-none placeholder:text-neutral-700"
+        />
+        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-600">
+          Cr
+        </span>
+      </div>
+
+      <button
+        type="button"
+        onClick={submit}
+        disabled={!valid}
+        title={
+          valid
+            ? `Commit ${crore(lakh)}`
+            : `Must be at least ${crore(floor)}`
+        }
+        className="rounded-md border border-amber-500/60 bg-amber-500/10 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.2em] text-amber-300 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:border-neutral-800 disabled:bg-transparent disabled:text-neutral-700"
+      >
+        jump
+      </button>
+      <button
+        type="button"
+        onClick={() => setOpen(false)}
+        className="font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-600 hover:text-neutral-400"
+      >
+        esc
+      </button>
+    </div>
   );
 }

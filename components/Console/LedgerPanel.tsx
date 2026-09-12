@@ -14,13 +14,18 @@ export default function LedgerPanel({
   onClear,
 }: {
   log: LogEntry[];
-  onClear: () => void;
+  /**
+   * Omitted on read-only routes, where resetting the auction is not on offer.
+   * The control is then not rendered at all rather than wired to a no-op — a
+   * button that does nothing is worse than no button.
+   */
+  onClear?: () => void;
 }) {
   return (
     <div className="ledger">
       <div className="lhead">
         <span className="eyebrow">Tally</span>
-        {log.length > 0 && (
+        {onClear && log.length > 0 && (
           <button type="button" className="linkbtn" onClick={onClear}>
             Reset auction
           </button>
