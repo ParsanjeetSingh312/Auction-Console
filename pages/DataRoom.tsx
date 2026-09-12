@@ -1,19 +1,13 @@
 /**
  * DataRoom.tsx
- * Route scaffolding — replaced in the next step by DataDashboard.
+ * The `/data` route.
  *
- * This exists so `/data` resolves and the landing page can be tested end to
- * end. The real page is the existing console with the block removed: pool,
- * teams, results and SCOUT, read-only.
+ * A thin page wrapper, matching how Home wraps WelcomeHero. The dashboard owns
+ * its own engine and Scout because it is a standalone route — nothing above it
+ * in the tree has an auction to share.
  */
-import Placeholder from "../components/Placeholder";
+import DataDashboard from "../components/Console/DataDashboard";
 
 export default function DataRoom() {
-  return (
-    <Placeholder
-      title="Data Interface"
-      step="Next: components/Console/DataDashboard.tsx"
-      blurb="The read-only analytics dashboard — player pool, franchise records, results and the SCOUT retrieval engine, with the live block excluded."
-    />
-  );
+  return <DataDashboard />;
 }
