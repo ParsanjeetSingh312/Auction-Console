@@ -23,10 +23,17 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 
 import { money } from "../../console/format";
-import { viewVariants } from "../../console/motion";
+import {
+  drawerVariants,
+  figureVariants,
+  shellItem,
+  shellVariants,
+  toastVariants,
+  viewVariants,
+} from "../../console/motion";
 import { readOnlyEngine } from "../../console/readOnlyEngine";
 import type { ConsolePlayer, PoolFilters, SortKey } from "../../console/types";
 import { useAuctionEngine } from "../../console/useAuctionEngine";
@@ -154,8 +161,19 @@ export default function DataDashboard() {
 
   return (
     <div className="shell">
-      <header className="masthead">
-        <div className="brand">
+      {/*
+        The masthead arrives as one staggered group: brand, search, meters,
+        tabs. Items come down while the view below comes up — the two meeting
+        in the middle is what makes the screen read as opening rather than as
+        having been scrolled to.
+      */}
+      <motion.header
+        className="masthead"
+        variants={shellVariants}
+        initial="initial"
+        animate="animate"
+      >
+        <motion.div className="brand" variants={shellItem}>
           <div className="mark" aria-hidden="true" />
           <div>
             <h1>Data&nbsp;Interface</h1>
@@ -165,7 +183,7 @@ export default function DataDashboard() {
                 : `AUCTIQ · ${engine.players.length} players · read-only analytics`}
             </div>
           </div>
-        </div>
+        </motion.div>
 
         <CommandSearch
           engine={engine}
@@ -175,28 +193,18 @@ export default function DataDashboard() {
           onAskScout={searchScout}
         />
 
-        <div className="meters">
-          <div className="meter">
-            <div className="eyebrow">Available</div>
-            <b className="num">{engine.counts.available}</b>
-          </div>
-          <div className="meter is-sold">
-            <div className="eyebrow">Sold</div>
-            <b className="num">{engine.counts.sold}</b>
-          </div>
-          <div className="meter is-unsold">
-            <div className="eyebrow">Unsold</div>
-            <b className="num">{engine.counts.unsold}</b>
-          </div>
-          <div className="meter is-spend">
-            <div className="eyebrow">Spent</div>
-            <b className="num">
-              {engine.counts.spent ? money(engine.counts.spent).replace("₹", "") : "—"}
-            </b>
-          </div>
-        </div>
+        <motion.div className="meters" variants={shellItem}>
+          <Meter label="Available" value={engine.counts.available} />
+          <Meter label="Sold" value={engine.counts.sold} tone="is-sold" />
+          <Meter label="Unsold" value={engine.counts.unsold} tone="is-unsold" />
+          <Meter
+            label="Spent"
+            tone="is-spend"
+            value={engine.counts.spent ? money(engine.counts.spent).replace("₹", "") : "—"}
+          />
+        </motion.div>
 
-        <nav className="tabs" role="tablist" aria-label="Views">
+        <motion.nav className="tabs" role="tablist" aria-label="Views" variants={shellItem}>
           <Tab view="pool" active={view} onSelect={setView} count={engine.players.length}>
             Pool
           </Tab>
@@ -243,8 +251,8 @@ export default function DataDashboard() {
           <Link to="/" className="util" style={{ textDecoration: "none" }}>
             ← AUCTIQ
           </Link>
-        </nav>
-      </header>
+        </motion.nav>
+      </motion.header>
 
       <div className="split">
         <main className="main">
@@ -295,23 +303,84 @@ export default function DataDashboard() {
         </aside>
       </div>
 
-      {cardPlayer && (
-        <PlayerCard
-          player={cardPlayer}
-          engine={engine}
-          onClose={() => setCardPlayer(null)}
-          onNotice={notify}
-          onAskScout={askScout}
-        />
-      )}
+      <AnimatePresence>
+        {cardPlayer && (
+          <PlayerCard
+            key={cardPlayer.id}
+            player={cardPlayer}
+            engine={engine}
+            onClose={() => setCardPlayer(null)}
+            onNotice={notify}
+            onAskScout={askScout}
+          />
+        )}
+      </AnimatePresence>
 
+      {/*
+        `initial={false}` on purpose: `.toast` already carries its own CSS
+        entrance (`toast-rise`), shared with the console, and running both would
+        animate the same element twice. AnimatePresence is here only so a toast
+        leaves rather than vanishing mid-sentence.
+      */}
       <div className="toasts" aria-live="polite">
-        {toasts.map((toast) => (
-          <div key={toast.id} className={`toast${toast.kind === "err" ? " err" : ""}`}>
-            {toast.message}
-          </div>
-        ))}
+        <AnimatePresence initial={false}>
+          {toasts.map((toast) => (
+            <motion.div
+              key={toast.id}
+              className={`toast${toast.kind === "err" ? " err" : ""}`}
+              variants={toastVariants}
+              initial={false}
+              animate="animate"
+              exit="exit"
+            >
+              {toast.message}
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
+    </div>
+  );
+}
+
+/**
+ * One figure in the masthead strip.
+ *
+ * The span is keyed on its own value, so React swaps the element when the count
+ * changes and the new number rises into place. See `figureVariants` for why
+ * this is a swap rather than a count-up.
+ *
+ * Deliberately *not* wrapped in AnimatePresence. The obvious version — old
+ * number out, new number in, `mode="popLayout"` — keeps both in the DOM for the
+ * length of the crossover, and for that window `textContent` reads "0284".
+ * Nothing on screen looks wrong, because the outgoing digit is taken out of
+ * flow, but the accessibility tree and anything scraping the meter see a number
+ * that was never true. On a read-only analytics surface that is not a trade
+ * worth making for one extra beat of motion, so only the arrival is animated
+ * and there is never more than one figure mounted.
+ */
+function Meter({
+  label,
+  value,
+  tone = "",
+}: {
+  label: string;
+  value: number | string;
+  tone?: string;
+}) {
+  return (
+    <div className={`meter ${tone}`.trim()}>
+      <div className="eyebrow">{label}</div>
+      <b className="num">
+        <motion.span
+          key={value}
+          variants={figureVariants}
+          initial="initial"
+          animate="animate"
+          style={{ display: "inline-block" }}
+        >
+          {value}
+        </motion.span>
+      </b>
     </div>
   );
 }

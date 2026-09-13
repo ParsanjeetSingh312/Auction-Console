@@ -30,7 +30,7 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 
 import { money } from "../console/format";
-import { EASE, pressable } from "../console/motion";
+import { cardVariants, EASE, gridVariants, pressable } from "../console/motion";
 import { useSocketEngine } from "../console/socketEngine";
 import { useAuctionEngine } from "../console/useAuctionEngine";
 import { useScout } from "../console/useScout";
@@ -219,8 +219,22 @@ function SeatPicker({
 
   return (
     <div className="min-h-screen bg-surface bg-dots px-5 py-10">
-      <div className="mx-auto w-full max-w-3xl">
-        <header className="mb-7 flex items-start justify-between gap-4">
+      {/*
+        The seat picker assembles on arrival: heading, the auctioneer's chair,
+        the franchise grid, the footnote. The grid is not itself a stagger child
+        — its buttons already carry their own per-index delay, and nesting the
+        two would compound the fades into a group that dims before it brightens.
+      */}
+      <motion.div
+        className="mx-auto w-full max-w-3xl"
+        variants={gridVariants}
+        initial="initial"
+        animate="animate"
+      >
+        <motion.header
+          className="mb-7 flex items-start justify-between gap-4"
+          variants={cardVariants}
+        >
           <div>
             <span className="font-ui text-[9.5px] font-semibold uppercase tracking-[0.16em] text-slate-faint">
               Live bidding interface
@@ -248,10 +262,11 @@ function SeatPicker({
               ← AUCTIQ
             </Link>
           </div>
-        </header>
+        </motion.header>
 
         <motion.button
           {...pressable}
+          variants={cardVariants}
           type="button"
           disabled={connecting}
           onClick={() => socket.claimSeat({ role: "auctioneer" })}
@@ -274,14 +289,14 @@ function SeatPicker({
           </span>
         </motion.button>
 
-        <div className="mb-2.5 flex items-baseline justify-between">
+        <motion.div className="mb-2.5 flex items-baseline justify-between" variants={cardVariants}>
           <span className="font-ui text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-muted">
             Franchises
           </span>
           <span className="font-ui text-[10px] uppercase tracking-[0.1em] text-slate-faint">
             bid for one team
           </span>
-        </div>
+        </motion.div>
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           {(socket.state?.teams ?? []).map((team, index) => (
@@ -320,13 +335,16 @@ function SeatPicker({
           ))}
         </div>
 
-        <p className="mt-6 font-ui text-[11px] leading-relaxed text-slate-faint">
+        <motion.p
+          className="mt-6 font-ui text-[11px] leading-relaxed text-slate-faint"
+          variants={cardVariants}
+        >
           The room assigns your seat and holds it server-side. A franchise cannot
           reach the auctioneer's screen or start the auction, whatever it asks for
           here — the role is decided by the socket you are on, not by the message
           you send.
-        </p>
-      </div>
+        </motion.p>
+      </motion.div>
     </div>
   );
 }

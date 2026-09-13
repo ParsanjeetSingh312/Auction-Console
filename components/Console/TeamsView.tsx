@@ -8,7 +8,10 @@
  * A glance says whether a team is short of bodies, short of money, or out of
  * overseas places — the three things that decide whether they can bid at all.
  */
+import { motion } from "framer-motion";
+
 import { cssVars, money, moneyTight, setMeta } from "../../console/format";
+import { cardVariants, gridVariants, liftable } from "../../console/motion";
 import type { AuctionEngine } from "../../console/useAuctionEngine";
 import type { TeamSummary } from "../../console/types";
 
@@ -19,8 +22,13 @@ export default function TeamsView({
   engine: AuctionEngine;
   onNotice: (message: string, kind?: "err") => void;
 }) {
+  /*
+    Ten franchise cards, arriving in a wave. Ten is small enough for the full
+    0.03s stagger to finish in under a third of a second, so nobody waits on the
+    last one — see `gridVariants`.
+  */
   return (
-    <div className="teamwrap">
+    <motion.div className="teamwrap" variants={gridVariants}>
       {engine.summaries.map((summary) => (
         <TeamCard
           key={summary.team.id}
@@ -29,7 +37,7 @@ export default function TeamsView({
           onNotice={onNotice}
         />
       ))}
-    </div>
+    </motion.div>
   );
 }
 
@@ -52,7 +60,12 @@ function TeamCard({
     .sort((a, b) => (recordFor(b.id).price ?? 0) - (recordFor(a.id).price ?? 0));
 
   return (
-    <article className="teamcard" style={cssVars({ "--tc": team.color })}>
+    <motion.article
+      className="teamcard"
+      style={cssVars({ "--tc": team.color })}
+      variants={cardVariants}
+      {...liftable}
+    >
       <header>
         <h3>
           {team.name} <span className="eyebrow">{team.code}</span>
@@ -146,6 +159,6 @@ function TeamCard({
           ))
         )}
       </div>
-    </article>
+    </motion.article>
   );
 }

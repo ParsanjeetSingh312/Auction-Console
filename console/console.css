@@ -456,6 +456,55 @@ select.pick {
   overflow: hidden;
   box-shadow: var(--shadow);
 }
+/* ------------------------------------------------------------------
+   Row entrance and hover.
+
+   CSS rather than Framer, and the reason is arithmetic: RENDER_CAP is 400, so
+   wrapping each row in a motion component would mount four hundred components
+   with their own hooks and subscriptions for an effect that lasts a third of a
+   second. A keyframe plus one custom property costs nothing per row and runs
+   entirely on the compositor.
+
+   It also gets the right behaviour on filtering for free. React keys rows by
+   player id, so a row that survives a keystroke is the same element and does
+   not re-animate; only genuinely new matches fade in. A JS stagger re-fired on
+   every keystroke would make the table strobe while you typed.
+
+   The delay is capped at index 13 (`--i` is set by PoolTable and clamped
+   there), which puts the whole entrance under 240ms regardless of how many
+   rows matched. 18ms per row sits inside the 20-40ms window that reads as a
+   sweep rather than a queue.
+   ------------------------------------------------------------------ */
+
+.sheet tbody tr.row-in {
+  animation: row-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i, 0) * 18ms);
+}
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Hover feedback: a tint and one pixel, no more. Displacement beyond about
+   two pixels stops reading as "this row is under your cursor" and starts
+   reading as the table moving, and `transform` on a <tr> is the only property
+   here that will not reflow the sheet. */
+.sheet tbody tr:hover td {
+  background: var(--teal-ink);
+}
+.sheet tbody tr {
+  transition: transform 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.sheet tbody tr:hover {
+  transform: translateY(-1px);
+}
+
 .sheet tbody tr.is-block td {
   background: var(--live-tint);
 }
@@ -1243,6 +1292,36 @@ select.pick {
   }
 }
 
+/* The Scout's "working" line.
+
+   A gradient sweeping across the text rather than the whole line pulsing: a
+   sweep reads as progress, where a pulse reads as something blinking for
+   attention. Text-clipped so only the glyphs carry it — a shimmering block
+   behind the words would compete with the answer arriving underneath. */
+.bubble[aria-busy="true"] .eyebrow {
+  background: linear-gradient(
+    90deg,
+    var(--ink-2) 0%,
+    var(--ink-2) 35%,
+    var(--teal) 50%,
+    var(--ink-2) 65%,
+    var(--ink-2) 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: scout-sweep 1.4s ease-in-out infinite;
+}
+@keyframes scout-sweep {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -20% 0;
+  }
+}
+
 /* ============================================================
    RESPONSIVE / REDUCED MOTION
    ============================================================ */
@@ -1294,6 +1373,10 @@ select.pick {
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.001ms !important;
+    /* Delay too. Duration alone leaves a staggered row invisible for its delay
+       and then snapped into place, which is a worse experience than the
+       animation it was meant to remove. */
+    animation-delay: 0.001ms !important;
     transition-duration: 0.001ms !important;
   }
 }

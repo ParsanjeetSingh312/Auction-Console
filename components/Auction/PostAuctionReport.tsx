@@ -23,7 +23,7 @@ import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { money } from "../../console/format";
-import { EASE, panelVariants, viewVariants } from "../../console/motion";
+import { EASE, gridVariants, panelVariants, rowVariants, viewVariants } from "../../console/motion";
 
 /* The report's shape, mirroring auction/room.py `report()`. */
 
@@ -350,9 +350,25 @@ function FranchiseCard({
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              {/*
+                The eleven arrive one at a time. This is the payoff of the whole
+                auction, and a squad that materialises row by row is read as a
+                team sheet being announced rather than a table being printed.
+                Eleven rows is small enough to afford Framer per row and to use
+                the wider 0.04s beat the pool sheet cannot.
+              */}
+              <motion.tbody
+                variants={gridVariants}
+                initial={reduced ? false : "initial"}
+                animate="animate"
+                transition={{ staggerChildren: reduced ? 0 : 0.04 }}
+              >
                 {franchise.playing_xi.map((player, index) => (
-                  <tr key={player.id} className="hover:bg-surface-sunken/60">
+                  <motion.tr
+                    key={player.id}
+                    className="hover:bg-surface-sunken/60"
+                    variants={reduced ? undefined : rowVariants}
+                  >
                     <td className="whitespace-nowrap border-b border-line-soft px-2 py-1.5 font-num text-[12px] tabular-nums text-slate-faint">
                       {index + 1}
                     </td>
@@ -385,7 +401,7 @@ function FranchiseCard({
                     <td className="whitespace-nowrap border-b border-line-soft px-2 py-1.5 text-right font-num text-[13px] tabular-nums text-slate-body">
                       {player.price != null ? money(player.price) : "—"}
                     </td>
-                  </tr>
+                  </motion.tr>
                 ))}
                 {franchise.playing_xi.length === 0 && (
                   <tr>
@@ -397,7 +413,7 @@ function FranchiseCard({
                     </td>
                   </tr>
                 )}
-              </tbody>
+              </motion.tbody>
             </table>
 
             {franchise.bench.length > 0 && (
