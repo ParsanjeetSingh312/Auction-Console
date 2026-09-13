@@ -7,8 +7,8 @@
  * has five destinations, two of them role-gated, and one of them a room a user
  * is invited into by URL — so the addressing now has to be real.
  *
- *   /                the welcome page: pick an interface
- *   /auctiq          the dark AUCTIQ landing, in progress
+ *   /                the AUCTIQ landing
+ *   /classic         the previous white landing, kept as a fallback
  *   /data            read-only analytics — pool, teams, SCOUT. No block.
  *   /auction         the live room: auctioneer or franchise
  *   /auction/demo    the standalone war-room on its mock feed (Phase 3)
@@ -39,9 +39,7 @@ import {
 
 import Home from "./pages/Home";
 
-// The dark AUCTIQ landing, under construction. Built alongside `/`
-// rather than over it, so the working white landing stays working; it
-// is promoted to `/` when Phase 4 signs off.
+// The AUCTIQ landing — now the front door.
 const Auctiq = lazy(() => import("./pages/Auctiq"));
 const DataRoom = lazy(() => import("./pages/DataRoom"));
 const LiveAuction = lazy(() => import("./pages/LiveAuction"));
@@ -54,7 +52,12 @@ export default function App() {
       <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<LandingOrLegacy />} />
-          <Route path="/auctiq" element={<Auctiq />} />
+          {/* The previous white landing, kept one route away rather than
+              deleted: if the dark treatment turns out to be wrong for any
+              surface, reverting is a one-line change, not a recovery. */}
+          <Route path="/classic" element={<Home />} />
+          {/* Anyone holding the build-time URL lands in the right place. */}
+          <Route path="/auctiq" element={<Navigate replace to="/" />} />
           <Route path="/data" element={<DataRoom />} />
           <Route path="/auction" element={<LiveAuction />} />
           <Route path="/auction/demo" element={<BlockDemo />} />
@@ -85,7 +88,7 @@ function LandingOrLegacy() {
     return <Navigate replace to={`/auction/demo${query ? `?${query}` : ""}`} />;
   }
 
-  return <Home />;
+  return <Auctiq />;
 }
 
 /**

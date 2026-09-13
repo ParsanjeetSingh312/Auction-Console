@@ -18,10 +18,17 @@
  * in Phase 3; the placeholders below are marked and sized so the layout does
  * not jump when they arrive.
  */
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { Link } from "react-router-dom";
 
-import AuctiqLogo from "../components/Global/AuctiqLogo";
+import AuctiqLogo, { AuctiqMark } from "../components/Global/AuctiqLogo";
+
+/**
+ * three.js + fiber + drei is ~700KB before the scene exists. Loading it lazily
+ * keeps it out of the landing's first paint, so the headline and the call to
+ * action are interactive while the trophy is still arriving.
+ */
+const TrophyCanvas = lazy(() => import("../components/3D/TrophyCanvas"));
 
 export default function Auctiq() {
   useEffect(() => {
@@ -58,14 +65,20 @@ export default function Auctiq() {
           numbers, bid in real time, settled before anyone leaves the room.
         </p>
 
-        {/* Placeholder for the trophy canvas — Phase 2 drops in here. */}
-        <div
-          aria-hidden
-          className="glass gold-rail relative mt-12 grid h-[clamp(200px,32vh,320px)] w-full max-w-lg place-items-center"
-        >
-          <span className="font-tech text-[10px] uppercase tracking-[0.28em] text-auctiq-dim/70">
-            Phase 2 · 3D trophy canvas
-          </span>
+        {/*
+          The trophy. Sized in `vh` so it scales with the viewport rather than
+          the text column, and floored at 220px so it never collapses to a
+          sliver on a short laptop screen.
+
+          The Suspense fallback is the flat SVG mark rather than a spinner: the
+          chunk usually arrives within a frame or two, and a spinner that
+          flashes for 80ms reads as a fault. The same mark is the WebGL
+          fallback, so a machine without it still gets a centrepiece.
+        */}
+        <div className="relative mt-10 h-[clamp(220px,38vh,400px)] w-full max-w-2xl">
+          <Suspense fallback={<TrophyFallback />}>
+            <TrophyCanvas className="h-full w-full" fallback={<TrophyFallback />} />
+          </Suspense>
         </div>
 
         <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
@@ -83,16 +96,22 @@ export default function Auctiq() {
           </Link>
         </div>
 
-        {/* Placeholder for the player showcase — Phase 3. */}
-        <div
-          aria-hidden
-          className="glass-soft mt-16 grid h-40 w-full place-items-center"
-        >
-          <span className="font-tech text-[10px] uppercase tracking-[0.28em] text-auctiq-dim/70">
-            Phase 3 · player showcase (StackSpread)
-          </span>
-        </div>
+
       </main>
+    </div>
+  );
+}
+
+/**
+ * Shown while the 3D chunk loads, and permanently on machines without WebGL.
+ *
+ * The same mark as the logo, at size. A hero that falls back to empty space
+ * looks broken; one that falls back to a large gold mark just looks quieter.
+ */
+function TrophyFallback() {
+  return (
+    <div className="grid h-full w-full place-items-center">
+      <AuctiqMark className="h-24 w-24 opacity-70" />
     </div>
   );
 }
