@@ -273,6 +273,60 @@
     -webkit-mask-image: radial-gradient(120vw 90vh at 50% 0%, #000 30%, transparent 80%);
   }
 
+  /* The top nav's entrance.
+
+     A CSS animation rather than a Framer Motion one, and the reason matters.
+     Framer sets the `initial` styles inline and then drives the animation on
+     `requestAnimationFrame` — so in any frame where rAF never runs (a
+     backgrounded tab, a throttled renderer, the preview pane while hidden) the
+     element stays at `initial` forever. For a decorative section that is a
+     missed flourish. For primary navigation it is navigation that never
+     appears, and chrome that can fail closed is worse than chrome that simply
+     shows up. A CSS animation runs off the document timeline instead — and,
+     more importantly, see the keyframes below: nothing here can leave the nav
+     invisible even if the animation never advances at all. */
+  .auctiq-drop-in {
+    animation: auctiq-drop-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+  }
+  /* Movement only — no fade. This is the second half of the same argument: an
+     entrance that starts at `opacity: 0` has "invisible" as its stuck state, so
+     anything that stops the animation from running takes the navigation with
+     it. Starting at a 14px offset instead means the worst case is a menu
+     sitting fourteen pixels high, which nobody will ever notice. */
+  @keyframes auctiq-drop-in {
+    from {
+      transform: translateY(-14px);
+    }
+    to {
+      transform: none;
+    }
+  }
+
+  /* A horizontal row that scrolls instead of wrapping — the top nav below
+     `sm`, where four legible labels need more width than a phone has spare.
+     The scrollbar is hidden because a 15px track under a 44px pill is louder
+     than the thing it describes; the right-edge fade is the affordance in its
+     place.
+
+     The fade is scoped to the narrow case on purpose. The row is `w-max`
+     inside a wider box, so when the labels fit, the faded 20px sits over empty
+     space and nothing is dimmed. Above `sm` the box shrinks to the pill and the
+     same mask would eat its rounded end, so it is not applied there. */
+  .auctiq-rail {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    overscroll-behavior-x: contain;
+  }
+  .auctiq-rail::-webkit-scrollbar {
+    display: none;
+  }
+  @media (max-width: 639px) {
+    .auctiq-rail {
+      mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent);
+      -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent);
+    }
+  }
+
   /* Dark glassmorphism. The border does more work than the blur: on a
      near-black ground a translucent panel has no edge, and without one the
      card dissolves into the page. */
@@ -326,6 +380,9 @@
   @media (prefers-reduced-motion: reduce) {
     .auctiq * {
       animation-duration: 0.001ms !important;
+      /* Delay too, not just duration: an entrance whose delay survives is an
+         element that is still missing 150ms after the page has settled. */
+      animation-delay: 0.001ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.001ms !important;
     }

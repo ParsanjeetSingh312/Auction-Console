@@ -36,7 +36,12 @@ export default function HeroSection() {
       variants={staggerContainer}
       initial={reduced ? false : "initial"}
       animate="animate"
-      className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center justify-center px-5 py-24 text-center sm:px-8"
+      /*
+        The extra top padding below `sm` clears the nav, which drops onto its
+        own row beneath the logo at that width. Above `sm` the nav is level with
+        the logo and 96px already clears both, so `sm:py-24` restores symmetry.
+      */
+      className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center justify-center px-5 pb-24 pt-[156px] text-center sm:px-8 sm:py-24"
     >
       <motion.span
         variants={fadeUp}
