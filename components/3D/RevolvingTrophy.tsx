@@ -1,43 +1,122 @@
 /**
  * RevolvingTrophy.tsx
- * The IPL trophy, built from lathed profiles rather than loaded from a file.
+ * The trophy, modelled from the real silhouette.
  *
- * Why procedural. There is no licensed `.glb` of the IPL trophy in this repo
- * and there is not going to be one — it is a protected mark, the same reason
- * the logo is drawn rather than fetched. A lathe geometry gets the silhouette
- * right, weighs nothing, and cannot 404 mid-presentation.
+ * Two earlier attempts got the shape wrong in instructive ways, and the notes
+ * are here so the third is not undone by a fourth.
  *
- * `LatheGeometry` is the right primitive for this shape specifically: a trophy
- * is a solid of revolution — every horizontal slice is a circle — so the whole
- * cup, stem and plinth are described by a single 2D profile swept around Y.
- * Modelling the same form from boxes and cylinders would take five meshes and
- * still show seams where they met.
+ * The first used torus arcs for the handles. A torus is a circle and the cup is
+ * not, so wherever the upper end met the rim the lower end hung in mid-air —
+ * which read, accurately, as half a trophy. Handles are now tubes swept along a
+ * Catmull-Rom curve: the endpoints are chosen rather than derived, so both sit
+ * on the body by construction.
  *
- * On the metal. Gold reads as gold because of what it *reflects*, not its
- * colour: a high-metalness material with nothing around it renders almost
- * black. The environment map in TrophyCanvas is doing most of the work here,
- * and the roughness is kept off zero so the highlight is a soft band rather
- * than a mirror the eye reads as plastic.
+ * The second was a wide open bowl — a generic sporting cup. The actual trophy
+ * is a *covered urn*: a tall, slightly barrelled body with a domed lid and a
+ * finial, a flared stepped foot, and a dark wooden plinth that is the only
+ * non-metal element on the object. The bowl version was missing the lid, the
+ * finial and the wood, which is most of what makes it recognisable.
  *
- * Motion is frame-rate independent — `delta`, never a fixed increment — so the
- * trophy turns at the same speed on a 60Hz laptop and a 144Hz monitor. A
- * constant-per-frame rotation spins more than twice as fast on the latter.
+ * Everything is procedural. There is no licensed `.glb` of this trophy here and
+ * there is not going to be one — it is a protected mark, the same reason the
+ * logo is drawn rather than fetched. A lathe is also the right primitive for the
+ * job: an urn is a solid of revolution, so each 2D profile below sweeps around Y
+ * into a seamless surface that boxes and cylinders could not produce.
+ *
+ * Motion is frame-rate independent — `delta`, never a fixed increment — so it
+ * turns at the same speed on a 60Hz laptop and a 144Hz monitor.
  */
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
-/** Radians per second. Slow enough to read the form, fast enough to notice. */
 const SPIN = 0.42;
-
-/** Float: amplitude in world units, and cycles per second. */
-const BOB_AMPLITUDE = 0.09;
+const BOB_AMPLITUDE = 0.08;
 const BOB_SPEED = 0.55;
+
+/**
+ * Profiles, as [radius, height] pairs swept around Y.
+ *
+ * The body reads bottom-up: a slight barrel through the middle, drawn in at the
+ * shoulder, then flared back out into the rim the lid sits on. It closes across
+ * the top because a lid covers it — an open interior would never be seen and
+ * would double the triangle count.
+ */
+const BODY: [number, number][] = [
+  [0.0, 0.3],
+  [0.54, 0.3],
+  [0.63, 0.4],
+  [0.68, 0.66],
+  [0.7, 0.98],
+  [0.67, 1.26],
+  [0.62, 1.41],
+  [0.69, 1.47],
+  [0.69, 1.55],
+  [0.0, 1.55],
+];
+
+/** The dome, overhanging the rim very slightly, as a lid does. */
+const LID: [number, number][] = [
+  [0.0, 1.55],
+  [0.72, 1.55],
+  [0.72, 1.63],
+  [0.66, 1.72],
+  [0.52, 1.84],
+  [0.33, 1.93],
+  [0.14, 1.98],
+  [0.0, 1.99],
+];
+
+/** The finial: the small turned knob on top, and the detail that sells it. */
+const FINIAL: [number, number][] = [
+  [0.0, 1.97],
+  [0.09, 2.0],
+  [0.06, 2.05],
+  [0.13, 2.09],
+  [0.09, 2.15],
+  [0.04, 2.2],
+  [0.0, 2.23],
+];
+
+/** Flared, stepped foot between the wooden plinth and the body. */
+const FOOT: [number, number][] = [
+  [0.0, 0.0],
+  [0.82, 0.0],
+  [0.8, 0.05],
+  [0.66, 0.11],
+  [0.54, 0.16],
+  [0.47, 0.22],
+  [0.54, 0.3],
+  [0.0, 0.3],
+];
+
+/**
+ * One handle, from the shoulder of the body out and back to its waist.
+ *
+ * Both endpoints sit on the body surface — (0.66, 1.34) is the shoulder and
+ * (0.68, 0.86) the waist — so the handle is attached at both ends rather than
+ * floating beside the urn, which was the first version's failure.
+ */
+const HANDLE_PATH: [number, number, number][] = [
+  [0.66, 1.34, 0],
+  [1.02, 1.46, 0],
+  [1.22, 1.3, 0],
+  [1.24, 1.04, 0],
+  [1.08, 0.86, 0],
+  [0.85, 0.8, 0],
+  [0.68, 0.86, 0],
+];
+
+function lathe(profile: [number, number][], segments = 96) {
+  return new THREE.LatheGeometry(
+    profile.map(([x, y]) => new THREE.Vector2(x, y)),
+    segments,
+  );
+}
 
 export interface RevolvingTrophyProps {
   /** Pauses rotation and bob, leaving the trophy posed. */
   still?: boolean;
-  /** Uniform scale, for fitting the canvas. */
   scale?: number;
 }
 
@@ -47,129 +126,112 @@ export default function RevolvingTrophy({
 }: RevolvingTrophyProps) {
   const group = useRef<THREE.Group>(null);
 
-  /**
-   * The cup profile, in the XY plane, swept 360° around Y.
-   *
-   * Read bottom-up: the point at x=0 closes the base, the flare out to 0.95
-   * gives the bowl its lip, and the near-vertical run at the top is the rim.
-   * Memoised because rebuilding a lathe every render would allocate a new
-   * BufferGeometry sixty times a second.
-   */
-  const cupProfile = useMemo(
-    () =>
-      [
-        [0.0, 0.0],
-        [0.34, 0.0],
-        [0.36, 0.06],
-        [0.3, 0.16],
-        [0.34, 0.42],
-        [0.52, 0.72],
-        [0.74, 0.98],
-        [0.9, 1.22],
-        [0.95, 1.46],
-        [0.95, 1.54],
-        [0.88, 1.54],
-        [0.86, 1.3],
-        [0.7, 1.02],
-        [0.48, 0.76],
-        [0.28, 0.46],
-        [0.24, 0.18],
-        [0.0, 0.08],
-      ].map(([x, y]) => new THREE.Vector2(x, y)),
-    [],
-  );
+  const bodyGeometry = useMemo(() => lathe(BODY), []);
+  const lidGeometry = useMemo(() => lathe(LID), []);
+  const finialGeometry = useMemo(() => lathe(FINIAL, 48), []);
+  const footGeometry = useMemo(() => lathe(FOOT), []);
 
-  /** Stem and the stepped plinth it stands on. */
-  const baseProfile = useMemo(
-    () =>
-      [
-        [0.0, -0.86],
-        [1.12, -0.86],
-        [1.12, -0.66],
-        [0.98, -0.62],
-        [0.9, -0.46],
-        [0.86, -0.42],
-        [0.34, -0.36],
-        [0.22, -0.2],
-        [0.2, -0.02],
-        [0.0, -0.02],
-      ].map(([x, y]) => new THREE.Vector2(x, y)),
-    [],
-  );
-
-  /**
-   * The handles.
-   *
-   * Torus arcs rather than tubes along a curve: a partial torus is two numbers
-   * (arc length, rotation) where a `TubeGeometry` needs a hand-authored spline,
-   * and at this scale the difference is invisible.
-   */
-  const handle = useMemo(() => new THREE.TorusGeometry(0.42, 0.055, 12, 40, Math.PI * 1.15), []);
-
-  // Hoisted out of the JSX below. A hook in an attribute position happens to
-  // evaluate in a stable order here, but it is one conditional away from
-  // breaking the rules of hooks and reads as an accident either way.
-  const cupGeometry = useMemo(() => new THREE.LatheGeometry(cupProfile, 96), [cupProfile]);
-  const baseGeometry = useMemo(() => new THREE.LatheGeometry(baseProfile, 96), [baseProfile]);
+  const handleGeometry = useMemo(() => {
+    const curve = new THREE.CatmullRomCurve3(
+      HANDLE_PATH.map(([x, y, z]) => new THREE.Vector3(x, y, z)),
+      false,
+      "catmullrom",
+      0.25,
+    );
+    // Slightly flattened in Z, so the handle reads as a shaped strap rather
+    // than a length of pipe.
+    const tube = new THREE.TubeGeometry(curve, 72, 0.07, 14, false);
+    tube.scale(1, 1, 0.62);
+    return tube;
+  }, []);
 
   useFrame((state, delta) => {
     const node = group.current;
     if (!node || still) return;
 
     node.rotation.y += SPIN * delta;
-    // Bob is driven by absolute clock time, not accumulated delta, so a
-    // dropped frame shifts nothing and the motion cannot drift out of phase.
+    // Absolute clock time, not accumulated delta: a dropped frame shifts
+    // nothing and the bob cannot drift out of phase.
     node.position.y = Math.sin(state.clock.elapsedTime * BOB_SPEED) * BOB_AMPLITUDE;
   });
 
   return (
-    <group ref={group} scale={scale} position={[0, 0, 0]}>
-      {/* Cup */}
-      <mesh geometry={cupGeometry} castShadow>
-        <meshStandardMaterial
-          color="#F6C45A"
-          metalness={1}
-          roughness={0.24}
-          envMapIntensity={1.35}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
-
-      {/* Stem + plinth, in a darker gold so the cup stays the subject. */}
-      <mesh geometry={baseGeometry} castShadow>
-        <meshStandardMaterial
-          color="#CA8A04"
-          metalness={1}
-          roughness={0.34}
-          envMapIntensity={1.1}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
-
-      {/* Dark inlay band around the plinth — the one non-gold element, which is
-          what keeps the whole object from reading as a single blob of metal. */}
-      <mesh position={[0, -0.76, 0]}>
-        <cylinderGeometry args={[1.13, 1.13, 0.14, 64]} />
-        <meshStandardMaterial color="#0E1223" metalness={0.35} roughness={0.55} />
-      </mesh>
-
-      {/* Handles, mirrored either side. */}
-      {[-1, 1].map((side) => (
-        <mesh
-          key={side}
-          geometry={handle}
-          position={[side * 0.82, 0.92, 0]}
-          rotation={[0, 0, side > 0 ? -Math.PI * 0.42 : Math.PI * 1.42]}
-          scale={[1, 1, 1]}
-        >
-          <meshStandardMaterial
-            color="#E3B23C"
-            metalness={1}
-            roughness={0.28}
-            envMapIntensity={1.25}
-          />
+    <group ref={group} scale={scale}>
+      {/*
+        The whole object is lifted so its visual centre sits on the origin —
+        the profiles above are authored from the base up, which would otherwise
+        hang the trophy off the bottom of the frame. Done on an inner group so
+        the bob above can own `position.y` outright.
+      */}
+      <group position={[0, -1.02, 0]}>
+        {/* Body */}
+        <mesh geometry={bodyGeometry} castShadow>
+          <GoldMaterial />
         </mesh>
-      ))}
+
+        {/* Lid and finial */}
+        <mesh geometry={lidGeometry} castShadow>
+          <GoldMaterial />
+        </mesh>
+        <mesh geometry={finialGeometry} castShadow>
+          <GoldMaterial roughness={0.3} />
+        </mesh>
+
+        {/* Foot */}
+        <mesh geometry={footGeometry} castShadow>
+          <GoldMaterial color="#E8B84B" roughness={0.3} />
+        </mesh>
+
+        {/* Handles. The second is the first mirrored through X — one geometry,
+            and they are guaranteed symmetrical. */}
+        {([1, -1] as const).map((side) => (
+          <mesh key={side} geometry={handleGeometry} scale={[side, 1, 1]} castShadow>
+            <GoldMaterial color="#F0BE55" roughness={0.28} />
+          </mesh>
+        ))}
+
+        {/*
+          The wooden plinth. The one non-metal element, and load-bearing for
+          recognition: without it the object is a generic gold cup. Low
+          metalness and high roughness so it absorbs the light the gold throws
+          back, which is what makes the gold look like gold.
+        */}
+        <mesh position={[0, -0.16, 0]} receiveShadow>
+          <cylinderGeometry args={[1.06, 1.1, 0.32, 72]} />
+          <meshStandardMaterial color="#4A2016" metalness={0.08} roughness={0.62} />
+        </mesh>
+        {/* A thin bright bevel where the wood meets the foot, which is what
+            stops the two materials reading as one dark mass. */}
+        <mesh position={[0, 0.005, 0]}>
+          <cylinderGeometry args={[1.03, 1.06, 0.025, 72]} />
+          <meshStandardMaterial color="#7A3A22" metalness={0.2} roughness={0.5} />
+        </mesh>
+      </group>
     </group>
+  );
+}
+
+/**
+ * The gold, in one place.
+ *
+ * Roughness is kept off zero deliberately: a perfect mirror renders as a
+ * chaotic scatter of the environment that the eye reads as plastic, where a
+ * little roughness gives the broad soft highlight that reads as polished metal.
+ */
+function GoldMaterial({
+  color = "#F6C45A",
+  roughness = 0.24,
+}: {
+  color?: string;
+  roughness?: number;
+}) {
+  return (
+    <meshStandardMaterial
+      color={color}
+      metalness={1}
+      roughness={roughness}
+      envMapIntensity={1.45}
+      side={THREE.DoubleSide}
+    />
   );
 }
