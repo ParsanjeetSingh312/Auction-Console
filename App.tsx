@@ -8,6 +8,7 @@
  * is invited into by URL — so the addressing now has to be real.
  *
  *   /                the welcome page: pick an interface
+ *   /auctiq          the dark AUCTIQ landing, in progress
  *   /data            read-only analytics — pool, teams, SCOUT. No block.
  *   /auction         the live room: auctioneer or franchise
  *   /auction/demo    the standalone war-room on its mock feed (Phase 3)
@@ -38,6 +39,10 @@ import {
 
 import Home from "./pages/Home";
 
+// The dark AUCTIQ landing, under construction. Built alongside `/`
+// rather than over it, so the working white landing stays working; it
+// is promoted to `/` when Phase 4 signs off.
+const Auctiq = lazy(() => import("./pages/Auctiq"));
 const DataRoom = lazy(() => import("./pages/DataRoom"));
 const LiveAuction = lazy(() => import("./pages/LiveAuction"));
 const AuctionConsole = lazy(() => import("./components/Console/AuctionConsole"));
@@ -49,6 +54,7 @@ export default function App() {
       <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<LandingOrLegacy />} />
+          <Route path="/auctiq" element={<Auctiq />} />
           <Route path="/data" element={<DataRoom />} />
           <Route path="/auction" element={<LiveAuction />} />
           <Route path="/auction/demo" element={<BlockDemo />} />

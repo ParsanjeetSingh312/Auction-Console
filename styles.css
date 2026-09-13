@@ -12,6 +12,19 @@
  */
 @import url("https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap");
 
+/**
+ * AUCTIQ display faces, for the dark landing only.
+ *
+ * Russo One is a single-weight display face — there is no light or bold cut,
+ * which is the point: it is used large and only for headlines. Chakra Petch
+ * carries everything else on that surface and does have a range.
+ *
+ * Loaded unconditionally rather than lazily because the landing is the first
+ * paint for most visitors, and a headline that reflows from a fallback into
+ * Russo One a second later is more distracting than the download.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;500;600;700&family=Russo+One&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -206,6 +219,115 @@
   @media (prefers-reduced-motion: reduce) {
     .motion-safe-pulse {
       animation: none;
+    }
+  }
+}
+
+/* ==========================================================================
+   AUCTIQ — the dark landing surface
+   ==========================================================================
+
+   Everything here is scoped under `.auctiq`. That is the whole mechanism that
+   keeps two themes in one application honest: the console sets `body` to the
+   white paper ground, and this never touches `body` at all. A page opts in by
+   wrapping itself, and no rule below can reach the Data Interface, the war
+   room or the auctioneer's split screen.
+
+   The alternative — a `dark` class on `<html>` with every component carrying
+   `dark:` variants — would mean touching all 30-odd existing components to
+   describe a theme none of them will ever be shown in.
+   ========================================================================== */
+
+@layer components {
+  .auctiq {
+    @apply bg-auctiq-void font-tech text-auctiq-text antialiased;
+    color-scheme: dark;
+  }
+
+  /* The stadium: two coloured pools of light on a near-black field, plus a
+     faint grid. Fixed rather than scrolled, so it reads as the room the
+     content is in rather than as a texture printed on it. */
+  .auctiq-stadium {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(60vw 45vh at 18% 0%, rgba(0, 87, 226, 0.20), transparent 70%),
+      radial-gradient(55vw 40vh at 85% 8%, rgba(246, 196, 90, 0.13), transparent 72%),
+      radial-gradient(80vw 60vh at 50% 110%, rgba(0, 87, 226, 0.10), transparent 70%);
+  }
+
+  .auctiq-grid {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.5;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+    background-size: 72px 72px;
+    /* Fades out toward the bottom so the grid never competes with content. */
+    mask-image: radial-gradient(120vw 90vh at 50% 0%, #000 30%, transparent 80%);
+    -webkit-mask-image: radial-gradient(120vw 90vh at 50% 0%, #000 30%, transparent 80%);
+  }
+
+  /* Dark glassmorphism. The border does more work than the blur: on a
+     near-black ground a translucent panel has no edge, and without one the
+     card dissolves into the page. */
+  .glass {
+    @apply rounded-2xl border border-white/10 bg-white/[0.04] shadow-glass backdrop-blur-xl;
+  }
+  .glass-soft {
+    @apply rounded-xl border border-white/[0.07] bg-white/[0.025] backdrop-blur-md;
+  }
+
+  /* Gold hairline along the top edge, brightest in the middle. Used to lift a
+     card that matters without filling it with colour. */
+  .gold-rail::before {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      theme("colors.auctiq.gold") 45%,
+      theme("colors.auctiq.gold") 55%,
+      transparent
+    );
+    opacity: 0.65;
+  }
+
+  .text-glow-gold {
+    text-shadow: 0 0 10px rgba(246, 196, 90, 0.45);
+  }
+  .text-glow-soft {
+    text-shadow: 0 0 10px rgba(248, 250, 252, 0.22);
+  }
+
+  /* Focus has to be visible on a dark ground too — the white theme's teal
+     ring is invisible here. */
+  .auctiq :focus-visible {
+    outline: 2px solid theme("colors.auctiq.gold");
+    outline-offset: 3px;
+  }
+
+  .auctiq ::selection {
+    background: rgba(246, 196, 90, 0.28);
+  }
+}
+
+@layer utilities {
+  /* Honours the platform setting for anything CSS-driven; Framer Motion
+     components read `useReducedMotion` separately. */
+  @media (prefers-reduced-motion: reduce) {
+    .auctiq * {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
     }
   }
 }
