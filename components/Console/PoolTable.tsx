@@ -13,6 +13,7 @@
  * is already at the edge of what re-renders smoothly on every keystroke.
  */
 import { useMemo } from "react";
+import { motion } from "framer-motion";
 
 import {
   cssVars,
@@ -24,6 +25,7 @@ import {
   roleGlyphText,
   setMeta,
 } from "../../console/format";
+import { panelVariants } from "../../console/motion";
 import { runQuery } from "../../console/search";
 import type { AuctionEngine } from "../../console/useAuctionEngine";
 import type {
@@ -35,6 +37,16 @@ import type {
 } from "../../console/types";
 
 const RENDER_CAP = 400;
+
+/**
+ * How far down the sheet the entrance stagger keeps counting.
+ *
+ * Rows past this index all share the last delay, so the whole sweep finishes in
+ * about 240ms whether the filter matched fourteen players or four hundred. An
+ * uncapped stagger over RENDER_CAP rows would take seven seconds to reach the
+ * bottom of the table.
+ */
+const STAGGER_CAP = 13;
 
 const ROLE_CHIPS: RoleShort[] = ["BAT", "BOWL", "AR", "WK"];
 const STATUS_CHIPS: PoolFilters["status"][] = ["all", "available", "sold", "unsold"];
@@ -161,7 +173,7 @@ export default function PoolTable({
 
   return (
     <>
-      <div className="filters">
+      <motion.div className="filters" variants={panelVariants}>
         <div className="fgroup">
           <span className="eyebrow">Status</span>
           {STATUS_CHIPS.map((option) => (
@@ -285,9 +297,9 @@ export default function PoolTable({
             Reset filters
           </button>
         </div>
-      </div>
+      </motion.div>
 
-      <div className="tablewrap">
+      <motion.div className="tablewrap" variants={panelVariants}>
         <div className="max-h-[calc(100vh-320px)] overflow-auto">
           <table className="sheet">
             <thead>
@@ -332,7 +344,7 @@ export default function PoolTable({
                 </tr>
               )}
 
-              {rows.slice(0, RENDER_CAP).map(({ player }) => {
+              {rows.slice(0, RENDER_CAP).map(({ player }, index) => {
                 const record = recordFor(player.id);
                 const meta = setMeta(player.set);
                 const onBlock = block?.playerId === player.id;
@@ -341,7 +353,10 @@ export default function PoolTable({
                 return (
                   <tr
                     key={player.id}
-                    className={onBlock ? "is-block" : record.status === "sold" ? "is-sold" : ""}
+                    className={`row-in ${
+                      onBlock ? "is-block" : record.status === "sold" ? "is-sold" : ""
+                    }`}
+                    style={cssVars({ "--i": String(Math.min(index, STAGGER_CAP)) })}
                   >
                     <td className="c-rail" style={{ background: meta.rail }} />
                     <td className="c-no">{player.sno}</td>
@@ -455,7 +470,7 @@ export default function PoolTable({
             ✈ overseas · — not in the dataset · * base price assumed
           </span>
         </div>
-      </div>
+      </motion.div>
     </>
   );
 }

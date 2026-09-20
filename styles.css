@@ -12,6 +12,19 @@
  */
 @import url("https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap");
 
+/**
+ * AUCTIQ display faces, for the dark landing only.
+ *
+ * Russo One is a single-weight display face — there is no light or bold cut,
+ * which is the point: it is used large and only for headlines. Chakra Petch
+ * carries everything else on that surface and does have a range.
+ *
+ * Loaded unconditionally rather than lazily because the landing is the first
+ * paint for most visitors, and a headline that reflows from a fallback into
+ * Russo One a second later is more distracting than the download.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;500;600;700&family=Russo+One&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -206,6 +219,172 @@
   @media (prefers-reduced-motion: reduce) {
     .motion-safe-pulse {
       animation: none;
+    }
+  }
+}
+
+/* ==========================================================================
+   AUCTIQ — the dark landing surface
+   ==========================================================================
+
+   Everything here is scoped under `.auctiq`. That is the whole mechanism that
+   keeps two themes in one application honest: the console sets `body` to the
+   white paper ground, and this never touches `body` at all. A page opts in by
+   wrapping itself, and no rule below can reach the Data Interface, the war
+   room or the auctioneer's split screen.
+
+   The alternative — a `dark` class on `<html>` with every component carrying
+   `dark:` variants — would mean touching all 30-odd existing components to
+   describe a theme none of them will ever be shown in.
+   ========================================================================== */
+
+@layer components {
+  .auctiq {
+    @apply bg-auctiq-void font-tech text-auctiq-text antialiased;
+    color-scheme: dark;
+  }
+
+  /* The stadium: two coloured pools of light on a near-black field, plus a
+     faint grid. Fixed rather than scrolled, so it reads as the room the
+     content is in rather than as a texture printed on it. */
+  .auctiq-stadium {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(60vw 45vh at 18% 0%, rgba(0, 87, 226, 0.20), transparent 70%),
+      radial-gradient(55vw 40vh at 85% 8%, rgba(246, 196, 90, 0.13), transparent 72%),
+      radial-gradient(80vw 60vh at 50% 110%, rgba(0, 87, 226, 0.10), transparent 70%);
+  }
+
+  .auctiq-grid {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.5;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+    background-size: 72px 72px;
+    /* Fades out toward the bottom so the grid never competes with content. */
+    mask-image: radial-gradient(120vw 90vh at 50% 0%, #000 30%, transparent 80%);
+    -webkit-mask-image: radial-gradient(120vw 90vh at 50% 0%, #000 30%, transparent 80%);
+  }
+
+  /* The top nav's entrance.
+
+     A CSS animation rather than a Framer Motion one, and the reason matters.
+     Framer sets the `initial` styles inline and then drives the animation on
+     `requestAnimationFrame` — so in any frame where rAF never runs (a
+     backgrounded tab, a throttled renderer, the preview pane while hidden) the
+     element stays at `initial` forever. For a decorative section that is a
+     missed flourish. For primary navigation it is navigation that never
+     appears, and chrome that can fail closed is worse than chrome that simply
+     shows up. A CSS animation runs off the document timeline instead — and,
+     more importantly, see the keyframes below: nothing here can leave the nav
+     invisible even if the animation never advances at all. */
+  .auctiq-drop-in {
+    animation: auctiq-drop-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+  }
+  /* Movement only — no fade. This is the second half of the same argument: an
+     entrance that starts at `opacity: 0` has "invisible" as its stuck state, so
+     anything that stops the animation from running takes the navigation with
+     it. Starting at a 14px offset instead means the worst case is a menu
+     sitting fourteen pixels high, which nobody will ever notice. */
+  @keyframes auctiq-drop-in {
+    from {
+      transform: translateY(-14px);
+    }
+    to {
+      transform: none;
+    }
+  }
+
+  /* A horizontal row that scrolls instead of wrapping — the top nav below
+     `sm`, where four legible labels need more width than a phone has spare.
+     The scrollbar is hidden because a 15px track under a 44px pill is louder
+     than the thing it describes; the right-edge fade is the affordance in its
+     place.
+
+     The fade is scoped to the narrow case on purpose. The row is `w-max`
+     inside a wider box, so when the labels fit, the faded 20px sits over empty
+     space and nothing is dimmed. Above `sm` the box shrinks to the pill and the
+     same mask would eat its rounded end, so it is not applied there. */
+  .auctiq-rail {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    overscroll-behavior-x: contain;
+  }
+  .auctiq-rail::-webkit-scrollbar {
+    display: none;
+  }
+  @media (max-width: 639px) {
+    .auctiq-rail {
+      mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent);
+      -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent);
+    }
+  }
+
+  /* Dark glassmorphism. The border does more work than the blur: on a
+     near-black ground a translucent panel has no edge, and without one the
+     card dissolves into the page. */
+  .glass {
+    @apply rounded-2xl border border-white/10 bg-white/[0.04] shadow-glass backdrop-blur-xl;
+  }
+  .glass-soft {
+    @apply rounded-xl border border-white/[0.07] bg-white/[0.025] backdrop-blur-md;
+  }
+
+  /* Gold hairline along the top edge, brightest in the middle. Used to lift a
+     card that matters without filling it with colour. */
+  .gold-rail::before {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      theme("colors.auctiq.gold") 45%,
+      theme("colors.auctiq.gold") 55%,
+      transparent
+    );
+    opacity: 0.65;
+  }
+
+  .text-glow-gold {
+    text-shadow: 0 0 10px rgba(246, 196, 90, 0.45);
+  }
+  .text-glow-soft {
+    text-shadow: 0 0 10px rgba(248, 250, 252, 0.22);
+  }
+
+  /* Focus has to be visible on a dark ground too — the white theme's teal
+     ring is invisible here. */
+  .auctiq :focus-visible {
+    outline: 2px solid theme("colors.auctiq.gold");
+    outline-offset: 3px;
+  }
+
+  .auctiq ::selection {
+    background: rgba(246, 196, 90, 0.28);
+  }
+}
+
+@layer utilities {
+  /* Honours the platform setting for anything CSS-driven; Framer Motion
+     components read `useReducedMotion` separately. */
+  @media (prefers-reduced-motion: reduce) {
+    .auctiq * {
+      animation-duration: 0.001ms !important;
+      /* Delay too, not just duration: an entrance whose delay survives is an
+         element that is still missing 150ms after the page has settled. */
+      animation-delay: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
     }
   }
 }

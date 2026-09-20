@@ -1,0 +1,968 @@
+{
+  "description": "Auction metadata for the IPL player pool: base price (lakh), rating, country, cap status and auction set. The stats spreadsheet does not carry these fields, so ingestion joins them onto the pool by lowercased name.",
+  "extracted_from": "auction-console.html (Phase 1 prototype, POOL_RAW)",
+  "base_price_unit": "lakh",
+  "count": 96,
+  "players": [
+    {
+      "name": "Jasprit Bumrah",
+      "country": "India",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.75,
+      "set_no": 1,
+      "set_code": "M1"
+    },
+    {
+      "name": "Jos Buttler",
+      "country": "England",
+      "role": "Wicket Keeper",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 1,
+      "set_code": "M1"
+    },
+    {
+      "name": "Pat Cummins",
+      "country": "Australia",
+      "role": "All Rounder",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 1,
+      "set_code": "M1"
+    },
+    {
+      "name": "Shubman Gill",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 1,
+      "set_code": "M1"
+    },
+    {
+      "name": "Shreyas Iyer",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.75,
+      "set_no": 1,
+      "set_code": "M1"
+    },
+    {
+      "name": "Rashid Khan",
+      "country": "Afghanistan",
+      "role": "All Rounder",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.75,
+      "set_no": 1,
+      "set_code": "M1"
+    },
+    {
+      "name": "Virat Kohli",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.75,
+      "set_no": 1,
+      "set_code": "M1"
+    },
+    {
+      "name": "Rishabh Pant",
+      "country": "India",
+      "role": "Wicket Keeper",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 1,
+      "set_code": "M1"
+    },
+    {
+      "name": "Arshdeep Singh",
+      "country": "India",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 1,
+      "set_code": "M1"
+    },
+    {
+      "name": "Mitchell Starc",
+      "country": "Australia",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 1,
+      "set_code": "M1"
+    },
+    {
+      "name": "MS Dhoni",
+      "country": "India",
+      "role": "Wicket Keeper",
+      "cap_status": "Uncapped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 2,
+      "set_code": "M2"
+    },
+    {
+      "name": "Trent Boult",
+      "country": "New Zealand",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 2,
+      "set_code": "M2"
+    },
+    {
+      "name": "Ravindra Jadeja",
+      "country": "India",
+      "role": "All Rounder",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 2,
+      "set_code": "M2"
+    },
+    {
+      "name": "Hardik Pandya",
+      "country": "India",
+      "role": "All Rounder",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.75,
+      "set_no": 2,
+      "set_code": "M2"
+    },
+    {
+      "name": "Axar Patel",
+      "country": "India",
+      "role": "All Rounder",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.75,
+      "set_no": 2,
+      "set_code": "M2"
+    },
+    {
+      "name": "KL Rahul",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 2,
+      "set_code": "M2"
+    },
+    {
+      "name": "Kagiso Rabada",
+      "country": "South Africa",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 2,
+      "set_code": "M2"
+    },
+    {
+      "name": "Sanju Samson",
+      "country": "India",
+      "role": "Wicket Keeper",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 2,
+      "set_code": "M2"
+    },
+    {
+      "name": "Rohit Sharma",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 2,
+      "set_code": "M2"
+    },
+    {
+      "name": "Suryakumar Yadav",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.75,
+      "set_no": 2,
+      "set_code": "M2"
+    },
+    {
+      "name": "Harry Brook",
+      "country": "England",
+      "role": "Batsman",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9,
+      "set_no": 3,
+      "set_code": "BA1"
+    },
+    {
+      "name": "Ruturaj Gaikwad",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 3,
+      "set_code": "BA1"
+    },
+    {
+      "name": "Travis Head",
+      "country": "Australia",
+      "role": "Batsman",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 3,
+      "set_code": "BA1"
+    },
+    {
+      "name": "Yashasvi Jaiswal",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 3,
+      "set_code": "BA1"
+    },
+    {
+      "name": "David Miller",
+      "country": "South Africa",
+      "role": "Batsman",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 3,
+      "set_code": "BA1"
+    },
+    {
+      "name": "Rajat Patidar",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 3,
+      "set_code": "BA1"
+    },
+    {
+      "name": "Rinku Singh",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 3,
+      "set_code": "BA1"
+    },
+    {
+      "name": "Nicholas Pooran",
+      "country": "West Indies",
+      "role": "Batsman",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 3,
+      "set_code": "BA1"
+    },
+    {
+      "name": "Shivam Dube",
+      "country": "India",
+      "role": "All Rounder",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 4,
+      "set_code": "AL1"
+    },
+    {
+      "name": "Venkatesh Iyer",
+      "country": "India",
+      "role": "All Rounder",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 4,
+      "set_code": "AL1"
+    },
+    {
+      "name": "Glenn Maxwell",
+      "country": "Australia",
+      "role": "All Rounder",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 4,
+      "set_code": "AL1"
+    },
+    {
+      "name": "Sunil Narine",
+      "country": "West Indies",
+      "role": "All Rounder",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 4,
+      "set_code": "AL1"
+    },
+    {
+      "name": "Liam Livingstone",
+      "country": "England",
+      "role": "All Rounder",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 4,
+      "set_code": "AL1"
+    },
+    {
+      "name": "Krunal Pandya",
+      "country": "India",
+      "role": "All Rounder",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 4,
+      "set_code": "AL1"
+    },
+    {
+      "name": "Abhishek Sharma",
+      "country": "India",
+      "role": "All Rounder",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 4,
+      "set_code": "AL1"
+    },
+    {
+      "name": "Marcus Stoinis",
+      "country": "Australia",
+      "role": "All Rounder",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 4,
+      "set_code": "AL1"
+    },
+    {
+      "name": "Tilak Varma",
+      "country": "India",
+      "role": "All Rounder",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 4,
+      "set_code": "AL1"
+    },
+    {
+      "name": "Devon Conway",
+      "country": "New Zealand",
+      "role": "Wicket Keeper",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 5,
+      "set_code": "WK1"
+    },
+    {
+      "name": "Quinton De Kock",
+      "country": "South Africa",
+      "role": "Wicket Keeper",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 5,
+      "set_code": "WK1"
+    },
+    {
+      "name": "Ishan Kishan",
+      "country": "India",
+      "role": "Wicket Keeper",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 5,
+      "set_code": "WK1"
+    },
+    {
+      "name": "Heinrich Klaasen",
+      "country": "South Africa",
+      "role": "Wicket Keeper",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 5,
+      "set_code": "WK1"
+    },
+    {
+      "name": "Dhruv Jurel",
+      "country": "India",
+      "role": "Wicket Keeper",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9,
+      "set_no": 5,
+      "set_code": "WK1"
+    },
+    {
+      "name": "Phil Salt",
+      "country": "England",
+      "role": "Wicket Keeper",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 5,
+      "set_code": "WK1"
+    },
+    {
+      "name": "Jitesh Sharma",
+      "country": "India",
+      "role": "Wicket Keeper",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9,
+      "set_no": 5,
+      "set_code": "WK1"
+    },
+    {
+      "name": "Tristan Stubbs",
+      "country": "South Africa",
+      "role": "Wicket Keeper",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 5,
+      "set_code": "WK1"
+    },
+    {
+      "name": "Jofra Archer",
+      "country": "England",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 6,
+      "set_code": "FA1"
+    },
+    {
+      "name": "Deepak Chahar",
+      "country": "India",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 6,
+      "set_code": "FA1"
+    },
+    {
+      "name": "Josh Hazlewood",
+      "country": "Australia",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 6,
+      "set_code": "FA1"
+    },
+    {
+      "name": "Prasidh Krishna",
+      "country": "India",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 6,
+      "set_code": "FA1"
+    },
+    {
+      "name": "Avesh Khan",
+      "country": "India",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9,
+      "set_no": 6,
+      "set_code": "FA1"
+    },
+    {
+      "name": "Bhuvneshwar Kumar",
+      "country": "India",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 6,
+      "set_code": "FA1"
+    },
+    {
+      "name": "Thangarasu Natarajan",
+      "country": "India",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 6,
+      "set_code": "FA1"
+    },
+    {
+      "name": "Matheesha Pathirana",
+      "country": "Sri Lanka",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 6,
+      "set_code": "FA1"
+    },
+    {
+      "name": "Mohammed Shami",
+      "country": "India",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 6,
+      "set_code": "FA1"
+    },
+    {
+      "name": "Mohammed Siraj",
+      "country": "India",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 6,
+      "set_code": "FA1"
+    },
+    {
+      "name": "Noor Ahmad",
+      "country": "Afghanistan",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 7,
+      "set_code": "SP1"
+    },
+    {
+      "name": "Ravi Bishnoi",
+      "country": "India",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 7,
+      "set_code": "SP1"
+    },
+    {
+      "name": "Yuzvendra Chahal",
+      "country": "India",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 7,
+      "set_code": "SP1"
+    },
+    {
+      "name": "Rahul Chahar",
+      "country": "India",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 7,
+      "set_code": "SP1"
+    },
+    {
+      "name": "Varun Chakravarthy",
+      "country": "India",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 7,
+      "set_code": "SP1"
+    },
+    {
+      "name": "Wanindu Hasaranga",
+      "country": "Sri Lanka",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 7,
+      "set_code": "SP1"
+    },
+    {
+      "name": "Maheesh Theekshana",
+      "country": "Sri Lanka",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 7,
+      "set_code": "SP1"
+    },
+    {
+      "name": "Kuldeep Yadav",
+      "country": "India",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.5,
+      "set_no": 7,
+      "set_code": "SP1"
+    },
+    {
+      "name": "Adam Zampa",
+      "country": "Australia",
+      "role": "Bowler",
+      "cap_status": "Capped",
+      "base_price": 200,
+      "rating": 9.25,
+      "set_no": 7,
+      "set_code": "SP1"
+    },
+    {
+      "name": "Priyansh Arya",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 9,
+      "set_no": 8,
+      "set_code": "UBA1"
+    },
+    {
+      "name": "Ayush Badoni",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 8.75,
+      "set_no": 8,
+      "set_code": "UBA1"
+    },
+    {
+      "name": "Yash Dhull",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 8.3,
+      "set_no": 8,
+      "set_code": "UBA1"
+    },
+    {
+      "name": "Kartik Sharma",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 8.5,
+      "set_no": 8,
+      "set_code": "UBA1"
+    },
+    {
+      "name": "Abhinav Manohar",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 8.75,
+      "set_no": 8,
+      "set_code": "UBA1"
+    },
+    {
+      "name": "Ayush Mhatre",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 8.75,
+      "set_no": 8,
+      "set_code": "UBA1"
+    },
+    {
+      "name": "Vaibhav Suryavanshi",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 9,
+      "set_no": 8,
+      "set_code": "UBA1"
+    },
+    {
+      "name": "Angkrish Raghuvanshi",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 9.25,
+      "set_no": 8,
+      "set_code": "UBA1"
+    },
+    {
+      "name": "Shashank Singh",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 9.25,
+      "set_no": 8,
+      "set_code": "UBA1"
+    },
+    {
+      "name": "Nehal Wadhera",
+      "country": "India",
+      "role": "Batsman",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 9,
+      "set_no": 8,
+      "set_code": "UBA1"
+    },
+    {
+      "name": "Harpreet Brar",
+      "country": "India",
+      "role": "All Rounder",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 8.75,
+      "set_no": 9,
+      "set_code": "UAL1"
+    },
+    {
+      "name": "Raj Angad Bawa",
+      "country": "India",
+      "role": "All Rounder",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 8.5,
+      "set_no": 9,
+      "set_code": "UAL1"
+    },
+    {
+      "name": "Naman Dhir",
+      "country": "India",
+      "role": "All Rounder",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 9,
+      "set_no": 9,
+      "set_code": "UAL1"
+    },
+    {
+      "name": "Shahrukh Khan",
+      "country": "India",
+      "role": "All Rounder",
+      "cap_status": "Uncapped",
+      "base_price": 40,
+      "rating": 9.25,
+      "set_no": 9,
+      "set_code": "UAL1"
+    },
+    {
+      "name": "Mahipal Lomror",
+      "country": "India",
+      "role": "All Rounder",
+      "cap_status": "Uncapped",
+      "base_price": 40,
+      "rating": 8.75,
+      "set_no": 9,
+      "set_code": "UAL1"
+    },
+    {
+      "name": "Sameer Rizvi",
+      "country": "India",
+      "role": "All Rounder",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 8.5,
+      "set_no": 9,
+      "set_code": "UAL1"
+    },
+    {
+      "name": "Abdul Samad",
+      "country": "India",
+      "role": "All Rounder",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 8.75,
+      "set_no": 9,
+      "set_code": "UAL1"
+    },
+    {
+      "name": "Ramandeep Singh",
+      "country": "India",
+      "role": "All Rounder",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 9,
+      "set_no": 9,
+      "set_code": "UAL1"
+    },
+    {
+      "name": "Ashutosh Sharma",
+      "country": "India",
+      "role": "All Rounder",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 9.25,
+      "set_no": 9,
+      "set_code": "UAL1"
+    },
+    {
+      "name": "Rahul Tewatia",
+      "country": "India",
+      "role": "All Rounder",
+      "cap_status": "Uncapped",
+      "base_price": 40,
+      "rating": 9.25,
+      "set_no": 9,
+      "set_code": "UAL1"
+    },
+    {
+      "name": "Aryan Juyal",
+      "country": "India",
+      "role": "Wicket Keeper",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 8.25,
+      "set_no": 10,
+      "set_code": "UWK1"
+    },
+    {
+      "name": "Kumar Kushagra",
+      "country": "India",
+      "role": "Wicket Keeper",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 8.5,
+      "set_no": 10,
+      "set_code": "UWK1"
+    },
+    {
+      "name": "Robin Minz",
+      "country": "India",
+      "role": "Wicket Keeper",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 8.5,
+      "set_no": 10,
+      "set_code": "UWK1"
+    },
+    {
+      "name": "Abhishek Porel",
+      "country": "India",
+      "role": "Wicket Keeper",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 8.75,
+      "set_no": 10,
+      "set_code": "UWK1"
+    },
+    {
+      "name": "Anuj Rawat",
+      "country": "India",
+      "role": "Wicket Keeper",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 8.5,
+      "set_no": 10,
+      "set_code": "UWK1"
+    },
+    {
+      "name": "Prabhsimran Singh",
+      "country": "India",
+      "role": "Wicket Keeper",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 9,
+      "set_no": 10,
+      "set_code": "UWK1"
+    },
+    {
+      "name": "Salil Arora",
+      "country": "India",
+      "role": "Wicket Keeper",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 8.5,
+      "set_no": 10,
+      "set_code": "UWK1"
+    },
+    {
+      "name": "Vishnu Vinod",
+      "country": "India",
+      "role": "Wicket Keeper",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 8.5,
+      "set_no": 10,
+      "set_code": "UWK1"
+    },
+    {
+      "name": "Vaibhav Arora",
+      "country": "India",
+      "role": "Bowler",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 9,
+      "set_no": 11,
+      "set_code": "UFA1"
+    },
+    {
+      "name": "Rasikh Dar",
+      "country": "India",
+      "role": "Bowler",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 9,
+      "set_no": 11,
+      "set_code": "UFA1"
+    },
+    {
+      "name": "Yash Dayal",
+      "country": "India",
+      "role": "Bowler",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 9,
+      "set_no": 11,
+      "set_code": "UFA1"
+    },
+    {
+      "name": "Akash Madhwal",
+      "country": "India",
+      "role": "Bowler",
+      "cap_status": "Uncapped",
+      "base_price": 30,
+      "rating": 8.75,
+      "set_no": 11,
+      "set_code": "UFA1"
+    }
+  ]
+}

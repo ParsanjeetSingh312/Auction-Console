@@ -236,17 +236,58 @@ def parse_excel(file_path: str | None = None) -> pd.DataFrame:
 
 def _load_known_pool_metadata() -> dict[str, dict]:
     """
-    Extract real auction metadata (country, base price, rating, cap status)
-    for known players from the Phase 1 prototype's POOL_RAW table.
+    Auction metadata -- country, base price, rating, cap status -- by name.
+
+    These four fields are not in the stats spreadsheet. They live in their own
+    file and are joined onto the pool here, which makes ingestion depend on two
+    inputs rather than one. That is worth stating plainly, because a missing
+    second input does not fail loudly: the parse succeeds and the pool comes
+    back with those columns NULL. It has happened.
+
+    `data/pool_metadata.json` is the source. `auction-console.html` is the Phase
+    1 prototype the data was extracted from, kept as a fallback so a checkout
+    that predates the extraction still ingests correctly. The page is 96 KB of
+    markup wrapped around a 22 KB array; the JSON is just the array.
     """
     known: dict[str, dict] = {}
+
+    def remember(name: str, country, base_price, rating, cap_status) -> None:
+        known[name.strip().lower()] = {
+            "country": country,
+            "base_price": base_price,
+            "rating": rating,
+            "cap_status": str(cap_status).upper(),
+        }
+
+    import json
+
+    root = Path(__file__).resolve().parent.parent.parent
+    json_path = root / "ipl_auction_rag_backend" / "data" / "pool_metadata.json"
+
     try:
-        html_path = Path(__file__).resolve().parent.parent.parent / "auction-console.html"
+        if json_path.exists():
+            payload = json.loads(json_path.read_text(encoding="utf-8"))
+            for row in payload.get("players", []):
+                remember(row["name"], row.get("country"), row.get("base_price"),
+                         row.get("rating"), row.get("cap_status"))
+            logger.info("Loaded auction metadata for %d players from %s",
+                        len(known), json_path.name)
+            return known
+    except Exception as exc:  # noqa: BLE001 - fall through to the prototype
+        logger.warning("Could not read %s (%s); trying the prototype page.",
+                       json_path.name, exc)
+        known.clear()
+
+    try:
+        html_path = root / "auction-console.html"
         if not html_path.exists():
-            logger.warning("auction-console.html not found; base_price/rating will be NULL")
+            logger.warning(
+                "No pool metadata: neither data/pool_metadata.json nor "
+                "auction-console.html was found. base_price, rating and real "
+                "country names will be NULL for the whole pool."
+            )
             return known
 
-        import json
         import re
 
         content = html_path.read_text(encoding="utf-8", errors="ignore")
@@ -258,14 +299,10 @@ def _load_known_pool_metadata() -> dict[str, dict]:
         for row in json.loads(match.group(1)):
             # [sno, set_no, set_code, first_name, surname, country, role,
             #  cap_status, base_price, rating]
-            player = f"{row[3]} {row[4]}".strip().lower()
-            known[player] = {
-                "country": row[5],
-                "base_price": row[8],
-                "rating": row[9],
-                "cap_status": str(row[7]).upper(),
-            }
-    except Exception as exc:
+            remember(f"{row[3]} {row[4]}", row[5], row[8], row[9], row[7])
+        logger.info("Loaded auction metadata for %d players from the prototype page.",
+                    len(known))
+    except Exception as exc:  # noqa: BLE001
         logger.warning("Could not load POOL_RAW metadata: %s", exc)
 
     return known

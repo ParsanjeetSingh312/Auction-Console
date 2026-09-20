@@ -32,3 +32,74 @@ groq==0.37.1
 # --- Tests ---
 pytest==9.1.1
 httpx==0.28.1
+
+
+# ==============================================================================
+# SCOUT orchestrator
+#
+# Added by the SCOUT phase. Nothing above this line changed -- the two stacks
+# share one virtualenv, and a resolve of the list below moves none of the pins
+# above it. Verified with `pip install --dry-run`: torch, chromadb, pydantic,
+# fastapi and sentence-transformers are untouched.
+# ==============================================================================
+
+# --- Graph runtime ---
+# Already installed in the working venv but never listed here, so a fresh clone
+# silently did not get them and SCOUT would fail to import. Pinned to the
+# versions this phase is built against.
+langgraph==1.2.11
+langgraph-checkpoint==4.2.0
+langgraph-prebuilt==1.1.0
+
+# Pinned explicitly rather than left to langchain's own resolution: the
+# Anthropic integration below requires >=1.6.3, and an unpinned core is free to
+# drift underneath langchain-community and langchain-huggingface, which are the
+# two packages the existing embedding loader actually imports.
+langchain-core==1.6.3
+
+# --- Graph state persistence ---
+# SQLite rather than MemorySaver. The server runs under `uvicorn --reload`
+# (see commands.txt), and an in-process saver discards every in-flight graph on
+# each file save -- precisely when a graph is worth inspecting. This writes into
+# data/database/ beside the other stores, which .gitignore already covers.
+# Redis was the third option and costs a service to install, run and keep up.
+langgraph-checkpoint-sqlite==3.1.1
+
+# Pulled in by the line above, but imported directly by scout/graph/workflow.py:
+# the graph's nodes are coroutines, and the synchronous SqliteSaver raises
+# NotImplementedError from aget_tuple before a single node runs.
+aiosqlite==0.22.1
+
+# --- LLM inference: Anthropic ---
+# A third arm for rag/llm_provider.py, NOT a separate client. That module owns
+# active_provider(), available(), and the degradation notes that let /health
+# report `answer_mode` honestly and let the console say when an answer came from
+# the deterministic analyst instead of a model. A parallel Anthropic path would
+# bypass all of it and /health would start reporting a capability SCOUT was not
+# using.
+anthropic==1.6.0
+langchain-anthropic==1.7.2
+
+# --- Web acquisition ---
+# The library alone drives nothing; the browser is a separate, one-time
+# ~150 MB download:
+#     python -m playwright install chromium
+playwright==1.63.0
+
+# Playwright returns markup. These turn it into something worth embedding:
+# trafilatura strips navigation and boilerplate out of articles, and lxml parses
+# the stats tables -- which pandas, already pinned above, reads via lxml without
+# any further dependency.
+trafilatura==2.2.0
+lxml==6.1.3
+
+# --- Search fallback ---
+# Reached when a scrape times out or meets an anti-bot challenge, which the
+# scraper reports rather than tries to defeat. With TAVILY_API_KEY unset this
+# degrades to a "no search configured" note in the same style as the existing
+# LLM fallbacks, rather than raising.
+tavily-python==0.8.3
+
+# --- Tests ---
+# The graph nodes are async; pytest on its own cannot await them.
+pytest-asyncio==1.4.0

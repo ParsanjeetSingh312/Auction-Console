@@ -14,8 +14,10 @@
  * the local one for "who is this", the remote one for "who should I want".
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "framer-motion";
 
 import { moneyTight, ratingLabel, setMeta } from "../../console/format";
+import { shellItem } from "../../console/motion";
 import { highlightSegments, runQuery, SEARCH_HINTS } from "../../console/search";
 import type { AuctionEngine } from "../../console/useAuctionEngine";
 import type { ConsolePlayer } from "../../console/types";
@@ -118,7 +120,7 @@ export default function CommandSearch({
   }
 
   return (
-    <div className="searchwrap" ref={wrapRef}>
+    <motion.div className="searchwrap" ref={wrapRef} variants={shellItem}>
       <div className="searchbar">
         <svg
           width="14"
@@ -256,6 +258,6 @@ export default function CommandSearch({
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

@@ -16,6 +16,7 @@
  * rather than pretending to be actionable.
  */
 import { useMemo, useState } from "react";
+import { motion } from "framer-motion";
 
 import {
   boldSegments,
@@ -31,6 +32,7 @@ import {
   stat,
   statLines,
 } from "../../console/format";
+import { bubbleFromBot, bubbleFromUser } from "../../console/motion";
 import type { SearchResponse, SourceDocument } from "../../console/ragClient";
 import type { ConsolePlayer } from "../../console/types";
 import type { AuctionEngine } from "../../console/useAuctionEngine";
@@ -292,31 +294,55 @@ function Transcript({
   }
 
   return (
+    /*
+      Only the bubbles animate in this view, not its panels.
+
+      ScoutView is kept mounted behind `hidden` so a long RAG answer survives a
+      tab glance — which means an on-mount entrance for the surrounding panels
+      would play once, while the view was hidden, and never again. The bubbles
+      are different: they mount when a turn arrives, which is precisely when
+      someone is looking at them.
+    */
     <div className="chatlog max-h-[46vh]">
       {messages.map((message) =>
         message.role === "user" ? (
-          <div key={message.id} className="bubble from-user">
+          <motion.div
+            key={message.id}
+            className="bubble from-user"
+            variants={bubbleFromUser}
+            initial="initial"
+            animate="animate"
+          >
             {message.contextName && <span className="ctx">re: {message.contextName}</span>}
             {message.content}
-          </div>
+          </motion.div>
         ) : (
-          <div
+          <motion.div
             key={message.id}
             className={`bubble from-bot${message.failed ? " is-error" : ""}`}
+            variants={bubbleFromBot}
+            initial="initial"
+            animate="animate"
           >
             {message.failed ? (
               message.content
             ) : (
               <AssistantTurn message={message} onPutUp={onPutUp} />
             )}
-          </div>
+          </motion.div>
         ),
       )}
 
       {isAnswering && (
-        <div className="bubble from-bot" aria-busy="true">
+        <motion.div
+          className="bubble from-bot"
+          aria-busy="true"
+          variants={bubbleFromBot}
+          initial="initial"
+          animate="animate"
+        >
           <span className="eyebrow">retrieving · reranking · synthesising…</span>
-        </div>
+        </motion.div>
       )}
     </div>
   );

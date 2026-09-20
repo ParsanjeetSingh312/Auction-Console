@@ -1,0 +1,1 @@
+cd C:\Users\Spring\Desktop\Auction-console\ipl_auction_rag_backend && uvicorn api.main:app --reload --port 8001

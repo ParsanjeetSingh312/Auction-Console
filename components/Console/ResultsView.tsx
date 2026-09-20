@@ -8,6 +8,7 @@
  * (or bands, or roles), not against a ceiling nobody reaches.
  */
 import { useMemo } from "react";
+import { motion } from "framer-motion";
 
 import {
   cssVars,
@@ -17,6 +18,7 @@ import {
   ROLE_LABELS,
   setMeta,
 } from "../../console/format";
+import { cardVariants, gridVariants, liftable } from "../../console/motion";
 import type { AuctionEngine } from "../../console/useAuctionEngine";
 import type { ConsolePlayer, RoleShort } from "../../console/types";
 
@@ -96,33 +98,33 @@ export default function ResultsView({
 
   return (
     <>
-      <div className="rgrid">
-        <div className="stat">
+      <motion.div className="rgrid" variants={gridVariants}>
+        <motion.div className="stat" variants={cardVariants} {...liftable}>
           <div className="eyebrow">Players sold</div>
           <b className="num">{sold.length}</b>
           <div className="sub">of {players.length} in the pool</div>
-        </div>
-        <div className="stat">
+        </motion.div>
+        <motion.div className="stat" variants={cardVariants} {...liftable}>
           <div className="eyebrow">Total spend</div>
           <b className="num">{money(counts.spent)}</b>
           <div className="sub">across {summaries.length} teams</div>
-        </div>
-        <div className="stat">
+        </motion.div>
+        <motion.div className="stat" variants={cardVariants} {...liftable}>
           <div className="eyebrow">Average buy</div>
           <b className="num">
             {sold.length ? money(Math.round(counts.spent / sold.length)) : "—"}
           </b>
           <div className="sub">{overpays} went for more than 2× base</div>
-        </div>
-        <div className="stat">
+        </motion.div>
+        <motion.div className="stat" variants={cardVariants} {...liftable}>
           <div className="eyebrow">Unsold</div>
           <b className="num">{unsold.length}</b>
           <div className="sub">{counts.available} still to come up</div>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
 
       {top.length > 0 && (
-        <section className="panel mb-3">
+        <motion.section className="panel mb-3" variants={cardVariants}>
           <header className="panel-head">
             <span className="eyebrow">Biggest buys</span>
             <span className="eyebrow">price · team · rating</span>
@@ -134,7 +136,9 @@ export default function ResultsView({
                 const team = teamById(record.teamId);
                 const meta = setMeta(player.set);
                 return (
-                  <tr key={player.id}>
+                  /* Same CSS stagger the pool sheet uses; `top` is capped well
+                     under the clamp so every row gets its own beat. */
+                  <tr key={player.id} className="row-in" style={cssVars({ "--i": String(index) })}>
                     <td className="c-rail" style={{ background: meta.rail }} />
                     <td className="c-no">{index + 1}</td>
                     <td className="c-name">
@@ -156,7 +160,7 @@ export default function ResultsView({
               })}
             </tbody>
           </table>
-        </section>
+        </motion.section>
       )}
 
       <BarPanel title="Spend by team" bars={byTeam} />
@@ -164,7 +168,7 @@ export default function ResultsView({
       <BarPanel title="Spend by role" bars={byRole} />
 
       {unsold.length > 0 && (
-        <section className="panel mb-3">
+        <motion.section className="panel mb-3" variants={cardVariants}>
           <header className="panel-head">
             <span className="eyebrow">Unsold — {unsold.length}</span>
             <button
@@ -200,7 +204,7 @@ export default function ResultsView({
               </div>
             ))}
           </div>
-        </section>
+        </motion.section>
       )}
     </>
   );

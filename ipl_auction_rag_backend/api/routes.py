@@ -155,7 +155,59 @@ async def ingest(request: IngestRequest | None = None) -> IngestResponse:
         reset = request.reset if request else True
         
         result = run_ingestion(excel_path=excel_path, reset=reset)
-        
+
+        # Put SCOUT's research back.
+        #
+        # `reset=True` rebuilds `players` from the spreadsheet, which undoes
+        # every column the Data Researcher had filled in -- and 191 of the 284
+        # rows have no base price or rating in the spreadsheet at all, so that
+        # is most of what research contributes. The ledger in
+        # scout_player_updates is the durable record; this replays it onto the
+        # freshly rebuilt pool. Ordered before the room refresh below so the
+        # room reads the pool with the research already in it.
+        #
+        # Failure here is logged and survived: the ingest itself succeeded, and
+        # a pool without research is degraded rather than broken.
+        try:
+            from scout.tools.rag_pipeline import replay_research
+
+            replay = replay_research()
+            if replay.ledger_rows:
+                logger.info("SCOUT research replayed: %s", replay.summary())
+            for note in replay.notes:
+                logger.warning("SCOUT replay: %s", note)
+        except Exception as exc:  # noqa: BLE001 - ingestion itself succeeded
+            logger.warning("Could not replay SCOUT research: %s", exc)
+
+        # Refresh the auction room's copy of the pool.
+        #
+        # The room reads the player table once, at startup, because it needs
+        # base prices and roles on every bid and re-querying SQLite per bid
+        # would be silly. That cache is correct until someone re-ingests --
+        # at which point the room would keep bidding on the old pool while
+        # every client showed the new one. Re-reading here closes that window.
+        try:
+            from auction.room import room as auction_room
+            from db.sqlite_manager import SQLiteManager
+
+            if auction_room.phase in ("lobby", "finished"):
+                auction_room.load_players(
+                    SQLiteManager().get_all_players(limit=1000, offset=0)
+                )
+                logger.info("Auction room pool refreshed after ingestion")
+            else:
+                # Swapping the pool under a running auction would invalidate
+                # the block and every record keyed by player id. The operator
+                # is told rather than having the auction quietly corrupted.
+                logger.warning(
+                    "Ingestion finished, but the auction is %s - the room kept "
+                    "its existing pool. Finish or reset the auction, then "
+                    "restart to pick up the new data.",
+                    auction_room.phase,
+                )
+        except Exception as exc:  # noqa: BLE001 - ingestion itself succeeded
+            logger.warning("Could not refresh the auction room pool: %s", exc)
+
         return IngestResponse(
             status="success",
             players_loaded=result["players_loaded"],

@@ -1,0 +1,125 @@
+# ==============================================================================
+# SCOUT — what the Data Researcher is allowed to read
+#
+# The scraper reads nothing that is not listed here. Adding a source is a config
+# edit; there are no URLs in the Python.
+#
+# ------------------------------------------------------------------------------
+# READ THIS BEFORE ENABLING ANYTHING
+#
+# The architecture brief named "Cricinfo, etc" as scraping targets. On
+# 2026-09-19 each candidate was asked for its own robots.txt, identifying
+# honestly as AuctiqScout. The results:
+#
+#     espncricinfo.com    HTTP 403   refused before robots.txt could be read
+#     cricbuzz.com        HTTP 403   refused before robots.txt could be read
+#     howstat.com         HTTP 403   refused before robots.txt could be read
+#     cricsheet.org       HTTP 200   Allow: /   Disallow: /data/
+#
+# Three of the four refuse an identified crawler at the edge. That is a clear
+# answer to a question we asked politely, and the project guardrail is explicit
+# that an anti-bot challenge triggers a fallback rather than an attempt to get
+# through it. Sending a browser user-agent to make those 403s go away would be
+# defeating the block, not respecting it — so those sources ship `enabled: false`
+# with the measurement recorded, rather than being deleted as though they were
+# never considered.
+#
+# What this changes: the search fallback stops being a fallback. For news, form
+# and injury text it becomes the primary path, because a search API has licensed
+# access to material we are not permitted to fetch ourselves.
+# ==============================================================================
+
+version: 1
+
+defaults:
+  # Seconds between two requests to the same host. A source may raise this;
+  # it may not lower it. Mirrors SCOUT_REQUEST_DELAY.
+  request_delay_seconds: 2.0
+  timeout_seconds: 20
+  respect_robots: true
+  # Ceiling per run, so a misconfigured pagination loop costs a minute rather
+  # than a day and somebody else's bandwidth.
+  max_pages_per_run: 25
+
+sources:
+  # ---------------------------------------------------------------------------
+  - id: cricsheet
+    name: Cricsheet — ball-by-ball match data
+    enabled: true
+    kind: dataset
+    base_url: https://cricsheet.org
+    # Measured 2026-09-19: / and /downloads/ and /matches/ all return 200 to an
+    # identified crawler, and ipl_male_json.zip is 5.2 MB.
+    entry_points:
+      - https://cricsheet.org/matches/
+    dataset_url: https://cricsheet.org/downloads/ipl_male_json.zip
+    # robots.txt says `Disallow: /data/`. Honoured: nothing here points into it,
+    # and SCOUT_RESPECT_ROBOTS will refuse it independently if anything ever does.
+    disallowed_paths:
+      - /data/
+    # A zip, not a page. Fetched once and read locally rather than crawled, so
+    # the politeness delay barely applies — but one request per run is also the
+    # kindest possible use of a volunteer-run archive.
+    request_delay_seconds: 5.0
+    yields: [matches, innings, player_performances]
+    # CONFIRM BEFORE PRODUCTION USE. Cricsheet publishes under an open licence
+    # with an attribution requirement, but the probe above did not find the
+    # licence text on the homepage, so the terms have not been verified here.
+    # Read https://cricsheet.org/ and record the actual licence before shipping
+    # anything derived from this data.
+    licence: UNVERIFIED — check https://cricsheet.org/ and record it here
+
+  # ---------------------------------------------------------------------------
+  # Everything below is OFF. Each one refused an identified crawler.
+  # ---------------------------------------------------------------------------
+  - id: espncricinfo
+    name: ESPNcricinfo — player profiles and statistics
+    enabled: false
+    kind: html
+    base_url: https://www.espncricinfo.com
+    blocked: true
+    blocked_measurement: "robots.txt returned HTTP 403 to AuctiqScout on 2026-09-19"
+    blocked_note: >-
+      The site refuses an identified crawler before it will even state its
+      crawling rules. Enable only with written permission, or through whatever
+      licensed API they offer. Do not enable by disguising the user agent.
+    yields: [career_stats, recent_form, news]
+
+  - id: cricbuzz
+    name: Cricbuzz — scorecards, news, injury updates
+    enabled: false
+    kind: html
+    base_url: https://www.cricbuzz.com
+    blocked: true
+    blocked_measurement: "robots.txt returned HTTP 403 to AuctiqScout on 2026-09-19"
+    yields: [recent_form, news, availability]
+
+  - id: howstat
+    name: HowSTAT — historical cricket statistics
+    enabled: false
+    kind: html
+    base_url: https://www.howstat.com
+    blocked: true
+    blocked_measurement: "robots.txt returned HTTP 403 to AuctiqScout on 2026-09-19"
+    yields: [career_stats]
+
+# ==============================================================================
+# Search fallback
+#
+# Promoted from fallback to primary for prose — form, injuries, availability —
+# because the sites that carry it will not serve us directly. Tavily returns
+# extracts under its own licensing arrangements; SCOUT stores the extract and
+# the link, never a copy of the page.
+# ==============================================================================
+search_fallback:
+  enabled: true
+  provider: tavily
+  # Unset TAVILY_API_KEY means this reports itself unavailable rather than
+  # raising — the same bargain the LLM ladder makes with a missing key.
+  max_results: 5
+  # Bound the query to the pool. An unbounded search for "injury" returns
+  # football.
+  query_template: "{player_name} IPL {topic} 2026"
+  topics: [form, injury, availability, transfer]
+  # Facts from search carry method="search" on their SourceRef, so the advisor
+  # can weigh them against a table it read directly. See scout/schemas/player.py.

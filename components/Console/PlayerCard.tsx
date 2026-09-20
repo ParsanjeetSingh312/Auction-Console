@@ -12,6 +12,7 @@
  * would cost more in complexity than it returns.
  */
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 
 import {
   cssVars,
@@ -20,6 +21,7 @@ import {
   setMeta,
   statLines,
 } from "../../console/format";
+import { drawerVariants, scrimVariants } from "../../console/motion";
 import type { AuctionEngine } from "../../console/useAuctionEngine";
 import type { ConsolePlayer, Rules } from "../../console/types";
 
@@ -44,17 +46,35 @@ function Modal({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  /*
+    The scrim fades and the card rises. Two separate elements because they want
+    different things: a dimmer that slides is distracting, and a card that only
+    fades has no direction to have come from.
+
+    The exit is shorter than the entrance — see `drawerVariants`. Dismissing has
+    to feel immediate or the card reads as reluctant to close.
+  */
   return (
-    <div
+    <motion.div
       className="scrim"
+      variants={scrimVariants}
+      initial="initial"
+      animate="animate"
+      exit="exit"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby={labelledBy}>
+      <motion.div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={labelledBy}
+        variants={drawerVariants}
+      >
         {children}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
