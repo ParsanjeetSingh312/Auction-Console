@@ -126,6 +126,12 @@ GROQ_KEY_MIN_LENGTH = 20
 GEMINI_KEY_PREFIX = "AIza"
 GEMINI_KEY_MIN_LENGTH = 30
 
+#: Anthropic keys begin `sk-ant-`. Worth checking most of all, because this is
+#: the only paid provider: a malformed key here fails the request *and* leaves
+#: the operator assuming they are being billed for answers they never got.
+ANTHROPIC_KEY_PREFIX = "sk-ant-"
+ANTHROPIC_KEY_MIN_LENGTH = 20
+
 #: Values that mean "unset" despite being non-empty. A placeholder left in the
 #: .env is worse than a blank: the code would try it and fail at request time.
 PLACEHOLDERS = {
@@ -143,6 +149,9 @@ PLACEHOLDERS = {
     "sk-...",
     "gsk_...",
     "aiza...",
+    "sk-ant-...",
+    "<your_anthropic_api_key>",
+    "sk-ant-your-key-here",
 }
 
 
@@ -171,6 +180,36 @@ def classify_gemini_key(value: str, label: str) -> Finding:
         )
 
     return Finding(label, Severity.OK, f"set ({raw[:8]}..., {len(raw)} chars)")
+
+
+def classify_anthropic_key(value: str, label: str) -> Finding:
+    """Judge an Anthropic key."""
+    raw = (value or "").strip()
+
+    if raw.lower() in PLACEHOLDERS:
+        return Finding(label, Severity.OK, "not set")
+
+    if not raw.startswith(ANTHROPIC_KEY_PREFIX):
+        return Finding(
+            label,
+            Severity.INVALID,
+            f"set, but does not start with '{ANTHROPIC_KEY_PREFIX}' - this does "
+            "not look like an Anthropic key",
+            "Get one from https://console.anthropic.com/ - they begin 'sk-ant-'. "
+            "Note a Claude Pro subscription does not include API access; the "
+            "Console bills separately.",
+        )
+
+    if len(raw) < ANTHROPIC_KEY_MIN_LENGTH:
+        return Finding(
+            label,
+            Severity.INVALID,
+            f"set, but only {len(raw)} characters - too short to be an "
+            "Anthropic key",
+            "Check the value was pasted in full.",
+        )
+
+    return Finding(label, Severity.OK, f"set ({raw[:10]}..., {len(raw)} chars)")
 
 
 def classify_key(
@@ -341,6 +380,10 @@ def check_environment(settings: Settings | None = None) -> EnvReport:
         )
 
     # --- API keys ---------------------------------------------------------
+    report.findings.append(
+        classify_anthropic_key(settings.ANTHROPIC_API_KEY, "ANTHROPIC_API_KEY")
+    )
+
     gemini = classify_gemini_key(settings.GEMINI_API_KEY, "GEMINI_API_KEY")
     report.findings.append(gemini)
 
@@ -375,14 +418,18 @@ def check_environment(settings: Settings | None = None) -> EnvReport:
             describe(),
             ""
             if report.llm_ready
-            else "Set GEMINI_API_KEY (https://aistudio.google.com/apikey) or "
-            "GROQ_API_KEY in .env to enable written analysis.",
+            else "Set GEMINI_API_KEY (https://aistudio.google.com/apikey), "
+            "GROQ_API_KEY, or ANTHROPIC_API_KEY in .env to enable written "
+            "analysis. Any one is enough; with several, they form a fallback "
+            "ladder rather than a choice.",
         )
     )
 
     # --- Model names ------------------------------------------------------
     for name, value in (
         ("GEMINI_MODEL", settings.GEMINI_MODEL),
+        ("GEMINI_ROUTER_MODEL", settings.GEMINI_ROUTER_MODEL),
+        ("ANTHROPIC_MODEL", settings.ANTHROPIC_MODEL),
         ("RAG_LLM_MODEL", settings.RAG_LLM_MODEL),
         ("SQL_LLM_MODEL", settings.SQL_LLM_MODEL),
         ("ROUTER_LLM_MODEL", settings.ROUTER_LLM_MODEL),

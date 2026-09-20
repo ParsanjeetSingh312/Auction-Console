@@ -122,6 +122,44 @@ class MarkUnsold(BaseModel):
     type: Literal["unsold"]
 
 
+class Withdraw(BaseModel):
+    """
+    Franchise: step out of the contest for the lot on the block.
+
+    Carries nothing, for the same reason `CallTimeout` does not: the seat the
+    frame arrived on is who withdrew, and there is no field in which to claim
+    otherwise.
+
+    This exists because the alternative franchises were actually using was
+    *leaving their seat* -- which drops the connection, frees the franchise for
+    anyone to claim, and says "I am out of the auction" when the intent was "I
+    am out of this player". A withdrawal is per-lot and costs nothing; the next
+    player puts every franchise back in contention.
+    """
+
+    model_config = Strict
+    type: Literal["withdraw"]
+
+
+class CallTimeout(BaseModel):
+    """
+    Franchise: spend a lifeline and freeze the block.
+
+    Carries nothing, and the emptiness is the design. Who called it is the seat
+    the frame arrived on; how many are left is the room's count; how long the
+    freeze lasts is the room's rule. A message with fields for those three
+    would be a message a client could use to call a timeout as another
+    franchise, call a fourth after spending three, or call a five-minute one.
+
+    The room refuses it unless the closing buffer is actually running and the
+    caller is not the franchise currently holding the bid -- a lifeline is for
+    answering a bid, not for stalling behind your own.
+    """
+
+    model_config = Strict
+    type: Literal["timeout"]
+
+
 class Undo(BaseModel):
     """Auctioneer: take back the last action."""
 
@@ -166,6 +204,8 @@ ClientMessage = Annotated[
     | Bid
     | Sell
     | MarkUnsold
+    | Withdraw
+    | CallTimeout
     | Undo
     | FinishAuction
     | ResetRoom
@@ -213,10 +253,23 @@ class TeamState(BaseModel):
     overseas: int
     max_bid: int
     connected: bool
+    # Strategic buffers not yet spent. Sent for every franchise, not just your
+    # own: which rivals can still freeze a lot is exactly the sort of thing a
+    # bidder should be able to price in before committing.
+    timeouts_left: int = 0
+    # [player_id, price] pairs. Lets a client rebuild this squad without
+    # re-fetching the pool -- see RoomState on why the pool is not broadcast.
+    buys: list[list[int]] = Field(default_factory=list)
 
 
 class LotState(BaseModel):
-    """The player on the block, if any."""
+    """
+    The player on the block, if any -- and the clock running on them.
+
+    The clock is the whole of this phase on the wire. A lot is never just a
+    price now; it is a price with a deadline, and what happens when that
+    deadline arrives depends entirely on whether anyone has bid.
+    """
 
     player_id: int
     player_name: str
@@ -229,11 +282,64 @@ class LotState(BaseModel):
     bidder_id: int | None
     bidder_code: str | None
     next_ask: int
+    # Bumped by every change to this lot. A bid quotes it back so one made
+    # against a price the room has already moved past can be refused rather
+    # than applied. See the race guard in room.bid.
+    version: int = 0
+
+    # ---------------------------- the clock ---------------------------- #
+    #
+    # `clock` says what the countdown *means*, which is the only thing a client
+    # needs in order to render it honestly:
+    #
+    #   opening   nobody has bid. Expiry marks the player UNSOLD.
+    #   closing   a bid stands. Expiry knocks the lot down to that bidder.
+    #   timeout   a franchise spent a lifeline. The thirty seconds *are* the
+    #             thinking window, so expiry settles exactly as `closing` does:
+    #             a strategy timer nobody answered sells the lot. Only a bid
+    #             gets out of it, and a bid returns the lot to `closing`.
+    #
+    # Every lot always has a deadline while it is on the block. A `withdraw`
+    # does not stop the clock -- it settles the lot early once nobody but the
+    # standing bidder is left in.
+    #
+    # `closing` and `timeout` therefore differ in duration and in what the dial
+    # should say, never in consequence.
+    #
+    # None when no lot is live, or when the auctioneer has taken manual control.
+    clock: Literal["opening", "closing", "timeout"] | None = None
+
+    # Unix time the countdown fires. Absolute, so a client re-rendering
+    # mid-second does not restart its own dial from the top.
+    deadline: float | None = None
+
+    # Seconds left at the moment this frame was written.
+    #
+    # Sent *alongside* the absolute deadline rather than instead of it, because
+    # seven seconds is short enough for clock skew to matter: a client whose
+    # system clock runs two seconds fast would show a lot expiring while the
+    # room still considers it open, and would show its own bid button going
+    # dead a third of the way through the window it actually has. A client that
+    # anchors on this figure and then counts down on its own monotonic clock
+    # has no skew to accumulate.
+    ends_in: float | None = None
+
+    # Who is holding the room up, when `clock` is "timeout". Named because a
+    # thirty-second freeze with no attribution reads as the room having hung.
+    timeout_by_id: int | None = None
+    timeout_by_code: str | None = None
+
+    # Franchises that have bid on this lot and not withdrawn from it. One entry
+    # is an uncontested lot the clock may settle; two or more is a live contest
+    # that only a withdrawal (or the gavel) resolves. Sent so every station can
+    # see who it is actually still bidding against.
+    contenders: list[int] = Field(default_factory=list)
+    contender_codes: list[str] = Field(default_factory=list)
 
 
 class LogItem(BaseModel):
     seq: int
-    kind: Literal["note", "bid", "sold", "unsold"]
+    kind: Literal["note", "bid", "sold", "unsold", "timeout", "withdraw"]
     what: str
     amount: int | None = None
     ts: float
@@ -252,10 +358,17 @@ class RoomState(BaseModel):
     type: Literal["state"] = "state"
     version: int
     phase: Literal["lobby", "waiting", "live", "finished"]
+    # purse, max_squad, min_squad, max_overseas, and the four this phase adds:
+    # open_seconds, close_seconds, timeout_seconds, timeouts_per_team. Sent
+    # rather than hardcoded in the client so the dial, the lifeline counter and
+    # the room can never disagree about how long seven seconds is.
     rules: dict
     teams: list[TeamState]
     lot: LotState | None
     log: list[LogItem]
+    # Player ids the room has passed over. The sold side travels per team on
+    # `TeamState.buys`; this is the other half of the same idea.
+    unsold: list[int] = Field(default_factory=list)
     counts: dict
     # Unix timestamp the waiting-room countdown expires. None outside `waiting`.
     countdown_ends_at: float | None = None

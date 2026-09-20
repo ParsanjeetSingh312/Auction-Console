@@ -264,6 +264,12 @@ async def _dispatch(client_id: str, message: Any) -> None:
     elif kind == "unsold":
         await room.mark_unsold(client_id)
 
+    elif kind == "withdraw":
+        await room.withdraw(client_id)
+
+    elif kind == "timeout":
+        await room.call_timeout(client_id)
+
     elif kind == "undo":
         await room.undo(client_id)
 
@@ -307,6 +313,27 @@ def _first_error(exc: ValidationError) -> str:
 async def get_state() -> dict[str, Any]:
     """The room's current state, same shape the socket broadcasts."""
     return room.state_payload()
+
+
+# --------------------------------------------------------------------- #
+# The clock's voice
+#
+# Everything else in this module answers a request: a frame arrives, the room
+# changes, `_dispatch` broadcasts what changed. A lot that sells because seven
+# seconds elapsed has no frame to answer.
+#
+# Without this line the room settles such a lot correctly and silently, and the
+# sale surfaces only when some *other* message happens to trigger a broadcast --
+# most visibly a disconnect, since the socket's `finally` block broadcasts on
+# the way out. That is the bug where a player appears to sell only when a
+# franchise leaves their seat: the auction was right, the telling was missing.
+#
+# Installed at import, once, and pointed at the same `_broadcast_state` every
+# other path uses, so a clock-made settlement and a gavel-made one reach the
+# room by exactly the same route.
+# --------------------------------------------------------------------- #
+
+room.set_broadcaster(_broadcast_state)
 
 
 @router.get("/report")

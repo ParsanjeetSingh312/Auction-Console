@@ -1,0 +1,1911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mock Auction Console — Player Pool</title>
+<style>
+/* ============================================================
+   TOKENS
+   ============================================================ */
+:root{
+  color-scheme: light;
+
+  /* paper + ink: cool green-grey stock, taken from the sheet's mint header */
+  --paper:#F2F5F1;
+  --card:#FFFFFF;
+  --ink:#111614;
+  --ink-2:#3C453F;
+  --muted:#6D7873;
+  --rule:#D9DED7;
+  --rule-2:#EBEEE9;
+
+  /* structural accent */
+  --teal:#0B6E5B;
+  --teal-ink:#075244;
+  --teal-tint:#E3EFEB;
+
+  /* states */
+  --sold:#1E6B47;
+  --sold-tint:#E6F1EA;
+  --unsold:#A2382C;
+  --unsold-tint:#F7E7E4;
+  --live:#9C6414;
+  --live-tint:#FBEEDA;
+
+  /* set bands, carried over from the source sheet */
+  --s-M1:#CFE3EE;   --r-M1:#4A85A4;
+  --s-M2:#D9E7F3;   --r-M2:#5590B6;
+  --s-BA1:#DCE4EF;  --r-BA1:#6980A4;
+  --s-AL1:#E4EFCF;  --r-AL1:#78A040;
+  --s-WK1:#D2EDE0;  --r-WK1:#3C9B78;
+  --s-FA1:#F8DFCD;  --r-FA1:#CF7639;
+  --s-SP1:#F7EACC;  --r-SP1:#C1932A;
+  --s-UBA1:#F3DFE4; --r-UBA1:#BC6A7F;
+  --s-UAL1:#E7DCF1; --r-UAL1:#8768AD;
+  --s-UWK1:#DDE5F3; --r-UWK1:#5C76A6;
+  --s-UFA1:#FADFD2; --r-UFA1:#CC6547;
+
+  /* type: condensed broadcast numerals / plain body / mono utility */
+  --display:"Arial Narrow","Roboto Condensed","Helvetica Neue Condensed","Liberation Sans Narrow",Impact,Haettenschweiler,sans-serif;
+  --body:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --mono:"Consolas","SF Mono",ui-monospace,"DejaVu Sans Mono","Liberation Mono",monospace;
+
+  --rail:6px;
+  --shadow:0 1px 2px rgba(17,22,20,.06), 0 8px 24px -18px rgba(17,22,20,.35);
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:var(--body); font-size:13.5px; line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--teal); outline-offset:2px}
+::selection{background:#CDE7DF}
+
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+.mono{font-family:var(--mono)}
+.eyebrow{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--muted);
+}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ============================================================
+   SHELL
+   ============================================================ */
+.shell{display:flex;flex-direction:column;height:100vh;min-height:0}
+
+/* ---- masthead ---- */
+.masthead{
+  flex:0 0 auto; background:var(--card);
+  border-bottom:1px solid var(--rule);
+  display:grid; grid-template-columns:auto minmax(240px,1fr) auto;
+  align-items:center; gap:20px; padding:10px 18px 0;
+  position:relative; z-index:40;
+}
+.brand{display:flex;align-items:center;gap:10px;padding-bottom:10px}
+.brand .mark{
+  width:var(--rail); height:34px; border-radius:1px;
+  background:linear-gradient(180deg,var(--teal) 0 55%, var(--live) 55% 100%);
+}
+.brand h1{
+  margin:0; font-family:var(--display); font-weight:700;
+  font-size:22px; line-height:.95; letter-spacing:.005em; text-transform:uppercase;
+}
+.brand .sub{margin-top:2px}
+
+.meters{display:flex;gap:2px;padding-bottom:10px}
+.meter{
+  padding:2px 14px; border-left:1px solid var(--rule-2); text-align:right; min-width:86px;
+}
+.meter:first-child{border-left:0}
+.meter b{
+  display:block; font-family:var(--display); font-size:23px; font-weight:700;
+  line-height:1.05; letter-spacing:.01em;
+}
+.meter.is-spend b{color:var(--teal-ink)}
+
+/* ---- search ---- */
+.searchwrap{position:relative;padding-bottom:10px}
+.searchbar{
+  display:flex; align-items:center; gap:8px;
+  background:var(--paper); border:1px solid var(--rule);
+  border-radius:2px; padding:0 10px; height:38px;
+  transition:border-color .12s, background .12s;
+}
+.searchbar:focus-within{border-color:var(--teal);background:var(--card)}
+.searchbar svg{flex:0 0 auto;color:var(--muted)}
+#q{
+  flex:1 1 auto; min-width:0; border:0; background:transparent; height:100%;
+  font-size:14px; letter-spacing:.005em;
+}
+#q::placeholder{color:#9AA39E}
+.searchbar kbd{
+  font-family:var(--mono); font-size:9.5px; color:var(--muted);
+  border:1px solid var(--rule); border-bottom-width:2px; border-radius:3px;
+  padding:1px 5px; background:var(--card);
+}
+.searchbar .clear{
+  border:0;background:transparent;color:var(--muted);font-size:15px;line-height:1;
+  padding:2px 4px;border-radius:2px;display:none;
+}
+.searchbar.has-q .clear{display:block}
+.searchbar .clear:hover{color:var(--unsold)}
+
+.results{
+  position:absolute; left:0; right:0; top:calc(100% - 4px);
+  background:var(--card); border:1px solid var(--rule);
+  box-shadow:var(--shadow); max-height:min(58vh,460px); overflow:auto; display:none;
+}
+.results.open{display:block}
+.results .rhead{
+  display:flex;justify-content:space-between;padding:6px 10px;
+  border-bottom:1px solid var(--rule-2); position:sticky; top:0; background:var(--card);
+}
+.res{
+  display:grid; grid-template-columns:var(--rail) 1fr auto auto;
+  align-items:center; gap:0 10px; padding:0; border-bottom:1px solid var(--rule-2);
+  cursor:pointer; background:none; border-left:0;border-right:0;border-top:0; width:100%; text-align:left;
+}
+.res:last-child{border-bottom:0}
+.res .rl{align-self:stretch;background:var(--band,var(--rule))}
+.res .rname{padding:7px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.res .rname b{font-weight:600}
+.res .rname i{font-style:normal;background:#DCEFE8;box-shadow:0 1px 0 #A9D6C8}
+.res .rmeta{color:var(--muted);font-size:11px;padding-right:4px;white-space:nowrap}
+.res .rrating{font-family:var(--display);font-size:16px;font-weight:700;padding-right:10px}
+.res[aria-selected="true"]{background:var(--teal-tint)}
+.res.is-gone .rname{color:var(--muted);text-decoration:line-through;text-decoration-thickness:1px}
+.hint{
+  display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;
+  padding:6px 10px;border-bottom:1px solid var(--rule-2);background:#FAFBF9;
+}
+.hint code{
+  font-family:var(--mono);font-size:10px;background:var(--card);
+  border:1px solid var(--rule);border-radius:2px;padding:1px 5px;color:var(--ink-2);cursor:pointer;
+}
+.hint code:hover{border-color:var(--teal);color:var(--teal-ink)}
+.empty{padding:22px 14px;text-align:center;color:var(--muted)}
+.empty b{display:block;color:var(--ink);font-size:14px;margin-bottom:3px}
+
+/* ---- tabs ---- */
+.tabs{
+  grid-column:1/-1; display:flex; flex-wrap:wrap; gap:2px; align-items:flex-end;
+  margin:0 -18px; padding:0 18px; border-top:1px solid var(--rule-2);
+}
+.tab{
+  border:0; background:transparent; padding:9px 14px 8px;
+  font-size:12px; letter-spacing:.02em; color:var(--muted);
+  border-bottom:2px solid transparent; margin-bottom:-1px;
+}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--teal);font-weight:600}
+.tab .cnt{font-family:var(--mono);font-size:10px;color:var(--muted);margin-left:5px}
+.tabs .spacer{flex:1 1 auto}
+.tabs .util{
+  border:1px solid var(--rule); background:var(--card); border-radius:2px;
+  padding:4px 9px; font-size:11px; color:var(--ink-2); margin:0 0 7px 5px;
+}
+.tabs .util:hover{border-color:var(--teal);color:var(--teal-ink)}
+
+/* ---- body split ---- */
+.split{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr) 372px;min-height:0}
+.main{min-width:0;overflow:auto;padding:14px 18px 40px}
+.side{
+  border-left:1px solid var(--rule); background:var(--card);
+  display:flex; flex-direction:column; min-height:0;
+}
+
+/* ============================================================
+   FILTERS
+   ============================================================ */
+.filters{
+  background:var(--card);border:1px solid var(--rule);
+  padding:9px 11px;margin-bottom:12px;
+  display:flex;flex-wrap:wrap;gap:9px 16px;align-items:center;
+}
+.fgroup{display:flex;align-items:center;gap:6px}
+.fgroup>.eyebrow{margin-right:1px}
+.chip{
+  border:1px solid var(--rule); background:var(--paper);
+  border-radius:2px; padding:3px 9px; font-size:11.5px; color:var(--ink-2);
+  display:inline-flex; align-items:center; gap:6px;
+}
+.chip:hover{border-color:#B9C2BB}
+.chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#F6F8F5}
+.chip .n{font-family:var(--mono);font-size:9.5px;opacity:.7}
+.chip .dot{width:8px;height:8px;border-radius:50%;background:var(--band,var(--rule))}
+select.pick{
+  border:1px solid var(--rule);background:var(--paper);border-radius:2px;
+  padding:3px 6px;font-size:11.5px;max-width:150px;
+}
+.rate{display:flex;align-items:center;gap:7px}
+.rate input[type=range]{width:104px;accent-color:var(--teal)}
+.rate output{font-family:var(--display);font-size:15px;font-weight:700;min-width:26px}
+.linkbtn{border:0;background:transparent;color:var(--teal-ink);font-size:11.5px;text-decoration:underline;padding:2px}
+.filters .push{margin-left:auto;display:flex;align-items:center;gap:10px}
+
+/* ============================================================
+   POOL TABLE
+   ============================================================ */
+.tablewrap{background:var(--card);border:1px solid var(--rule)}
+table.pool{width:100%;border-collapse:collapse}
+table.pool thead th{
+  position:sticky; top:0; z-index:5; background:var(--teal); color:#EAF4F0;
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+  font-weight:500; text-align:left; padding:7px 8px; white-space:nowrap;
+  border-right:1px solid rgba(255,255,255,.14);
+}
+table.pool thead th:last-child{border-right:0}
+table.pool thead th.sortable{cursor:pointer}
+table.pool thead th.sortable:hover{background:var(--teal-ink)}
+table.pool thead th .ar{opacity:0;margin-left:4px}
+table.pool thead th[data-dir] .ar{opacity:1}
+table.pool td{
+  padding:5px 8px; border-bottom:1px solid var(--rule-2); vertical-align:middle;
+  white-space:nowrap;
+}
+table.pool tbody tr:hover td{background:#FAFBF9}
+table.pool tbody tr.is-block td{background:var(--live-tint)}
+table.pool tbody tr.is-sold td{color:var(--ink-2)}
+table.pool .c-rail{padding:0;width:var(--rail);background:var(--band,var(--rule))}
+table.pool .c-no{width:34px;font-family:var(--mono);font-size:10px;color:var(--muted);text-align:right}
+table.pool .c-set{width:52px}
+table.pool .c-name{white-space:normal;min-width:150px}
+table.pool .c-name .fn{color:var(--ink-2)}
+table.pool .c-name .sn{font-weight:600;text-transform:uppercase;letter-spacing:.01em}
+table.pool .c-name button{border:0;background:transparent;padding:0;text-align:left;font:inherit}
+table.pool .c-name button:hover .sn{color:var(--teal-ink);text-decoration:underline}
+table.pool .c-num{text-align:right;font-variant-numeric:tabular-nums}
+table.pool .c-act{width:1%;text-align:right}
+.setpill{
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;
+  background:var(--band,var(--rule-2)); padding:2px 5px; border-radius:2px; color:#20302B;
+}
+.flag{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--ink-2)}
+.flag.is-os::after{content:"✈";margin-left:4px;color:var(--r-FA1);font-size:9px}
+.rolecell{display:inline-flex;align-items:center;gap:6px}
+.roleglyph{
+  width:17px;height:17px;border-radius:2px;display:grid;place-items:center;
+  font-family:var(--mono);font-size:9px;font-weight:700;color:#fff;letter-spacing:0;
+}
+.rg-BAT{background:#3C6FA8} .rg-BOWL{background:#A65432}
+.rg-AR{background:#5D8C33}  .rg-WK{background:#7A5AA8}
+.ratebar{display:inline-flex;align-items:center;gap:6px}
+.ratebar .v{font-family:var(--display);font-size:15px;font-weight:700;min-width:30px;text-align:right}
+.ratebar .t{width:44px;height:4px;background:var(--rule-2);border-radius:2px;overflow:hidden}
+.ratebar .t i{display:block;height:100%;background:var(--teal)}
+.tag{
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;
+  padding:2px 6px;border-radius:2px;border:1px solid;
+}
+.tag.t-avail{color:var(--muted);border-color:var(--rule);}
+.tag.t-sold{color:var(--sold);border-color:#B6D8C6;background:var(--sold-tint)}
+.tag.t-unsold{color:var(--unsold);border-color:#E3C3BD;background:var(--unsold-tint)}
+.tag.t-block{color:var(--live);border-color:#E2C68F;background:var(--live-tint)}
+.mini{
+  border:1px solid var(--rule);background:var(--card);border-radius:2px;
+  padding:2px 8px;font-size:11px;color:var(--ink-2);
+}
+.mini:hover{border-color:var(--teal);color:var(--teal-ink)}
+.mini.warn:hover{border-color:var(--unsold);color:var(--unsold)}
+.tfoot{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:7px 10px;border-top:1px solid var(--rule);background:#FAFBF9;
+}
+
+/* ============================================================
+   ON THE BLOCK  (right pane)
+   ============================================================ */
+.block{padding:12px 14px 14px;border-bottom:1px solid var(--rule);flex:0 0 auto}
+.block .bhead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.blockcard{border:1px solid var(--rule);border-left:var(--rail) solid var(--band,var(--rule));padding:10px 12px}
+.blockcard .pname{font-family:var(--display);font-size:27px;line-height:1;font-weight:700;text-transform:uppercase}
+.blockcard .pname span{display:block;font-size:14px;letter-spacing:.04em;color:var(--muted);font-weight:400}
+.blockcard .pmeta{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 0}
+.bidbox{
+  margin-top:10px;padding-top:9px;border-top:1px dashed var(--rule);
+  display:flex;justify-content:space-between;align-items:flex-end;gap:8px;
+}
+.bidbox .amt{font-family:var(--display);font-size:40px;line-height:.9;font-weight:700;letter-spacing:-.01em}
+.bidbox .amt small{font-size:15px;color:var(--muted);font-weight:400;margin-left:3px}
+.bidbox .who{text-align:right;font-size:11px;color:var(--muted);max-width:150px}
+.bidbox .who b{display:block;font-size:13px;color:var(--ink)}
+.ladder{display:flex;gap:5px;margin-top:9px;flex-wrap:wrap}
+.ladder button{
+  border:1px solid var(--rule);background:var(--paper);border-radius:2px;
+  padding:3px 8px;font-family:var(--mono);font-size:11px;
+}
+.ladder button:hover{border-color:var(--teal);color:var(--teal-ink);background:var(--card)}
+.ladder input{
+  width:66px;border:1px solid var(--rule);border-radius:2px;padding:3px 6px;
+  font-family:var(--mono);font-size:11px;background:var(--card);
+}
+.teamgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;margin-top:10px}
+.bidbtn{
+  display:flex;align-items:center;gap:6px;text-align:left;
+  border:1px solid var(--rule);background:var(--card);border-radius:2px;padding:4px 6px;font-size:11.5px;
+}
+.bidbtn .tdot{width:9px;height:9px;border-radius:2px;background:var(--tc,var(--rule));flex:0 0 auto}
+.bidbtn .tn{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bidbtn .tp{font-family:var(--mono);font-size:9.5px;color:var(--muted)}
+.bidbtn:hover:not(:disabled){border-color:var(--ink)}
+.bidbtn[aria-pressed="true"]{border-color:var(--live);background:var(--live-tint);box-shadow:inset 0 0 0 1px var(--live)}
+.bidbtn:disabled{opacity:.4;cursor:not-allowed}
+.acts{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+.big{
+  border:1px solid;border-radius:2px;padding:9px 8px;
+  font-family:var(--display);font-size:17px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+}
+.big.sell{background:var(--sold);border-color:var(--sold);color:#EFF7F2}
+.big.sell:hover{background:#175A3B}
+.big.sell:disabled{background:#B6C7BD;border-color:#B6C7BD;cursor:not-allowed}
+.big.pass{background:var(--card);border-color:var(--unsold);color:var(--unsold)}
+.big.pass:hover{background:var(--unsold-tint)}
+.blockempty{border:1px dashed var(--rule);padding:20px 14px;text-align:center;color:var(--muted)}
+.blockempty b{display:block;color:var(--ink);font-family:var(--display);font-size:19px;text-transform:uppercase;margin-bottom:4px}
+.warnline{margin-top:8px;font-size:11px;color:var(--unsold);display:none}
+.warnline.show{display:block}
+
+/* ---- the tally ledger: signature element ---- */
+.ledger{flex:1 1 auto;display:flex;flex-direction:column;min-height:0;background:
+  repeating-linear-gradient(180deg,transparent 0 21px,var(--rule-2) 21px 22px);
+}
+.ledger .lhead{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:7px 14px;background:var(--card);border-bottom:1px solid var(--rule);
+}
+.ledger .lbody{overflow:auto;padding:0 0 24px}
+.lrow{
+  display:grid;grid-template-columns:20px 1fr auto;gap:8px;align-items:baseline;
+  padding:0 14px;height:22px;font-family:var(--mono);font-size:11px;
+}
+.lrow .i{color:#AEB7B1;font-size:9px;text-align:right}
+.lrow .w{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+.lrow .w b{color:var(--ink);font-weight:600}
+.lrow .a{font-variant-numeric:tabular-nums}
+.lrow.k-sold .a{color:var(--sold);font-weight:700}
+.lrow.k-unsold .w,.lrow.k-unsold .a{color:var(--unsold)}
+.lrow.k-bid .a{color:var(--live)}
+.lrow.k-note{color:var(--muted);font-style:italic}
+.ledger .lempty{padding:16px 14px;color:var(--muted);font-size:11.5px}
+
+/* ============================================================
+   TEAMS
+   ============================================================ */
+.teamwrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px}
+.teamcard{background:var(--card);border:1px solid var(--rule);border-top:3px solid var(--tc,var(--teal))}
+.teamcard>header{padding:9px 11px 8px;border-bottom:1px solid var(--rule-2)}
+.teamcard h3{margin:0;font-family:var(--display);font-size:19px;text-transform:uppercase;font-weight:700;letter-spacing:.02em}
+.teamcard .purse{display:flex;justify-content:space-between;align-items:baseline;margin-top:5px}
+.teamcard .purse b{font-family:var(--display);font-size:24px;font-weight:700;line-height:1}
+.pbar{height:5px;background:var(--rule-2);border-radius:3px;overflow:hidden;margin-top:7px;display:flex}
+.pbar i{display:block;height:100%;background:var(--tc,var(--teal))}
+.slots{display:flex;flex-wrap:wrap;gap:3px;padding:9px 11px;border-bottom:1px solid var(--rule-2)}
+.slot{width:9px;height:9px;border-radius:2px;border:1px solid var(--rule);background:var(--paper)}
+.slot.f{background:var(--tc,var(--teal));border-color:var(--tc,var(--teal))}
+.slot.os{background:var(--r-FA1);border-color:var(--r-FA1)}
+.slot.min{border-style:dashed;border-color:#B9C2BB}
+.comp{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--rule-2)}
+.comp div{padding:6px 8px;border-left:1px solid var(--rule-2);text-align:center}
+.comp div:first-child{border-left:0}
+.comp b{display:block;font-family:var(--display);font-size:18px;font-weight:700;line-height:1.1}
+.squad{max-height:230px;overflow:auto}
+.squad .srow{
+  display:grid;grid-template-columns:var(--rail) 1fr auto auto;gap:0 8px;align-items:center;
+  border-bottom:1px solid var(--rule-2);font-size:11.5px;
+}
+.squad .srow .rl{align-self:stretch;background:var(--band,var(--rule))}
+.squad .srow .sn{padding:4px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.squad .srow .sp{font-family:var(--mono);font-size:10.5px;font-variant-numeric:tabular-nums}
+.squad .srow .sx{padding-right:8px}
+.squad .srow button{border:0;background:transparent;color:var(--muted);padding:2px 4px;font-size:12px;line-height:1}
+.squad .srow button:hover{color:var(--unsold)}
+.squad .sempty{padding:14px 11px;color:var(--muted);font-size:11.5px}
+
+/* ============================================================
+   RESULTS
+   ============================================================ */
+.rgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:12px}
+.stat{background:var(--card);border:1px solid var(--rule);padding:10px 12px}
+.stat b{display:block;font-family:var(--display);font-size:31px;line-height:1;font-weight:700;margin-top:3px}
+.stat .sub{color:var(--muted);font-size:11px;margin-top:3px}
+.panel{background:var(--card);border:1px solid var(--rule);margin-bottom:12px}
+.panel>header{padding:8px 11px;border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center}
+.bars{padding:10px 12px}
+.barrow{display:grid;grid-template-columns:104px 1fr 74px;gap:10px;align-items:center;height:24px}
+.barrow .bl{font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.barrow .bt{height:9px;background:var(--rule-2);border-radius:2px;overflow:hidden}
+.barrow .bt i{display:block;height:100%;background:var(--band,var(--teal))}
+.barrow .bv{font-family:var(--mono);font-size:11px;text-align:right;font-variant-numeric:tabular-nums}
+
+/* ============================================================
+   MODAL
+   ============================================================ */
+.scrim{
+  position:fixed;inset:0;background:rgba(17,22,20,.34);
+  display:none;place-items:center;z-index:80;padding:20px;
+}
+.scrim.open{display:grid}
+.modal{
+  background:var(--card);border:1px solid var(--rule);box-shadow:var(--shadow);
+  width:min(560px,100%);max-height:86vh;overflow:auto;
+}
+.modal>header{
+  display:flex;justify-content:space-between;align-items:flex-start;gap:10px;
+  padding:12px 14px;border-bottom:1px solid var(--rule);
+  border-left:var(--rail) solid var(--band,var(--teal));
+}
+.modal h2{margin:0;font-family:var(--display);font-size:25px;font-weight:700;text-transform:uppercase;line-height:1}
+.modal h2 span{display:block;font-size:13px;color:var(--muted);letter-spacing:.04em;font-weight:400}
+.modal .x{border:1px solid var(--rule);background:var(--paper);border-radius:2px;padding:2px 8px;color:var(--muted)}
+.modal .x:hover{border-color:var(--unsold);color:var(--unsold)}
+.mbody{padding:12px 14px}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:1px;background:var(--rule-2);border:1px solid var(--rule-2)}
+.kv div{background:var(--card);padding:7px 9px}
+.kv b{display:block;font-size:14px;margin-top:2px;font-variant-numeric:tabular-nums}
+.statsslot{margin-top:14px;border-top:1px solid var(--rule);padding-top:11px}
+.pending{
+  border:1px dashed var(--rule);padding:13px;text-align:center;color:var(--muted);font-size:12px;
+  background:repeating-linear-gradient(135deg,transparent 0 9px,#FAFBF9 9px 18px);
+}
+.pending b{display:block;color:var(--ink-2);margin-bottom:3px}
+.fieldrow{display:flex;gap:8px;align-items:center;margin-bottom:9px}
+.fieldrow label{width:150px;font-size:12px;color:var(--ink-2)}
+.fieldrow input{
+  flex:1 1 auto;border:1px solid var(--rule);border-radius:2px;padding:5px 8px;
+  background:var(--paper);font-variant-numeric:tabular-nums;min-width:0;
+}
+.fieldrow input:focus{background:var(--card)}
+.modal footer{
+  padding:11px 14px;border-top:1px solid var(--rule);display:flex;justify-content:flex-end;gap:7px;
+  position:sticky;bottom:0;background:var(--card);
+}
+.btn{border:1px solid var(--rule);background:var(--paper);border-radius:2px;padding:6px 13px;font-size:12px}
+.btn:hover{border-color:#B9C2BB}
+.btn.primary{background:var(--teal);border-color:var(--teal);color:#EAF4F0}
+.btn.primary:hover{background:var(--teal-ink)}
+.btn.danger{color:var(--unsold);border-color:#E3C3BD}
+.btn.danger:hover{background:var(--unsold-tint)}
+
+/* ---- toast ---- */
+.toasts{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:90;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none}
+.toast{
+  background:var(--ink);color:#F4F7F4;padding:7px 15px;border-radius:2px;font-size:12.5px;
+  box-shadow:var(--shadow);animation:rise .18s ease-out;
+}
+.toast .m{font-family:var(--mono);font-size:11px;opacity:.75;margin-left:7px}
+.toast.err{background:var(--unsold)}
+@keyframes rise{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+
+/* ============================================================
+   RESPONSIVE / REDUCED MOTION
+   ============================================================ */
+@media (max-width:1080px){
+  .split{grid-template-columns:1fr;overflow:auto}
+  .main{overflow:visible}
+  .side{border-left:0;border-top:1px solid var(--rule)}
+  .ledger{min-height:220px}
+  .masthead{grid-template-columns:1fr auto;padding-top:9px}
+  .searchwrap{grid-column:1/-1;order:3}
+  table.pool thead th{position:static}
+}
+@media (max-width:640px){
+  .meters{display:none}
+  .teamwrap{grid-template-columns:1fr}
+  table.pool .c-no,table.pool .c-set{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.001ms!important;transition-duration:.001ms!important}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header class="masthead">
+    <div class="brand">
+      <div class="mark" aria-hidden="true"></div>
+      <div>
+        <h1>Mock&nbsp;Auction Console</h1>
+        <div class="eyebrow sub" id="brandSub">Player pool · 96 registered</div>
+      </div>
+    </div>
+
+    <div class="searchwrap">
+      <div class="searchbar" id="searchbar">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="6.8" cy="6.8" r="4.6"/><path d="M10.3 10.3 14 14"/></svg>
+        <input id="q" type="search" autocomplete="off" spellcheck="false"
+               placeholder="Search a player, or filter with role:bowler country:india rating:&gt;9.5"
+               aria-label="Search the player pool" aria-expanded="false" aria-controls="results" role="combobox">
+        <button class="clear" id="qClear" title="Clear search" aria-label="Clear search">✕</button>
+        <kbd>/</kbd>
+      </div>
+      <div class="results" id="results" role="listbox" aria-label="Search results"></div>
+    </div>
+
+    <div class="meters">
+      <div class="meter"><div class="eyebrow">Available</div><b class="num" id="mAvail">96</b></div>
+      <div class="meter"><div class="eyebrow">Sold</div><b class="num" id="mSold">0</b></div>
+      <div class="meter"><div class="eyebrow">Unsold</div><b class="num" id="mUnsold">0</b></div>
+      <div class="meter is-spend"><div class="eyebrow">Spent</div><b class="num" id="mSpend">—</b></div>
+    </div>
+
+    <nav class="tabs" role="tablist" aria-label="Views">
+      <button class="tab" role="tab" data-view="pool" aria-selected="true">Pool<span class="cnt" id="tcPool"></span></button>
+      <button class="tab" role="tab" data-view="teams" aria-selected="false">Teams<span class="cnt" id="tcTeams"></span></button>
+      <button class="tab" role="tab" data-view="results" aria-selected="false">Results<span class="cnt" id="tcResults"></span></button>
+      <span class="spacer"></span>
+      <button class="util" id="btnUndo" title="Undo the last auction action">↶ Undo</button>
+      <button class="util" id="btnStats">Import stats</button>
+      <button class="util" id="btnSave">Save file</button>
+      <button class="util" id="btnLoad">Open file</button>
+      <button class="util" id="btnCsv">Export CSV</button>
+      <button class="util" id="btnSetup">Auction setup</button>
+    </nav>
+  </header>
+
+  <div class="split">
+    <main class="main">
+
+      <div class="filters" id="filters">
+        <div class="fgroup" id="fStatus"><span class="eyebrow">Status</span></div>
+        <div class="fgroup" id="fRole"><span class="eyebrow">Role</span></div>
+        <div class="fgroup" id="fCap"><span class="eyebrow">Cap</span></div>
+        <div class="fgroup">
+          <span class="eyebrow">Set</span>
+          <select class="pick" id="fSet" aria-label="Filter by set"></select>
+        </div>
+        <div class="fgroup">
+          <span class="eyebrow">Country</span>
+          <select class="pick" id="fCountry" aria-label="Filter by country"></select>
+        </div>
+        <div class="fgroup rate">
+          <span class="eyebrow">Min rating</span>
+          <input id="fRate" type="range" min="8" max="9.75" step="0.25" value="8" aria-label="Minimum rating">
+          <output class="num" id="fRateOut">8.00</output>
+        </div>
+        <div class="push">
+          <span class="eyebrow" id="shownCount"></span>
+          <button class="linkbtn" id="fReset">Reset filters</button>
+        </div>
+      </div>
+
+      <section id="view-pool" role="tabpanel" aria-label="Pool">
+        <div class="tablewrap">
+          <table class="pool">
+            <thead>
+              <tr>
+                <th class="c-rail" aria-hidden="true"></th>
+                <th class="c-no sortable" data-sort="sno">#<span class="ar">▾</span></th>
+                <th class="c-set sortable" data-sort="set">Set<span class="ar">▾</span></th>
+                <th class="c-name sortable" data-sort="name">Player<span class="ar">▾</span></th>
+                <th class="sortable" data-sort="country">Country<span class="ar">▾</span></th>
+                <th class="sortable" data-sort="role">Role<span class="ar">▾</span></th>
+                <th class="sortable" data-sort="cap">C/UC<span class="ar">▾</span></th>
+                <th class="c-num sortable" data-sort="base">Base<span class="ar">▾</span></th>
+                <th class="c-num sortable" data-sort="rating">Rating<span class="ar">▾</span></th>
+                <th class="sortable" data-sort="status">Status<span class="ar">▾</span></th>
+                <th class="c-num sortable" data-sort="price">Price<span class="ar">▾</span></th>
+                <th class="c-act"></th>
+              </tr>
+            </thead>
+            <tbody id="poolBody"></tbody>
+          </table>
+          <div class="tfoot">
+            <span class="eyebrow" id="poolFoot"></span>
+            <span class="eyebrow">Click a surname for the player card · ✈ overseas</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-teams" role="tabpanel" aria-label="Teams" hidden>
+        <div class="teamwrap" id="teamWrap"></div>
+      </section>
+
+      <section id="view-results" role="tabpanel" aria-label="Results" hidden>
+        <div id="resultsView"></div>
+      </section>
+
+    </main>
+
+    <aside class="side">
+      <div class="block">
+        <div class="bhead">
+          <span class="eyebrow">On the block</span>
+          <span class="eyebrow" id="blockRound"></span>
+        </div>
+        <div id="blockHost"></div>
+      </div>
+      <div class="ledger">
+        <div class="lhead">
+          <span class="eyebrow">Tally</span>
+          <button class="linkbtn" id="btnClearLog">Clear tally</button>
+        </div>
+        <div class="lbody" id="ledgerBody"></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="scrim" id="scrim">
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"></div>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<input type="file" id="filePick" accept=".json,.csv,.txt" hidden>
+
+<script>
+"use strict";
+/* ==================================================================
+   1. PLAYER POOL  —  transcribed from the auction sheet.
+   Columns: [ sno, setNo, set, first, surname, country, role, cap, base(₹L), rating ]
+   Sets seen so far run 1–11 (M1 … UFA1). To extend the pool, paste the
+   next rows at the end of this array in exactly the same shape and add
+   the new set code to SET_META below. Nothing else needs to change.
+   ================================================================== */
+const POOL_RAW = [
+[1,1,"M1","Jasprit","Bumrah","India","Bowler","Capped",200,9.75],
+[2,1,"M1","Jos","Buttler","England","Wicket Keeper","Capped",200,9.5],
+[3,1,"M1","Pat","Cummins","Australia","All Rounder","Capped",200,9.5],
+[4,1,"M1","Shubman","Gill","India","Batsman","Capped",200,9.5],
+[5,1,"M1","Shreyas","Iyer","India","Batsman","Capped",200,9.75],
+[6,1,"M1","Rashid","Khan","Afghanistan","All Rounder","Capped",200,9.75],
+[7,1,"M1","Virat","Kohli","India","Batsman","Capped",200,9.75],
+[8,1,"M1","Rishabh","Pant","India","Wicket Keeper","Capped",200,9.5],
+[9,1,"M1","Arshdeep","Singh","India","Bowler","Capped",200,9.5],
+[10,1,"M1","Mitchell","Starc","Australia","Bowler","Capped",200,9.5],
+[11,2,"M2","MS","Dhoni","India","Wicket Keeper","Uncapped",200,9.5],
+[12,2,"M2","Trent","Boult","New Zealand","Bowler","Capped",200,9.5],
+[13,2,"M2","Ravindra","Jadeja","India","All Rounder","Capped",200,9.5],
+[14,2,"M2","Hardik","Pandya","India","All Rounder","Capped",200,9.75],
+[15,2,"M2","Axar","Patel","India","All Rounder","Capped",200,9.75],
+[16,2,"M2","KL","Rahul","India","Batsman","Capped",200,9.5],
+[17,2,"M2","Kagiso","Rabada","South Africa","Bowler","Capped",200,9.5],
+[18,2,"M2","Sanju","Samson","India","Wicket Keeper","Capped",200,9.5],
+[19,2,"M2","Rohit","Sharma","India","Batsman","Capped",200,9.5],
+[20,2,"M2","Suryakumar","Yadav","India","Batsman","Capped",200,9.75],
+[21,3,"BA1","Harry","Brook","England","Batsman","Capped",200,9],
+[22,3,"BA1","Ruturaj","Gaikwad","India","Batsman","Capped",200,9.5],
+[23,3,"BA1","Travis","Head","Australia","Batsman","Capped",200,9.5],
+[24,3,"BA1","Yashasvi","Jaiswal","India","Batsman","Capped",200,9.5],
+[25,3,"BA1","David","Miller","South Africa","Batsman","Capped",200,9.25],
+[26,3,"BA1","Rajat","Patidar","India","Batsman","Capped",200,9.25],
+[27,3,"BA1","Rinku","Singh","India","Batsman","Capped",200,9.25],
+[28,3,"BA1","Nicholas","Pooran","West Indies","Batsman","Capped",200,9.25],
+[29,4,"AL1","Shivam","Dube","India","All Rounder","Capped",200,9.25],
+[30,4,"AL1","Venkatesh","Iyer","India","All Rounder","Capped",200,9.25],
+[31,4,"AL1","Glenn","Maxwell","Australia","All Rounder","Capped",200,9.25],
+[32,4,"AL1","Sunil","Narine","West Indies","All Rounder","Capped",200,9.5],
+[33,4,"AL1","Liam","Livingstone","England","All Rounder","Capped",200,9.25],
+[34,4,"AL1","Krunal","Pandya","India","All Rounder","Capped",200,9.5],
+[35,4,"AL1","Abhishek","Sharma","India","All Rounder","Capped",200,9.5],
+[36,4,"AL1","Marcus","Stoinis","Australia","All Rounder","Capped",200,9.5],
+[37,4,"AL1","Tilak","Varma","India","All Rounder","Capped",200,9.25],
+[38,5,"WK1","Devon","Conway","New Zealand","Wicket Keeper","Capped",200,9.25],
+[39,5,"WK1","Quinton","De Kock","South Africa","Wicket Keeper","Capped",200,9.25],
+[40,5,"WK1","Ishan","Kishan","India","Wicket Keeper","Capped",200,9.5],
+[41,5,"WK1","Heinrich","Klaasen","South Africa","Wicket Keeper","Capped",200,9.5],
+[42,5,"WK1","Dhruv","Jurel","India","Wicket Keeper","Capped",200,9],
+[43,5,"WK1","Phil","Salt","England","Wicket Keeper","Capped",200,9.25],
+[44,5,"WK1","Jitesh","Sharma","India","Wicket Keeper","Capped",200,9],
+[45,5,"WK1","Tristan","Stubbs","South Africa","Wicket Keeper","Capped",200,9.5],
+[46,6,"FA1","Jofra","Archer","England","Bowler","Capped",200,9.25],
+[47,6,"FA1","Deepak","Chahar","India","Bowler","Capped",200,9.25],
+[48,6,"FA1","Josh","Hazlewood","Australia","Bowler","Capped",200,9.5],
+[49,6,"FA1","Prasidh","Krishna","India","Bowler","Capped",200,9.25],
+[50,6,"FA1","Avesh","Khan","India","Bowler","Capped",200,9],
+[51,6,"FA1","Bhuvneshwar","Kumar","India","Bowler","Capped",200,9.5],
+[52,6,"FA1","Thangarasu","Natarajan","India","Bowler","Capped",200,9.5],
+[53,6,"FA1","Matheesha","Pathirana","Sri Lanka","Bowler","Capped",200,9.25],
+[54,6,"FA1","Mohammed","Shami","India","Bowler","Capped",200,9.5],
+[55,6,"FA1","Mohammed","Siraj","India","Bowler","Capped",200,9.5],
+[56,7,"SP1","Noor","Ahmad","Afghanistan","Bowler","Capped",200,9.5],
+[57,7,"SP1","Ravi","Bishnoi","India","Bowler","Capped",200,9.25],
+[58,7,"SP1","Yuzvendra","Chahal","India","Bowler","Capped",200,9.5],
+[59,7,"SP1","Rahul","Chahar","India","Bowler","Capped",200,9.25],
+[60,7,"SP1","Varun","Chakravarthy","India","Bowler","Capped",200,9.5],
+[61,7,"SP1","Wanindu","Hasaranga","Sri Lanka","Bowler","Capped",200,9.25],
+[62,7,"SP1","Maheesh","Theekshana","Sri Lanka","Bowler","Capped",200,9.25],
+[63,7,"SP1","Kuldeep","Yadav","India","Bowler","Capped",200,9.5],
+[64,7,"SP1","Adam","Zampa","Australia","Bowler","Capped",200,9.25],
+[65,8,"UBA1","Priyansh","Arya","India","Batsman","Uncapped",30,9],
+[66,8,"UBA1","Ayush","Badoni","India","Batsman","Uncapped",30,8.75],
+[67,8,"UBA1","Yash","Dhull","India","Batsman","Uncapped",30,8.3],
+[68,8,"UBA1","Kartik","Sharma","India","Batsman","Uncapped",30,8.5],
+[69,8,"UBA1","Abhinav","Manohar","India","Batsman","Uncapped",30,8.75],
+[70,8,"UBA1","Ayush","Mhatre","India","Batsman","Uncapped",30,8.75],
+[71,8,"UBA1","Vaibhav","Suryavanshi","India","Batsman","Uncapped",30,9],
+[72,8,"UBA1","Angkrish","Raghuvanshi","India","Batsman","Uncapped",30,9.25],
+[73,8,"UBA1","Shashank","Singh","India","Batsman","Uncapped",30,9.25],
+[74,8,"UBA1","Nehal","Wadhera","India","Batsman","Uncapped",30,9],
+[75,9,"UAL1","Harpreet","Brar","India","All Rounder","Uncapped",30,8.75],
+[76,9,"UAL1","Raj Angad","Bawa","India","All Rounder","Uncapped",30,8.5],
+[77,9,"UAL1","Naman","Dhir","India","All Rounder","Uncapped",30,9],
+[78,9,"UAL1","Shahrukh","Khan","India","All Rounder","Uncapped",40,9.25],
+[79,9,"UAL1","Mahipal","Lomror","India","All Rounder","Uncapped",40,8.75],
+[80,9,"UAL1","Sameer","Rizvi","India","All Rounder","Uncapped",30,8.5],
+[81,9,"UAL1","Abdul","Samad","India","All Rounder","Uncapped",30,8.75],
+[82,9,"UAL1","Ramandeep","Singh","India","All Rounder","Uncapped",30,9],
+[83,9,"UAL1","Ashutosh","Sharma","India","All Rounder","Uncapped",30,9.25],
+[84,9,"UAL1","Rahul","Tewatia","India","All Rounder","Uncapped",40,9.25],
+[85,10,"UWK1","Aryan","Juyal","India","Wicket Keeper","Uncapped",30,8.25],
+[86,10,"UWK1","Kumar","Kushagra","India","Wicket Keeper","Uncapped",30,8.5],
+[87,10,"UWK1","Robin","Minz","India","Wicket Keeper","Uncapped",30,8.5],
+[88,10,"UWK1","Abhishek","Porel","India","Wicket Keeper","Uncapped",30,8.75],
+[89,10,"UWK1","Anuj","Rawat","India","Wicket Keeper","Uncapped",30,8.5],
+[90,10,"UWK1","Prabhsimran","Singh","India","Wicket Keeper","Uncapped",30,9],
+[91,10,"UWK1","Salil","Arora","India","Wicket Keeper","Uncapped",30,8.5],
+[92,10,"UWK1","Vishnu","Vinod","India","Wicket Keeper","Uncapped",30,8.5],
+[93,11,"UFA1","Vaibhav","Arora","India","Bowler","Uncapped",30,9],
+[94,11,"UFA1","Rasikh","Dar","India","Bowler","Uncapped",30,9],
+[95,11,"UFA1","Yash","Dayal","India","Bowler","Uncapped",30,9],
+[96,11,"UFA1","Akash","Madhwal","India","Bowler","Uncapped",30,8.75]
+];
+
+/* Set codes → readable label + the sheet's own colour band */
+const SET_META = {
+  M1:  {label:"Marquee I",              band:"#CFE3EE", rail:"#4A85A4"},
+  M2:  {label:"Marquee II",             band:"#D9E7F3", rail:"#5590B6"},
+  BA1: {label:"Batters I",              band:"#DCE4EF", rail:"#6980A4"},
+  AL1: {label:"All-rounders I",         band:"#E4EFCF", rail:"#78A040"},
+  WK1: {label:"Wicketkeepers I",        band:"#D2EDE0", rail:"#3C9B78"},
+  FA1: {label:"Fast bowlers I",         band:"#F8DFCD", rail:"#CF7639"},
+  SP1: {label:"Spinners I",             band:"#F7EACC", rail:"#C1932A"},
+  UBA1:{label:"Uncapped batters I",     band:"#F3DFE4", rail:"#BC6A7F"},
+  UAL1:{label:"Uncapped all-rounders I",band:"#E7DCF1", rail:"#8768AD"},
+  UWK1:{label:"Uncapped keepers I",     band:"#DDE5F3", rail:"#5C76A6"},
+  UFA1:{label:"Uncapped fast bowlers I",band:"#FADFD2", rail:"#CC6547"}
+};
+const setMeta = s => SET_META[s] || {label:s, band:"#E7EAE5", rail:"#98A29B"};
+
+const ROLE_SHORT = {"Batsman":"BAT","Bowler":"BOWL","All Rounder":"AR","Wicket Keeper":"WK"};
+const DEFAULT_TEAMS = [
+  ["Mumbai","MUM","#123E8C"], ["Chennai","CHE","#B58200"], ["Bengaluru","BLR","#A62B22"],
+  ["Kolkata","KOL","#5C3B8F"], ["Delhi","DEL","#1E86A8"],  ["Punjab","PBK","#B2354F"],
+  ["Rajasthan","RAJ","#C4557E"],["Hyderabad","HYD","#C2622A"],["Lucknow","LKO","#1E7A5E"],
+  ["Ahmedabad","AHM","#2B4F6E"]
+];
+const DEFAULT_RULES = {purse:12000, maxSquad:25, minSquad:18, maxOverseas:8};
+const MIN_BASE = Math.min(...POOL_RAW.map(r => r[8]));
+
+/* ==================================================================
+   2. STATE
+   ================================================================== */
+const PLAYERS = POOL_RAW.map((r,i) => ({
+  id:i+1, sno:r[0], setNo:r[1], set:r[2], first:r[3], surname:r[4],
+  name:(r[3]+" "+r[4]).trim(), country:r[5], role:r[6], roleShort:ROLE_SHORT[r[6]]||r[6],
+  cap:r[7], overseas:r[5] !== "India", base:r[8], rating:r[9],
+  status:"available", teamId:null, price:null, stats:{}
+}));
+const byId = new Map(PLAYERS.map(p => [p.id, p]));
+
+const state = {
+  rules:{...DEFAULT_RULES},
+  teams:DEFAULT_TEAMS.map(([name,code,color],i) => ({id:i+1,name,code,color})),
+  block:null,               // {playerId, bid, bidderId}
+  log:[],                   // newest first
+  seq:0,
+  view:"pool",
+  sortKey:"sno", sortDir:1,
+  filters:{status:"all", role:"all", cap:"all", set:"all", country:"all", minRating:8},
+  query:"",
+  statCols:[],
+  statKeys:[]
+};
+const history = [];
+
+/* ==================================================================
+   3. HELPERS
+   ================================================================== */
+const $ = s => document.querySelector(s);
+const esc = v => String(v==null?"":v).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const norm = s => String(s||"").toLowerCase().replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
+
+/* money is held in ₹ lakh throughout */
+function money(v){
+  if (v == null) return "—";
+  return v >= 100 ? "₹" + (v/100).toFixed(2) + " Cr" : "₹" + v + " L";
+}
+function moneyTight(v){
+  if (v == null) return "—";
+  return v >= 100 ? (v/100).toFixed(2) + "cr" : v + "L";
+}
+function incrementFor(v){
+  if (v < 100) return 5;
+  if (v < 200) return 10;
+  if (v < 500) return 20;
+  if (v < 1000) return 25;
+  return 50;
+}
+function toast(msg, kind){
+  const el = document.createElement("div");
+  el.className = "toast" + (kind === "err" ? " err" : "");
+  el.innerHTML = msg;
+  $("#toasts").appendChild(el);
+  setTimeout(() => el.remove(), kind === "err" ? 4200 : 2600);
+}
+
+/* team maths */
+const squadOf = t => PLAYERS.filter(p => p.status === "sold" && p.teamId === t.id);
+function teamStats(t){
+  const sq = squadOf(t);
+  const spent = sq.reduce((a,p) => a + (p.price||0), 0);
+  const overseas = sq.filter(p => p.overseas).length;
+  const left = state.rules.purse - spent;
+  const slotsAfterThis = Math.max(0, state.rules.minSquad - (sq.length + 1));
+  const maxBid = Math.max(0, left - slotsAfterThis * MIN_BASE);
+  const comp = {BAT:0, BOWL:0, AR:0, WK:0};
+  sq.forEach(p => { comp[p.roleShort] = (comp[p.roleShort]||0) + 1; });
+  return {sq, spent, left, overseas, maxBid, comp, size:sq.length};
+}
+function blockers(t, player, need){
+  const s = teamStats(t);
+  if (s.size >= state.rules.maxSquad) return "squad full (" + state.rules.maxSquad + ")";
+  if (player.overseas && s.overseas >= state.rules.maxOverseas) return "overseas full (" + state.rules.maxOverseas + ")";
+  if (need > s.maxBid) return "over budget — max " + money(s.maxBid);
+  return null;
+}
+
+/* ==================================================================
+   4. SEARCH ENGINE
+   Free text is fuzzy-matched against name / country / role / set.
+   Operators: role: country: set: cap: status: team: rating: base:
+   plus any imported stat key, and bare >9.5 as a rating shorthand.
+   ================================================================== */
+const FIELD_ALIASES = {
+  r:"role", role:"role", spec:"role", specialisation:"role",
+  c:"country", country:"country", nat:"country",
+  s:"set", set:"set",
+  cap:"cap", capped:"cap",
+  st:"status", status:"status",
+  t:"team", team:"team",
+  rt:"rating", rating:"rating",
+  bp:"base", base:"base", price:"soldprice", paid:"soldprice"
+};
+const ROLE_ALIASES = {
+  bat:"Batsman", batter:"Batsman", batsman:"Batsman", batsmen:"Batsman",
+  bowl:"Bowler", bowler:"Bowler", bowlers:"Bowler", pace:"Bowler", spin:"Bowler",
+  ar:"All Rounder", all:"All Rounder", allrounder:"All Rounder", "all-rounder":"All Rounder", rounder:"All Rounder",
+  wk:"Wicket Keeper", keeper:"Wicket Keeper", wicketkeeper:"Wicket Keeper", gk:"Wicket Keeper"
+};
+
+function parseQuery(raw){
+  const out = {text:"", ops:[]};
+  const words = [];
+  String(raw||"").trim().split(/\s+/).forEach(tok => {
+    if (!tok) return;
+    let m = tok.match(/^([a-zA-Z][\w-]*):(.+)$/);
+    if (m){
+      const key = FIELD_ALIASES[m[1].toLowerCase()] || m[1].toLowerCase();
+      out.ops.push({key, raw:m[2]});
+      return;
+    }
+    m = tok.match(/^(>=|<=|>|<|=)(\d+(?:\.\d+)?)$/);
+    if (m){ out.ops.push({key:"rating", raw:tok}); return; }
+    words.push(tok);
+  });
+  out.text = words.join(" ");
+  return out;
+}
+function cmpNum(val, expr){
+  if (val == null || val === "" || isNaN(parseFloat(val))) return false;
+  const v = parseFloat(val);
+  const m = String(expr).match(/^(>=|<=|>|<|=)?\s*(-?\d+(?:\.\d+)?)$/);
+  if (!m) return false;
+  const n = parseFloat(m[2]);
+  switch (m[1]){
+    case ">":  return v >  n;
+    case ">=": return v >= n;
+    case "<":  return v <  n;
+    case "<=": return v <= n;
+    default:   return v === n;
+  }
+}
+function opMatches(p, op){
+  const v = op.raw.toLowerCase().replace(/^["']|["']$/g,"");
+  switch (op.key){
+    case "role":    return (ROLE_ALIASES[v] || "") === p.role || norm(p.role).startsWith(v) || p.roleShort.toLowerCase() === v;
+    case "country": return norm(p.country).replace(/ /g,"").startsWith(v.replace(/ /g,"")) ||
+                           (v === "os" ? p.overseas : v === "ind" ? !p.overseas : false);
+    case "set":     return p.set.toLowerCase() === v || String(p.setNo) === v || norm(setMeta(p.set).label).includes(v);
+    case "cap":     return (["y","yes","c","capped","true"].includes(v)) ? p.cap === "Capped"
+                         : (["n","no","uc","uncapped","false"].includes(v)) ? p.cap === "Uncapped" : true;
+    case "status":  return p.status.startsWith(v) || (v === "block" && state.block && state.block.playerId === p.id);
+    case "team": {
+      if (!p.teamId) return false;
+      const t = state.teams.find(x => x.id === p.teamId);
+      return !!t && (t.code.toLowerCase() === v || norm(t.name).startsWith(v));
+    }
+    case "rating":  return cmpNum(p.rating, op.raw);
+    case "base":    return cmpNum(p.base, op.raw);
+    case "soldprice": return cmpNum(p.price, op.raw);
+    default: {
+      const key = state.statKeys.find(k => k.toLowerCase() === op.key);
+      if (key) return cmpNum(p.stats[key], op.raw);
+      return true;                        // unknown operator is ignored, not fatal
+    }
+  }
+}
+
+/* Matching runs in three tiers so results stay predictable:
+   A. substring            "kohl" → Kohli,  "de kock" → De Kock
+   B. initials             "vk"   → Virat Kohli
+   C. subsequence inside a single word — typo tolerance, "klasen" → Klaasen
+   Cross-word subsequence is deliberately not allowed: it made "starc" match
+   Stoinis Marcus. Tier scores are banded so A always outranks B outranks C. */
+function fuzzySeq(word, needle){
+  let hi = 0, score = 0, streak = 0;
+  const marks = [];
+  for (let i = 0; i < needle.length; i++){
+    const ch = needle[i];
+    let found = -1;
+    for (let k = hi; k < word.length; k++){ if (word[k] === ch){ found = k; break; } }
+    if (found < 0) return null;
+    score += 10 + (found === 0 ? 12 : 0) + (streak ? 10 : 0) - Math.min(found - hi, 5);
+    marks.push(found);
+    streak = (found === hi) ? streak + 1 : 1;
+    hi = found + 1;
+  }
+  return {score, marks};
+}
+function words(h){
+  const out = [], re = /[a-z0-9]+/g;
+  let m;
+  while ((m = re.exec(h))) out.push({w:m[0], i:m.index});
+  return out;
+}
+function scoreOne(hay, needle, strict){
+  const h = hay.toLowerCase(), n = needle.toLowerCase().trim();
+  if (!n) return {score:0, marks:[]};
+  let best = null;
+  const keep = c => { if (c && (!best || c.score > best.score)) best = c; };
+
+  const at = h.indexOf(n);                                   // tier A
+  if (at >= 0){
+    const startsWord = at === 0 || /[^a-z0-9]/.test(h[at-1]);
+    const marks = [];
+    for (let i = 0; i < n.length; i++) marks.push(at + i);
+    // a hit inside a word scores below initials for short queries ("rp"
+    // should mean Rishabh Pant, not the "rp" buried in Harpreet)
+    keep({score:(startsWord ? 400 + 6 * n.length - Math.min(at, 20) * 2 : 200 + 12 * n.length), marks});
+  }
+  if (strict) return best;
+
+  const ws = words(h);
+  const flat = n.replace(/\s+/g, "");
+  if (flat.length >= 2 && flat.length <= ws.length){          // tier B
+    for (let s = 0; s + flat.length <= ws.length; s++){
+      const marks = [];
+      let good = true;
+      for (let k = 0; k < flat.length; k++){
+        if (ws[s+k].w[0] !== flat[k]){ good = false; break; }
+        marks.push(ws[s+k].i);
+      }
+      if (good){ keep({score:260 - s * 10, marks}); break; }
+    }
+  }
+  if (!/\s/.test(n)){                                        // tier C
+    for (const {w, i} of ws){
+      const f = fuzzySeq(w, n);
+      if (!f) continue;
+      keep({score:Math.min(180, f.score + Math.round(n.length / w.length * 30)), marks:f.marks.map(x => x + i)});
+    }
+  }
+  return best;
+}
+function scorePlayer(p, text){
+  if (!text) return {score:1, marks:null, field:null};
+  const cands = [
+    [p.first + " " + p.surname, 60, false],
+    [p.surname + " " + p.first, 55, false],
+    [p.surname, 50, false],
+    [p.first, 25, false],
+    [p.country, 0, true],
+    [p.role + " " + p.roleShort, 0, true],
+    [p.set + " " + setMeta(p.set).label, 0, true]
+  ];
+  let best = null;
+  for (const [hay, bonus, strict] of cands){
+    const f = scoreOne(hay, text, strict);
+    if (!f) continue;
+    const total = f.score + bonus;
+    if (!best || total > best.score) best = {score:total, marks:f.marks, field:hay};
+  }
+  return best;
+}
+/* first name plain, surname bold, matched characters marked — indices are
+   recomputed against the displayed string so the marks always line up */
+function highlight(p){
+  const disp = p.first + " " + p.surname;
+  const text = parseQuery(state.query).text;
+  const f = text ? scoreOne(disp, text) : null;
+  const marks = new Set(f ? f.marks : []);
+  const split = p.first.length + 1;
+  let out = "", open = false;
+  const shut = () => { if (open){ out += "</i>"; open = false; } };
+  for (let i = 0; i < disp.length; i++){
+    if (i === split){ shut(); out += "<b>"; }
+    if (marks.has(i)){ if (!open){ out += "<i>"; open = true; } } else shut();
+    out += esc(disp[i]);
+  }
+  shut();
+  return out + "</b>";
+}
+
+function passesFilters(p){
+  const f = state.filters;
+  if (f.status !== "all" && p.status !== f.status) return false;
+  if (f.role !== "all" && p.roleShort !== f.role) return false;
+  if (f.cap !== "all" && p.cap !== f.cap) return false;
+  if (f.set !== "all" && p.set !== f.set) return false;
+  if (f.country !== "all" && p.country !== f.country) return false;
+  if (p.rating < f.minRating) return false;
+  return true;
+}
+function runQuery(list, q){
+  const parsed = parseQuery(q);
+  const out = [];
+  for (const p of list){
+    if (!parsed.ops.every(op => opMatches(p, op))) continue;
+    const hit = scorePlayer(p, parsed.text);
+    if (!hit) continue;
+    out.push({p, hit});
+  }
+  // subsequence matching is generous by design; drop the stragglers that only
+  // matched because the letters happened to appear in order somewhere
+  if (parsed.text && out.length > 1){
+    const best = Math.max(...out.map(o => o.hit.score));
+    return out.filter(o => o.hit.score >= best * 0.62);
+  }
+  return out;
+}
+
+/* ==================================================================
+   5. AUCTION ACTIONS
+   ================================================================== */
+function snapshot(){
+  history.push(JSON.stringify({
+    players:PLAYERS.map(p => ({id:p.id, status:p.status, teamId:p.teamId, price:p.price})),
+    block:state.block, log:state.log, seq:state.seq
+  }));
+  if (history.length > 60) history.shift();
+}
+function undo(){
+  const s = history.pop();
+  if (!s){ toast("Nothing left to undo"); return; }
+  const d = JSON.parse(s);
+  d.players.forEach(r => { const p = byId.get(r.id); if (p){ p.status = r.status; p.teamId = r.teamId; p.price = r.price; } });
+  state.block = d.block; state.log = d.log; state.seq = d.seq;
+  render(); persist();
+  toast("Undone");
+}
+function logIt(kind, who, amount){
+  state.seq++;
+  state.log.unshift({i:state.seq, k:kind, w:who, a:amount, ts:Date.now()});
+  if (state.log.length > 400) state.log.pop();
+}
+
+function putOnBlock(id){
+  const p = byId.get(id);
+  if (!p) return;
+  if (p.status === "sold"){
+    const t = state.teams.find(x => x.id === p.teamId);
+    toast(esc(p.name) + " is already sold to " + esc(t ? t.name : "a team"), "err");
+    return;
+  }
+  snapshot();
+  state.block = {playerId:id, bid:p.base, bidderId:null};
+  if (p.status === "unsold") p.status = "available";
+  logIt("note", p.surname + " on the block", p.base);
+  render(); persist();
+  closeResults();
+}
+function bidFor(teamId){
+  if (!state.block) return;
+  const p = byId.get(state.block.playerId);
+  const t = state.teams.find(x => x.id === teamId);
+  const need = state.block.bidderId == null ? state.block.bid : state.block.bid + incrementFor(state.block.bid);
+  const stop = blockers(t, p, need);
+  if (stop){ toast(esc(t.name) + " can't go to " + money(need) + " — " + esc(stop), "err"); return; }
+  snapshot();
+  state.block.bid = need;
+  state.block.bidderId = teamId;
+  logIt("bid", t.code + " · " + p.surname, need);
+  render(); persist();
+}
+function raiseAsk(delta){
+  if (!state.block) return;
+  const p = byId.get(state.block.playerId);
+  const next = Math.max(p.base, state.block.bid + delta);
+  if (next === state.block.bid) return;
+  if (state.block.bidderId != null){
+    const t = state.teams.find(x => x.id === state.block.bidderId);
+    const stop = blockers(t, p, next);
+    if (stop){ toast(esc(t.name) + " can't go to " + money(next) + " — " + esc(stop), "err"); return; }
+  }
+  snapshot();
+  state.block.bid = next;
+  const t = state.teams.find(x => x.id === state.block.bidderId);
+  logIt(t ? "bid" : "note", t ? (t.code + " · " + p.surname) : "ask raised", next);
+  render(); persist();
+}
+function sell(){
+  if (!state.block || state.block.bidderId == null) return;
+  const p = byId.get(state.block.playerId);
+  const t = state.teams.find(x => x.id === state.block.bidderId);
+  const stop = blockers(t, p, state.block.bid);
+  if (stop){ toast("Can't complete the sale — " + esc(stop), "err"); return; }
+  snapshot();
+  p.status = "sold"; p.teamId = t.id; p.price = state.block.bid;
+  logIt("sold", t.code + " ← " + p.surname, p.price);
+  state.block = null;
+  render(); persist();
+  toast("Sold — " + esc(p.name) + " to " + esc(t.name) + "<span class='m'>" + money(p.price) + "</span>");
+  autoAdvance();
+}
+function pass(){
+  if (!state.block) return;
+  const p = byId.get(state.block.playerId);
+  snapshot();
+  p.status = "unsold"; p.teamId = null; p.price = null;
+  logIt("unsold", p.surname + " unsold", null);
+  state.block = null;
+  render(); persist();
+  toast(esc(p.name) + " goes unsold");
+  autoAdvance();
+}
+function returnToPool(id){
+  const p = byId.get(id);
+  snapshot();
+  p.status = "available"; p.teamId = null; p.price = null;
+  logIt("note", p.surname + " back in the pool", null);
+  render(); persist();
+}
+function releaseFromTeam(id){ returnToPool(id); }
+function autoAdvance(){
+  // queue up the next available player in sheet order, so the gavel keeps moving
+  const next = PLAYERS.filter(p => p.status === "available").sort((a,b) => a.sno - b.sno)[0];
+  if (next){ state.block = {playerId:next.id, bid:next.base, bidderId:null}; render(); persist(); }
+}
+
+/* ==================================================================
+   6. RENDER — pool
+   ================================================================== */
+function sortRows(rows){
+  const k = state.sortKey, d = state.sortDir;
+  const val = p => ({
+    sno:p.sno, set:p.setNo, name:p.surname + p.first, country:p.country, role:p.roleShort,
+    cap:p.cap, base:p.base, rating:p.rating, status:p.status, price:p.price == null ? -1 : p.price
+  })[k];
+  return rows.sort((a,b) => {
+    const x = val(a.p), y = val(b.p);
+    if (typeof x === "number" && typeof y === "number") return (x - y) * d || a.p.sno - b.p.sno;
+    return String(x).localeCompare(String(y)) * d || a.p.sno - b.p.sno;
+  });
+}
+function statusTag(p){
+  if (state.block && state.block.playerId === p.id) return '<span class="tag t-block">On block</span>';
+  if (p.status === "sold"){
+    const t = state.teams.find(x => x.id === p.teamId);
+    return '<span class="tag t-sold">' + esc(t ? t.code : "sold") + '</span>';
+  }
+  if (p.status === "unsold") return '<span class="tag t-unsold">Unsold</span>';
+  return '<span class="tag t-avail">In pool</span>';
+}
+function renderPool(){
+  const rows = sortRows(runQuery(PLAYERS.filter(passesFilters), state.query));
+  const body = $("#poolBody");
+  if (!rows.length){
+    body.innerHTML = '<tr><td colspan="' + (12 + state.statCols.length) + '"><div class="empty"><b>Nothing matches</b>' +
+      'Loosen a filter, or clear the search to see all ' + PLAYERS.length + ' players.</div></td></tr>';
+  } else {
+    const cap = 400;
+    body.innerHTML = rows.slice(0, cap).map(({p, hit}) => {
+      const m = setMeta(p.set);
+      const onBlock = state.block && state.block.playerId === p.id;
+      const statCells = state.statCols.map(k =>
+        '<td class="c-num mono">' + esc(p.stats[k] == null ? "·" : p.stats[k]) + '</td>').join("");
+      return '<tr class="' + (onBlock ? "is-block " : "") + (p.status === "sold" ? "is-sold" : "") + '" data-id="' + p.id + '">' +
+        '<td class="c-rail" style="background:' + m.rail + '"></td>' +
+        '<td class="c-no">' + p.sno + '</td>' +
+        '<td class="c-set"><span class="setpill" style="--band:' + m.band + '" title="' + esc(m.label) + '">' + esc(p.set) + '</span></td>' +
+        '<td class="c-name"><button data-act="card" data-id="' + p.id + '">' +
+          '<span class="fn">' + esc(p.first) + '</span> <span class="sn">' + esc(p.surname) + '</span></button></td>' +
+        '<td><span class="flag' + (p.overseas ? " is-os" : "") + '">' + esc(p.country) + '</span></td>' +
+        '<td><span class="rolecell"><span class="roleglyph rg-' + p.roleShort + '">' + esc(p.roleShort) + '</span></span></td>' +
+        '<td class="mono" style="font-size:10.5px">' + (p.cap === "Capped" ? "C" : "UC") + '</td>' +
+        '<td class="c-num mono">' + moneyTight(p.base) + '</td>' +
+        '<td class="c-num"><span class="ratebar"><span class="v">' + p.rating.toFixed(2).replace(/0$/,"") + '</span>' +
+          '<span class="t"><i style="width:' + Math.round((p.rating-8)/1.75*100) + '%"></i></span></span></td>' +
+        '<td>' + statusTag(p) + '</td>' +
+        '<td class="c-num mono"' + (p.price ? ' style="font-weight:600"' : '') + '>' + (p.price ? moneyTight(p.price) : "·") + '</td>' +
+        statCells +
+        '<td class="c-act">' + (p.status === "sold"
+            ? '<button class="mini warn" data-act="release" data-id="' + p.id + '">Release</button>'
+            : '<button class="mini" data-act="block" data-id="' + p.id + '">' + (onBlock ? "On block" : "Put up") + '</button>') +
+        '</td></tr>';
+    }).join("");
+    if (rows.length > cap) body.innerHTML += '<tr><td colspan="12"><div class="empty">Showing the first ' + cap + ' of ' + rows.length + ' matches.</div></td></tr>';
+  }
+  $("#shownCount").textContent = rows.length + " of " + PLAYERS.length + " shown";
+  $("#poolFoot").textContent = rows.length + " rows · sorted by " + state.sortKey + (state.sortDir > 0 ? " ↑" : " ↓");
+}
+
+/* ==================================================================
+   7. RENDER — on the block
+   ================================================================== */
+function renderBlock(){
+  const host = $("#blockHost");
+  if (!state.block){
+    const left = PLAYERS.filter(p => p.status === "available").length;
+    host.innerHTML = '<div class="blockempty"><b>No one up</b>' +
+      (left ? "Search a player and press Enter, or hit Put up in the pool." : "Every player has been through the auction.") +
+      '</div>';
+    $("#blockRound").textContent = "";
+    return;
+  }
+  const p = byId.get(state.block.playerId);
+  const m = setMeta(p.set);
+  const bidder = state.teams.find(t => t.id === state.block.bidderId);
+  const inc = incrementFor(state.block.bid);
+  const nextAsk = state.block.bidderId == null ? state.block.bid : state.block.bid + inc;
+
+  const teamBtns = state.teams.map(t => {
+    const s = teamStats(t);
+    const stop = blockers(t, p, nextAsk);
+    return '<button class="bidbtn" data-act="bid" data-team="' + t.id + '" style="--tc:' + t.color + '"' +
+      (stop ? ' disabled title="' + esc(stop) + '"' : ' title="Bid ' + money(nextAsk) + '"') +
+      ' aria-pressed="' + (bidder && bidder.id === t.id) + '">' +
+      '<span class="tdot"></span><span class="tn">' + esc(t.name) + '</span>' +
+      '<span class="tp">' + moneyTight(s.left) + '</span></button>';
+  }).join("");
+
+  host.innerHTML =
+    '<div class="blockcard" style="--band:' + m.rail + '">' +
+      '<div class="pname">' + esc(p.surname) + '<span>' + esc(p.first) + '</span></div>' +
+      '<div class="pmeta">' +
+        '<span class="setpill" style="--band:' + m.band + '">' + esc(p.set) + ' · ' + esc(m.label) + '</span>' +
+        '<span class="tag t-avail">' + esc(p.role) + '</span>' +
+        '<span class="tag t-avail">' + esc(p.country) + (p.overseas ? " ✈" : "") + '</span>' +
+        '<span class="tag t-avail">' + (p.cap === "Capped" ? "Capped" : "Uncapped") + '</span>' +
+        '<span class="tag t-avail">Rating ' + p.rating + '</span>' +
+      '</div>' +
+      '<div class="bidbox">' +
+        '<div><div class="eyebrow">' + (bidder ? "Current bid" : "Opening ask") + '</div>' +
+          '<div class="amt num">' + money(state.block.bid).replace("₹","") + '</div></div>' +
+        '<div class="who">' + (bidder
+            ? '<div class="eyebrow">With</div><b>' + esc(bidder.name) + '</b>'
+            : '<div class="eyebrow">Base price</div><b>' + money(p.base) + '</b>') +
+        '</div>' +
+      '</div>' +
+      '<div class="ladder">' +
+        '<span class="eyebrow" style="align-self:center">Raise</span>' +
+        [5,10,25,50,100].map(n => '<button data-act="raise" data-n="' + n + '">+' + n + '</button>').join("") +
+        '<input id="customRaise" type="number" min="1" step="5" placeholder="₹L" aria-label="Custom raise in lakh">' +
+        '<button data-act="raiseCustom">Add</button>' +
+      '</div>' +
+      '<div class="teamgrid">' + teamBtns + '</div>' +
+      '<div class="acts">' +
+        '<button class="big sell" data-act="sell"' + (bidder ? "" : " disabled") + '>Sold</button>' +
+        '<button class="big pass" data-act="pass">Unsold</button>' +
+      '</div>' +
+      '<div class="warnline' + (bidder ? "" : " show") + '">Pick a team to take the bid before you can mark this sold.</div>' +
+    '</div>';
+  $("#blockRound").textContent = "next bid " + money(nextAsk);
+}
+
+/* ==================================================================
+   8. RENDER — ledger, teams, results
+   ================================================================== */
+function renderLedger(){
+  const host = $("#ledgerBody");
+  if (!state.log.length){
+    host.innerHTML = '<div class="lempty">Every bid, sale and pass gets written down here as it happens.</div>';
+    return;
+  }
+  host.innerHTML = state.log.map(e =>
+    '<div class="lrow k-' + e.k + '"><span class="i">' + e.i + '</span>' +
+    '<span class="w">' + (e.k === "sold" ? "<b>" + esc(e.w) + "</b>" : esc(e.w)) + '</span>' +
+    '<span class="a">' + (e.a == null ? "—" : moneyTight(e.a)) + '</span></div>').join("");
+}
+function renderTeams(){
+  $("#teamWrap").innerHTML = state.teams.map(t => {
+    const s = teamStats(t);
+    const pct = Math.min(100, s.spent / state.rules.purse * 100);
+    const slots = Array.from({length:state.rules.maxSquad}, (_,i) => {
+      const p = s.sq[i];
+      const cls = p ? (p.overseas ? "slot f os" : "slot f") : (i < state.rules.minSquad ? "slot min" : "slot");
+      return '<span class="' + cls + '" title="' + (p ? esc(p.name) : "empty slot " + (i+1)) + '"></span>';
+    }).join("");
+    const squad = s.sq.length
+      ? s.sq.slice().sort((a,b) => (b.price||0) - (a.price||0)).map(p => {
+          const m = setMeta(p.set);
+          return '<div class="srow"><span class="rl" style="background:' + m.rail + '"></span>' +
+            '<span class="sn">' + esc(p.first) + ' <b>' + esc(p.surname) + '</b>' + (p.overseas ? ' <span class="flag is-os"></span>' : '') + '</span>' +
+            '<span class="sp">' + moneyTight(p.price) + '</span>' +
+            '<span class="sx"><button data-act="release" data-id="' + p.id + '" title="Release back to the pool">✕</button></span></div>';
+        }).join("")
+      : '<div class="sempty">No buys yet.</div>';
+    return '<article class="teamcard" style="--tc:' + t.color + '">' +
+      '<header><h3>' + esc(t.name) + ' <span class="eyebrow">' + esc(t.code) + '</span></h3>' +
+        '<div class="purse"><div><div class="eyebrow">Purse left</div><b class="num">' + money(s.left) + '</b></div>' +
+        '<div style="text-align:right"><div class="eyebrow">Max bid</div><span class="mono">' + money(s.maxBid) + '</span></div></div>' +
+        '<div class="pbar"><i style="width:' + pct + '%"></i></div></header>' +
+      '<div class="slots">' + slots + '</div>' +
+      '<div class="comp">' +
+        '<div><div class="eyebrow">Bat</div><b>' + s.comp.BAT + '</b></div>' +
+        '<div><div class="eyebrow">Bowl</div><b>' + s.comp.BOWL + '</b></div>' +
+        '<div><div class="eyebrow">All-r</div><b>' + s.comp.AR + '</b></div>' +
+        '<div><div class="eyebrow">Keep</div><b>' + s.comp.WK + '</b></div>' +
+      '</div>' +
+      '<div class="squad">' + squad + '</div></article>';
+  }).join("");
+}
+function bars(items, unit){
+  const max = Math.max(1, ...items.map(i => i.v));
+  return '<div class="bars">' + items.map(i =>
+    '<div class="barrow" style="--band:' + (i.c || "var(--teal)") + '">' +
+      '<span class="bl">' + esc(i.k) + '</span>' +
+      '<span class="bt"><i style="width:' + (i.v / max * 100) + '%"></i></span>' +
+      '<span class="bv">' + (unit === "money" ? moneyTight(i.v) : i.v) + '</span></div>').join("") + '</div>';
+}
+function renderResults(){
+  const sold = PLAYERS.filter(p => p.status === "sold");
+  const unsold = PLAYERS.filter(p => p.status === "unsold");
+  const spent = sold.reduce((a,p) => a + p.price, 0);
+  const top = sold.slice().sort((a,b) => b.price - a.price).slice(0, 10);
+  const overs = sold.filter(p => p.price > p.base * 2).length;
+
+  const bySet = Object.keys(SET_META).map(s => ({
+    k:s + " · " + setMeta(s).label, c:setMeta(s).rail,
+    v:sold.filter(p => p.set === s).reduce((a,p) => a + p.price, 0)
+  })).filter(i => i.v > 0);
+  const byTeam = state.teams.map(t => ({k:t.name, c:t.color, v:teamStats(t).spent})).filter(i => i.v > 0);
+  const byRole = ["BAT","BOWL","AR","WK"].map(r => ({
+    k:r, v:sold.filter(p => p.roleShort === r).reduce((a,p) => a + p.price, 0)
+  })).filter(i => i.v > 0);
+
+  $("#resultsView").innerHTML =
+    '<div class="rgrid">' +
+      '<div class="stat"><div class="eyebrow">Players sold</div><b class="num">' + sold.length + '</b><div class="sub">of ' + PLAYERS.length + ' in the pool</div></div>' +
+      '<div class="stat"><div class="eyebrow">Total spend</div><b class="num">' + money(spent) + '</b><div class="sub">across ' + state.teams.length + ' teams</div></div>' +
+      '<div class="stat"><div class="eyebrow">Average buy</div><b class="num">' + (sold.length ? money(Math.round(spent / sold.length)) : "—") + '</b><div class="sub">' + overs + ' went for more than 2× base</div></div>' +
+      '<div class="stat"><div class="eyebrow">Unsold</div><b class="num">' + unsold.length + '</b><div class="sub">' + PLAYERS.filter(p => p.status === "available").length + ' still to come up</div></div>' +
+    '</div>' +
+    (top.length ? '<div class="panel"><header><span class="eyebrow">Biggest buys</span><span class="eyebrow">price · team · rating</span></header>' +
+      '<table class="pool"><tbody>' + top.map((p,i) => {
+        const t = state.teams.find(x => x.id === p.teamId), m = setMeta(p.set);
+        return '<tr><td class="c-rail" style="background:' + m.rail + '"></td>' +
+          '<td class="c-no">' + (i+1) + '</td>' +
+          '<td class="c-name"><button data-act="card" data-id="' + p.id + '"><span class="fn">' + esc(p.first) + '</span> <span class="sn">' + esc(p.surname) + '</span></button></td>' +
+          '<td><span class="tag t-sold">' + esc(t ? t.name : "—") + '</span></td>' +
+          '<td class="c-num mono">' + money(p.price) + '</td>' +
+          '<td class="c-num mono" style="color:var(--muted)">' + (p.price / p.base).toFixed(1) + '× base</td>' +
+          '<td class="c-num"><span class="ratebar"><span class="v">' + p.rating + '</span></span></td></tr>';
+      }).join("") + '</tbody></table></div>' : "") +
+    (byTeam.length ? '<div class="panel"><header><span class="eyebrow">Spend by team</span></header>' + bars(byTeam, "money") + '</div>' : "") +
+    (bySet.length ? '<div class="panel"><header><span class="eyebrow">Spend by set</span></header>' + bars(bySet, "money") + '</div>' : "") +
+    (byRole.length ? '<div class="panel"><header><span class="eyebrow">Spend by role</span></header>' + bars(byRole, "money") + '</div>' : "") +
+    (unsold.length ? '<div class="panel"><header><span class="eyebrow">Unsold — ' + unsold.length + '</span>' +
+      '<button class="mini" id="btnRecall">Return all to the pool</button></header>' +
+      '<div class="bars">' + unsold.map(p => '<div class="barrow" style="grid-template-columns:1fr auto auto;gap:8px">' +
+        '<span class="bl">' + esc(p.name) + '</span><span class="bv">' + moneyTight(p.base) + '</span>' +
+        '<button class="mini" data-act="block" data-id="' + p.id + '">Put up again</button></div>').join("") + '</div></div>' : "") +
+    (!sold.length && !unsold.length ? '<div class="empty" style="background:var(--card);border:1px solid var(--rule);padding:34px"><b>The gavel has not dropped yet</b>Results, spend and squad breakdowns appear here once players start selling.</div>' : "");
+}
+
+/* ==================================================================
+   9. RENDER — search dropdown + chrome
+   ================================================================== */
+const HINTS = ["role:bowler","country:india","set:M1","cap:uncapped","status:available","team:MUM","rating:>9.5","base:30"];
+function renderResultsList(){
+  const box = $("#results");
+  const q = state.query.trim();
+  if (!q){ closeResults(); return; }
+  const hits = runQuery(PLAYERS, q).sort((a,b) => b.hit.score - a.hit.score || a.p.sno - b.p.sno);
+  const shown = hits.slice(0, 12);
+  box.innerHTML =
+    '<div class="rhead"><span class="eyebrow">' + hits.length + ' match' + (hits.length === 1 ? "" : "es") + '</span>' +
+      '<span class="eyebrow">↑↓ to move · enter to put up</span></div>' +
+    (shown.length ? shown.map((r,i) => {
+      const p = r.p, m = setMeta(p.set);
+      const t = p.teamId ? state.teams.find(x => x.id === p.teamId) : null;
+      return '<button class="res' + (p.status === "sold" ? " is-gone" : "") + '" role="option" data-id="' + p.id + '" aria-selected="' + (i === selIdx) + '">' +
+        '<span class="rl" style="background:' + m.rail + '"></span>' +
+        '<span class="rname">' + highlight(p) + '</span>' +
+        '<span class="rmeta">' + esc(p.roleShort) + ' · ' + esc(p.country) + ' · ' + esc(p.set) +
+          (t ? ' · <b style="color:' + t.color + '">' + esc(t.code) + " " + moneyTight(p.price) + '</b>' : "") + '</span>' +
+        '<span class="rrating">' + p.rating + '</span></button>';
+    }).join("")
+      : '<div class="empty"><b>No player by that name</b>Try a surname, or a filter like <code>role:wk</code></div>') +
+    '<div class="hint"><span class="eyebrow">Filters</span>' + HINTS.map(h => '<code data-hint="' + h + '">' + h + '</code>').join("") + '</div>';
+  box.classList.add("open");
+  $("#q").setAttribute("aria-expanded", "true");
+}
+let selIdx = -1;
+function closeResults(){
+  $("#results").classList.remove("open");
+  $("#q").setAttribute("aria-expanded", "false");
+  selIdx = -1;
+}
+function renderChrome(){
+  const avail = PLAYERS.filter(p => p.status === "available").length;
+  const sold = PLAYERS.filter(p => p.status === "sold");
+  $("#mAvail").textContent = avail;
+  $("#mSold").textContent = sold.length;
+  $("#mUnsold").textContent = PLAYERS.filter(p => p.status === "unsold").length;
+  $("#mSpend").textContent = sold.length ? money(sold.reduce((a,p) => a + p.price, 0)).replace("₹","") : "—";
+  $("#tcPool").textContent = PLAYERS.length;
+  $("#tcTeams").textContent = state.teams.length;
+  $("#tcResults").textContent = sold.length;
+  $("#brandSub").textContent = "Player pool · " + PLAYERS.length + " registered · purse " + money(state.rules.purse) + " a team";
+  document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-selected", String(b.dataset.view === state.view)));
+  $("#view-pool").hidden = state.view !== "pool";
+  $("#view-teams").hidden = state.view !== "teams";
+  $("#view-results").hidden = state.view !== "results";
+  $("#filters").style.display = state.view === "pool" ? "" : "none";
+  document.querySelectorAll("th.sortable").forEach(th => {
+    if (th.dataset.sort === state.sortKey){ th.dataset.dir = state.sortDir > 0 ? "asc" : "desc"; th.querySelector(".ar").textContent = state.sortDir > 0 ? "▲" : "▼"; }
+    else th.removeAttribute("data-dir");
+  });
+}
+function render(){
+  // a bid rebuilds the block panel, so remember which control had focus and
+  // hand it back — otherwise keyboard bidding loses its place after every click
+  const a = document.activeElement;
+  const mark = (a && a.dataset && a.dataset.act)
+    ? {act:a.dataset.act, team:a.dataset.team || "", n:a.dataset.n || ""} : null;
+  renderChrome();
+  if (state.view === "pool") renderPool();
+  if (state.view === "teams") renderTeams();
+  if (state.view === "results") renderResults();
+  renderBlock();
+  renderLedger();
+  if (mark){
+    const sel = '[data-act="' + mark.act + '"]' +
+      (mark.team ? '[data-team="' + mark.team + '"]' : "") +
+      (mark.n ? '[data-n="' + mark.n + '"]' : "");
+    const el = document.querySelector(sel);
+    if (el && el.focus) el.focus();
+  }
+}
+
+/* ==================================================================
+   10. MODALS — player card, auction setup
+   ================================================================== */
+function openModal(html){
+  $("#modal").innerHTML = html;
+  $("#scrim").classList.add("open");
+  const f = $("#modal").querySelector("input,button:not(.x)");
+  if (f) f.focus();
+}
+function closeModal(){ $("#scrim").classList.remove("open"); }
+
+function playerCard(id){
+  const p = byId.get(id), m = setMeta(p.set);
+  const t = p.teamId ? state.teams.find(x => x.id === p.teamId) : null;
+  const keys = Object.keys(p.stats);
+  const statsHtml = keys.length
+    ? '<div class="kv">' + keys.map(k => '<div><div class="eyebrow">' + esc(k) + '</div><b>' + esc(p.stats[k]) + '</b></div>').join("") + '</div>'
+    : '<div class="pending"><b>Stats not loaded yet</b>Bring in a CSV or JSON with a name column and any stat columns you like — they land here and become searchable, e.g. <code>sr:&gt;140</code>.</div>';
+  openModal(
+    '<header style="--band:' + m.rail + '"><h2 id="modalTitle">' + esc(p.surname) + '<span>' + esc(p.first) + '</span></h2>' +
+      '<button class="x" data-act="close" aria-label="Close">✕</button></header>' +
+    '<div class="mbody">' +
+      '<div class="kv">' +
+        '<div><div class="eyebrow">Set</div><b>' + esc(p.set) + '</b><div class="eyebrow">' + esc(m.label) + '</div></div>' +
+        '<div><div class="eyebrow">Role</div><b>' + esc(p.role) + '</b></div>' +
+        '<div><div class="eyebrow">Country</div><b>' + esc(p.country) + (p.overseas ? " ✈" : "") + '</b></div>' +
+        '<div><div class="eyebrow">Status</div><b>' + esc(p.cap) + '</b></div>' +
+        '<div><div class="eyebrow">Base price</div><b>' + money(p.base) + '</b></div>' +
+        '<div><div class="eyebrow">Rating</div><b>' + p.rating + '</b></div>' +
+        '<div><div class="eyebrow">Sheet no.</div><b>' + p.sno + '</b></div>' +
+        '<div><div class="eyebrow">' + (p.status === "sold" ? "Sold for" : "Auction") + '</div><b>' +
+          (p.status === "sold" ? money(p.price) : p.status === "unsold" ? "Unsold" : "In the pool") + '</b>' +
+          (t ? '<div class="eyebrow">' + esc(t.name) + '</div>' : "") + '</div>' +
+      '</div>' +
+      '<div class="statsslot"><div class="eyebrow" style="margin-bottom:7px">Career stats</div>' + statsHtml + '</div>' +
+    '</div>' +
+    '<footer>' +
+      (p.status === "sold" ? '<button class="btn danger" data-act="release" data-id="' + p.id + '">Release to pool</button>' : "") +
+      '<button class="btn" data-act="close">Close</button>' +
+      (p.status !== "sold" ? '<button class="btn primary" data-act="block" data-id="' + p.id + '">Put on the block</button>' : "") +
+    '</footer>');
+}
+function setupModal(){
+  openModal(
+    '<header><h2 id="modalTitle">Auction setup<span>Purse, squad limits and teams</span></h2>' +
+      '<button class="x" data-act="close" aria-label="Close">✕</button></header>' +
+    '<div class="mbody">' +
+      '<div class="fieldrow"><label for="sPurse">Purse per team (₹ lakh)</label><input id="sPurse" type="number" min="100" step="100" value="' + state.rules.purse + '"></div>' +
+      '<div class="fieldrow"><label for="sMax">Maximum squad size</label><input id="sMax" type="number" min="1" max="40" value="' + state.rules.maxSquad + '"></div>' +
+      '<div class="fieldrow"><label for="sMin">Minimum squad size</label><input id="sMin" type="number" min="1" max="40" value="' + state.rules.minSquad + '"></div>' +
+      '<div class="fieldrow"><label for="sOs">Overseas players allowed</label><input id="sOs" type="number" min="0" max="15" value="' + state.rules.maxOverseas + '"></div>' +
+      '<div class="eyebrow" style="margin:14px 0 7px">Teams</div>' +
+      '<div id="teamEdit">' + state.teams.map(t =>
+        '<div class="fieldrow" data-tid="' + t.id + '">' +
+          '<input class="tname" value="' + esc(t.name) + '" aria-label="Team name" style="flex:2 1 auto">' +
+          '<input class="tcode" value="' + esc(t.code) + '" aria-label="Short code" maxlength="4" style="flex:0 0 66px;text-transform:uppercase">' +
+          '<input class="tcolor" type="color" value="' + t.color + '" aria-label="Team colour" style="flex:0 0 42px;padding:2px">' +
+          '<button class="mini warn" data-act="delTeam" data-tid="' + t.id + '" title="Remove team">✕</button></div>').join("") +
+      '</div>' +
+      '<button class="mini" data-act="addTeam">+ Add a team</button>' +
+      '<div class="statsslot"><div class="eyebrow" style="margin-bottom:7px">Danger zone</div>' +
+        '<button class="btn danger" data-act="resetAll">Clear every sale and start over</button></div>' +
+    '</div>' +
+    '<footer><button class="btn" data-act="close">Cancel</button>' +
+      '<button class="btn primary" data-act="saveSetup">Save setup</button></footer>');
+}
+function saveSetup(){
+  const purse = Math.max(100, +$("#sPurse").value || DEFAULT_RULES.purse);
+  const maxS  = Math.max(1, +$("#sMax").value || DEFAULT_RULES.maxSquad);
+  const minS  = Math.min(maxS, Math.max(1, +$("#sMin").value || DEFAULT_RULES.minSquad));
+  const os    = Math.max(0, +$("#sOs").value || 0);
+  const rows = [...document.querySelectorAll("#teamEdit .fieldrow")];
+  const teams = rows.map((r,i) => ({
+    id:+r.dataset.tid || (i+1),
+    name:r.querySelector(".tname").value.trim() || "Team " + (i+1),
+    code:(r.querySelector(".tcode").value.trim() || ("T" + (i+1))).toUpperCase().slice(0,4),
+    color:r.querySelector(".tcolor").value
+  }));
+  const gone = state.teams.filter(t => !teams.some(n => n.id === t.id)).map(t => t.id);
+  if (gone.length){
+    PLAYERS.forEach(p => { if (gone.includes(p.teamId)){ p.status = "available"; p.teamId = null; p.price = null; } });
+  }
+  state.rules = {purse, maxSquad:maxS, minSquad:minS, maxOverseas:os};
+  state.teams = teams;
+  closeModal(); render(); persist();
+  toast("Setup saved" + (gone.length ? " · released players from " + gone.length + " removed team(s)" : ""));
+}
+function resetAll(){
+  snapshot();
+  PLAYERS.forEach(p => { p.status = "available"; p.teamId = null; p.price = null; });
+  state.block = null; state.log = []; state.seq = 0;
+  closeModal(); render(); persist();
+  toast("Auction cleared — everyone is back in the pool");
+}
+
+/* ==================================================================
+   11. FILES — save/open, CSV export, stats import
+   ================================================================== */
+function download(name, text, type){
+  const blob = new Blob([text], {type:type || "application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+function stamp(){
+  const d = new Date();
+  const p = n => String(n).padStart(2,"0");
+  return d.getFullYear() + p(d.getMonth()+1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes());
+}
+function serialize(){
+  return JSON.stringify({
+    kind:"mock-auction-console", version:1, savedAt:new Date().toISOString(),
+    rules:state.rules, teams:state.teams, block:state.block, log:state.log, seq:state.seq,
+    statKeys:state.statKeys, statCols:state.statCols,
+    players:PLAYERS.map(p => ({id:p.id, name:p.name, status:p.status, teamId:p.teamId, price:p.price, stats:p.stats}))
+  }, null, 1);
+}
+function hydrate(data){
+  if (!data || !Array.isArray(data.players)) throw new Error("not an auction file");
+  if (data.rules) state.rules = {...DEFAULT_RULES, ...data.rules};
+  if (Array.isArray(data.teams) && data.teams.length) state.teams = data.teams;
+  state.block = data.block || null;
+  state.log = Array.isArray(data.log) ? data.log : [];
+  state.seq = data.seq || state.log.length;
+  state.statKeys = data.statKeys || [];
+  state.statCols = (data.statCols || []).filter(k => state.statKeys.includes(k));
+  const byName = new Map(PLAYERS.map(p => [norm(p.name), p]));
+  data.players.forEach(r => {
+    const p = byId.get(r.id) && byId.get(r.id).name === r.name ? byId.get(r.id) : byName.get(norm(r.name)) || byId.get(r.id);
+    if (!p) return;
+    p.status = r.status || "available"; p.teamId = r.teamId ?? null; p.price = r.price ?? null;
+    if (r.stats && typeof r.stats === "object") p.stats = r.stats;
+  });
+  refreshStatChips();
+}
+function exportCsv(){
+  const cols = ["S.No","Set No","Set","First Name","Surname","Country","Specialisation","C/UC","Base Price","Rating","Status","Sold To","Price"].concat(state.statKeys);
+  const q = v => { const s = String(v == null ? "" : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; };
+  const lines = [cols.join(",")];
+  PLAYERS.slice().sort((a,b) => a.sno - b.sno).forEach(p => {
+    const t = p.teamId ? state.teams.find(x => x.id === p.teamId) : null;
+    lines.push([p.sno, p.setNo, p.set, p.first, p.surname, p.country, p.role, p.cap, p.base, p.rating,
+      p.status, t ? t.name : "", p.price == null ? "" : p.price]
+      .concat(state.statKeys.map(k => p.stats[k])).map(q).join(","));
+  });
+  download("auction-results-" + stamp() + ".csv", lines.join("\n"), "text/csv");
+  toast("CSV exported<span class='m'>" + PLAYERS.length + " rows</span>");
+}
+function parseCsv(text){
+  const rows = []; let row = [], cell = "", inQ = false;
+  for (let i = 0; i < text.length; i++){
+    const c = text[i];
+    if (inQ){
+      if (c === '"' && text[i+1] === '"'){ cell += '"'; i++; }
+      else if (c === '"') inQ = false;
+      else cell += c;
+    } else if (c === '"') inQ = true;
+    else if (c === ","){ row.push(cell); cell = ""; }
+    else if (c === "\n"){ row.push(cell); rows.push(row); row = []; cell = ""; }
+    else if (c !== "\r") cell += c;
+  }
+  if (cell !== "" || row.length){ row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(c => String(c).trim() !== ""));
+}
+/* Stats arrive later: any table with a name column merges in by name. */
+function mergeStats(records){
+  const byName = new Map(), bySur = new Map();
+  PLAYERS.forEach(p => {
+    byName.set(norm(p.name), p);
+    byName.set(norm(p.surname + " " + p.first), p);
+    const k = norm(p.surname);
+    bySur.set(k, bySur.has(k) ? null : p);         // null marks an ambiguous surname
+  });
+  let hit = 0; const missed = []; const keys = new Set(state.statKeys);
+  records.forEach(rec => {
+    const nameKey = Object.keys(rec).find(k => /^(player|name|full ?name|player ?name)$/i.test(k.trim()));
+    let who = nameKey ? rec[nameKey] : null;
+    if (!who){
+      const f = Object.keys(rec).find(k => /^first/i.test(k)), s = Object.keys(rec).find(k => /^(sur|last)/i.test(k));
+      if (f && s) who = rec[f] + " " + rec[s];
+    }
+    if (!who) return;
+    const n = norm(who);
+    const p = byName.get(n) || bySur.get(n) || null;
+    if (!p){ missed.push(String(who).trim()); return; }
+    Object.keys(rec).forEach(k => {
+      const kk = k.trim();
+      if (!kk || /^(player|name|full ?name|player ?name|first ?name|sur ?name|last ?name)$/i.test(kk)) return;
+      const v = String(rec[k]).trim();
+      if (v === "") return;
+      p.stats[kk] = v; keys.add(kk);
+    });
+    hit++;
+  });
+  state.statKeys = [...keys];
+  refreshStatChips(); render(); persist();
+  toast("Stats merged for " + hit + " players" + (missed.length ? "<span class='m'>" + missed.length + " unmatched</span>" : ""),
+        hit ? "" : "err");
+  if (missed.length) console.warn("Unmatched names from the stats file:", missed);
+}
+function importFile(file){
+  const fr = new FileReader();
+  fr.onload = () => {
+    const text = String(fr.result);
+    try {
+      if (/^\s*[[{]/.test(text)){
+        const j = JSON.parse(text);
+        if (j && j.kind === "mock-auction-console"){ hydrate(j); render(); persist(); toast("Auction file opened"); return; }
+        const recs = Array.isArray(j) ? j
+          : Object.keys(j).map(k => Object.assign({name:k}, typeof j[k] === "object" ? j[k] : {value:j[k]}));
+        mergeStats(recs);
+      } else {
+        const rows = parseCsv(text);
+        if (rows.length < 2) throw new Error("needs a header row and at least one data row");
+        const head = rows[0].map(h => h.trim());
+        mergeStats(rows.slice(1).map(r => { const o = {}; head.forEach((h,i) => o[h] = r[i]); return o; }));
+      }
+    } catch (e){ toast("Could not read that file — " + esc(e.message), "err"); }
+  };
+  fr.readAsText(file);
+}
+function refreshStatChips(){
+  let g = $("#fStats");
+  if (!state.statKeys.length){ if (g) g.remove(); return; }
+  if (!g){
+    g = document.createElement("div");
+    g.className = "fgroup"; g.id = "fStats";
+    g.innerHTML = '<span class="eyebrow">Stat columns</span>';
+    $("#filters").insertBefore(g, $("#filters .push"));
+  }
+  g.querySelectorAll(".chip").forEach(c => c.remove());
+  state.statKeys.forEach(k => {
+    const b = document.createElement("button");
+    b.className = "chip"; b.dataset.stat = k;
+    b.setAttribute("aria-pressed", String(state.statCols.includes(k)));
+    b.textContent = k;
+    g.appendChild(b);
+  });
+}
+
+/* ==================================================================
+   12. PERSISTENCE  (best effort — never throws)
+   ================================================================== */
+const KEY = "mock-auction-console-v1";
+const store = {
+  get(){ try { return window.localStorage.getItem(KEY); } catch (e){ return null; } },
+  set(v){ try { window.localStorage.setItem(KEY, v); } catch (e){ /* private mode: session-only */ } }
+};
+let persistTimer = null;
+function persist(){
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => store.set(serialize()), 220);
+}
+function restore(){
+  const raw = store.get();
+  if (!raw) return false;
+  try { hydrate(JSON.parse(raw)); return true; } catch (e){ return false; }
+}
+
+/* ==================================================================
+   13. WIRING
+   ================================================================== */
+function buildFilterChips(){
+  const mk = (host, items, key) => {
+    items.forEach(([val, label]) => {
+      const b = document.createElement("button");
+      b.className = "chip"; b.dataset.fkey = key; b.dataset.fval = val;
+      b.setAttribute("aria-pressed", String(state.filters[key] === val));
+      b.textContent = label;
+      $(host).appendChild(b);
+    });
+  };
+  mk("#fStatus", [["all","All"],["available","In pool"],["sold","Sold"],["unsold","Unsold"]], "status");
+  mk("#fRole", [["all","All"],["BAT","Bat"],["BOWL","Bowl"],["AR","All-r"],["WK","Keep"]], "role");
+  mk("#fCap", [["all","All"],["Capped","Capped"],["Uncapped","Uncapped"]], "cap");
+
+  const sets = [...new Set(PLAYERS.map(p => p.set))];
+  $("#fSet").innerHTML = '<option value="all">All sets</option>' + sets.map(s =>
+    '<option value="' + s + '">' + s + " · " + esc(setMeta(s).label) + " (" + PLAYERS.filter(p => p.set === s).length + ")</option>").join("");
+  const countries = [...new Set(PLAYERS.map(p => p.country))].sort();
+  $("#fCountry").innerHTML = '<option value="all">All countries</option>' + countries.map(c =>
+    '<option value="' + esc(c) + '">' + esc(c) + " (" + PLAYERS.filter(p => p.country === c).length + ")</option>").join("");
+}
+function syncChips(){
+  document.querySelectorAll("[data-fkey]").forEach(b =>
+    b.setAttribute("aria-pressed", String(state.filters[b.dataset.fkey] === b.dataset.fval)));
+}
+
+document.addEventListener("click", ev => {
+  const hintEl = ev.target.closest("[data-hint]");
+  if (hintEl){
+    const q = $("#q");
+    q.value = (q.value.trim() + " " + hintEl.dataset.hint).trim() + " ";
+    state.query = q.value; $("#searchbar").classList.add("has-q");
+    renderResultsList(); renderPool(); q.focus();
+    return;
+  }
+  const chip = ev.target.closest("[data-fkey]");
+  if (chip){ state.filters[chip.dataset.fkey] = chip.dataset.fval; syncChips(); renderPool(); return; }
+
+  const statChip = ev.target.closest("[data-stat]");
+  if (statChip){
+    const k = statChip.dataset.stat;
+    state.statCols = state.statCols.includes(k) ? state.statCols.filter(x => x !== k) : state.statCols.concat(k);
+    statChip.setAttribute("aria-pressed", String(state.statCols.includes(k)));
+    renderPool(); persist(); return;
+  }
+  const tab = ev.target.closest(".tab");
+  if (tab){ state.view = tab.dataset.view; render(); return; }
+
+  const res = ev.target.closest(".res");
+  if (res){ putOnBlock(+res.dataset.id); return; }
+
+  const act = ev.target.closest("[data-act]");
+  if (act){
+    const a = act.dataset.act, id = +act.dataset.id;
+    if (a === "block"){ putOnBlock(id); closeModal(); if (state.view !== "pool"){ state.view = "pool"; render(); } }
+    else if (a === "card") playerCard(id);
+    else if (a === "release"){ releaseFromTeam(id); closeModal(); }
+    else if (a === "bid") bidFor(+act.dataset.team);
+    else if (a === "raise") raiseAsk(+act.dataset.n);
+    else if (a === "raiseCustom"){ const v = +($("#customRaise")||{}).value; if (v > 0) raiseAsk(v); }
+    else if (a === "sell") sell();
+    else if (a === "pass") pass();
+    else if (a === "close") closeModal();
+    else if (a === "saveSetup") saveSetup();
+    else if (a === "resetAll") resetAll();
+    else if (a === "addTeam"){
+      const host = $("#teamEdit"), n = host.children.length + 1;
+      const d = document.createElement("div");
+      d.className = "fieldrow"; d.dataset.tid = String(Date.now() % 100000);
+      d.innerHTML = '<input class="tname" value="Team ' + n + '" aria-label="Team name" style="flex:2 1 auto">' +
+        '<input class="tcode" value="T' + n + '" aria-label="Short code" maxlength="4" style="flex:0 0 66px;text-transform:uppercase">' +
+        '<input class="tcolor" type="color" value="#3C6FA8" aria-label="Team colour" style="flex:0 0 42px;padding:2px">' +
+        '<button class="mini warn" data-act="delTeam">✕</button>';
+      host.appendChild(d);
+    }
+    else if (a === "delTeam") act.closest(".fieldrow").remove();
+    return;
+  }
+  if (ev.target.id === "btnRecall"){
+    snapshot();
+    PLAYERS.filter(p => p.status === "unsold").forEach(p => p.status = "available");
+    logIt("note", "unsold players returned to the pool", null);
+    render(); persist(); toast("Unsold players are back in the pool");
+    return;
+  }
+  if (ev.target.id === "scrim") closeModal();
+  if (!ev.target.closest(".searchwrap")) closeResults();
+});
+
+$("#q").addEventListener("input", e => {
+  state.query = e.target.value;
+  $("#searchbar").classList.toggle("has-q", !!state.query);
+  selIdx = -1;
+  renderResultsList();
+  if (state.view === "pool") renderPool();
+});
+$("#qClear").addEventListener("click", () => {
+  $("#q").value = ""; state.query = ""; $("#searchbar").classList.remove("has-q");
+  closeResults(); renderPool(); $("#q").focus();
+});
+$("#q").addEventListener("keydown", e => {
+  const opts = [...document.querySelectorAll("#results .res")];
+  if (e.key === "ArrowDown" || e.key === "ArrowUp"){
+    if (!opts.length) return;
+    e.preventDefault();
+    selIdx = (selIdx + (e.key === "ArrowDown" ? 1 : -1) + opts.length) % opts.length;
+    opts.forEach((o,i) => o.setAttribute("aria-selected", String(i === selIdx)));
+    opts[selIdx].scrollIntoView({block:"nearest"});
+  } else if (e.key === "Enter"){
+    const pick = opts[selIdx >= 0 ? selIdx : 0];
+    if (pick){ e.preventDefault(); putOnBlock(+pick.dataset.id); $("#q").blur(); }
+  } else if (e.key === "Escape"){ closeResults(); }
+});
+document.addEventListener("keydown", e => {
+  const inField = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
+  if (e.key === "Escape" && $("#scrim").classList.contains("open")) closeModal();
+  if (inField || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "/"){ e.preventDefault(); $("#q").focus(); $("#q").select(); }
+  else if (e.key === "s") sell();
+  else if (e.key === "u") pass();
+  else if (e.key === "z") undo();
+  else if (e.key === "+" || e.key === "=") raiseAsk(state.block ? incrementFor(state.block.bid) : 0);
+});
+document.querySelectorAll("th.sortable").forEach(th => th.addEventListener("click", () => {
+  const k = th.dataset.sort;
+  if (state.sortKey === k) state.sortDir *= -1;
+  else { state.sortKey = k; state.sortDir = (k === "rating" || k === "base" || k === "price") ? -1 : 1; }
+  renderChrome(); renderPool();
+}));
+$("#fSet").addEventListener("change", e => { state.filters.set = e.target.value; renderPool(); });
+$("#fCountry").addEventListener("change", e => { state.filters.country = e.target.value; renderPool(); });
+$("#fRate").addEventListener("input", e => {
+  state.filters.minRating = +e.target.value;
+  $("#fRateOut").textContent = (+e.target.value).toFixed(2);
+  renderPool();
+});
+$("#fReset").addEventListener("click", () => {
+  state.filters = {status:"all", role:"all", cap:"all", set:"all", country:"all", minRating:8};
+  state.query = ""; $("#q").value = ""; $("#searchbar").classList.remove("has-q");
+  $("#fSet").value = "all"; $("#fCountry").value = "all"; $("#fRate").value = 8; $("#fRateOut").textContent = "8.00";
+  syncChips(); closeResults(); renderPool();
+});
+$("#btnUndo").addEventListener("click", undo);
+$("#btnSetup").addEventListener("click", setupModal);
+$("#btnCsv").addEventListener("click", exportCsv);
+$("#btnSave").addEventListener("click", () => {
+  download("auction-" + stamp() + ".json", serialize());
+  toast("Auction saved to a file");
+});
+$("#btnLoad").addEventListener("click", () => $("#filePick").click());
+$("#btnStats").addEventListener("click", () => $("#filePick").click());
+$("#filePick").addEventListener("change", e => {
+  const f = e.target.files && e.target.files[0];
+  if (f) importFile(f);
+  e.target.value = "";
+});
+$("#btnClearLog").addEventListener("click", () => {
+  snapshot(); state.log = []; state.seq = 0; renderLedger(); persist();
+});
+
+/* boot */
+buildFilterChips();
+const restored = restore();
+render();
+if (restored) toast("Picked up where you left off<span class='m'>press z to undo</span>");
+if (!state.block) autoAdvance();
+
+</script>
+</body>
+</html>

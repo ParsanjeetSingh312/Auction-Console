@@ -26,6 +26,7 @@ if package_root not in sys.path:
 from config.env_check import check_environment, log_report
 from config.settings import get_settings
 from api.routes import router as api_router
+from api.routes_scout import router as scout_router
 from auction.room import room as auction_room
 from auction.ws import router as auction_router
 
@@ -91,6 +92,20 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
 
     yield
+
+    # Release SCOUT's checkpointer.
+    #
+    # aiosqlite runs its connection on a thread that is NOT a daemon, so a
+    # process that never closes it never exits -- it finishes serving, returns
+    # from the loop, and then sits there looking hung. Under `uvicorn --reload`
+    # that means every reload leaks a thread and eventually the port.
+    try:
+        from scout.graph.workflow import aclose as scout_aclose
+
+        await scout_aclose()
+        logger.info("SCOUT checkpointer closed")
+    except Exception as exc:  # noqa: BLE001 - shutdown must not raise
+        logger.warning("Could not close the SCOUT checkpointer: %s", exc)
     
     logger.info("IPL Auction RAG Backend shutting down...")
 
@@ -124,6 +139,11 @@ app.include_router(api_router)
 # REST views of the same state. Registered here for the same reason as the API
 # router - before the SPA catch-all, so its paths are never swallowed.
 app.include_router(auction_router)
+
+# SCOUT: the orchestration layer. A router on this app rather than a second
+# service, so it shares this port, this CORS configuration and this process --
+# and so the console keeps talking to exactly one origin.
+app.include_router(scout_router)
 
 
 # ---------------------------------------------------------------------------

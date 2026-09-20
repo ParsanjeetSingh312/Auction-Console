@@ -44,10 +44,19 @@ import asyncio
 import copy
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 logger = logging.getLogger("auction.room")
+
+
+def _current_task() -> "asyncio.Task[Any] | None":
+    """`asyncio.current_task()` outside a running loop, without the exception."""
+    try:
+        return asyncio.current_task()
+    except RuntimeError:
+        return None
 
 # --------------------------------------------------------------------- #
 # Rules, transcribed from the client
@@ -56,6 +65,28 @@ logger = logging.getLogger("auction.room")
 BASE_PRICE_FLOOR = 30  # format.ts BASE_PRICE_FLOOR
 MAX_LOG = 400
 MAX_UNDO = 60
+
+# --------------------------------------------------------------------- #
+# The clock
+#
+# Four numbers, and between them they are the whole of the bidding lifecycle.
+#
+#   OPEN_SECONDS      a lot with no bid on it. Lapses into UNSOLD.
+#   CLOSE_SECONDS     a lot with a bid standing. Lapses into SOLD.
+#   TIMEOUT_SECONDS   a franchise has spent a lifeline. The thirty seconds are
+#                     the thinking window, so lapsing also means SOLD -- a
+#                     strategy timer nobody answered is still nobody answering.
+#   TIMEOUTS_PER_TEAM how many of those a franchise gets for the whole auction.
+#
+# They are carried in `rules` and broadcast, not compiled into the client,
+# because the dial, the lifeline counter and the room must not be able to
+# disagree about how long seven seconds is.
+# --------------------------------------------------------------------- #
+
+OPEN_SECONDS = 7
+CLOSE_SECONDS = 7
+TIMEOUT_SECONDS = 30
+TIMEOUTS_PER_TEAM = 3
 
 DEFAULT_TEAMS: list[dict[str, Any]] = [
     {"id": 1, "name": "Mumbai", "code": "MUM", "color": "#123E8C"},
@@ -75,6 +106,10 @@ DEFAULT_RULES = {
     "max_squad": 25,
     "min_squad": 18,
     "max_overseas": 8,
+    "open_seconds": OPEN_SECONDS,
+    "close_seconds": CLOSE_SECONDS,
+    "timeout_seconds": TIMEOUT_SECONDS,
+    "timeouts_per_team": TIMEOUTS_PER_TEAM,
 }
 
 # Playing XI shape. Not a hard constraint of the auction -- it is how the
@@ -141,6 +176,22 @@ class Record:
     price: int | None = None
 
 
+# What a running countdown means, and the switch `_fire` turns on.
+#
+#   opening   nobody has bid yet. Lapses into UNSOLD.
+#   closing   a bid stands. Lapses into SOLD, to the highest bidder, however
+#             many franchises are still in the contest.
+#   timeout   a lifeline is burning. Settles exactly as `closing` does.
+#
+# There is deliberately no state in which a lot stops having a deadline. An
+# earlier draft held a contested lot open until every rival withdrew, which
+# read well and worked badly: five franchises bidding on one player produced a
+# lot that no amount of waiting would settle, and the auctioneer had to close
+# every contested lot by hand. The buffer settles the lot; withdrawing only
+# gets there sooner.
+Clock = Literal["opening", "closing", "timeout"]
+
+
 @dataclass
 class Lot:
     player_id: int
@@ -149,6 +200,17 @@ class Lot:
     # Bumped on every change to this lot. A bid quoting an older value is
     # answering a question the room has already moved past.
     version: int = 0
+    # The countdown. None only while the auctioneer holds the lot manually --
+    # which cannot currently happen, but a lot without a clock has to be a
+    # representable state or every read of `deadline` needs a special case.
+    clock: Clock | None = None
+    # Unix time the countdown fires.
+    deadline: float | None = None
+    # The franchise whose lifeline is burning, while `clock` is "timeout".
+    timeout_by: int | None = None
+    # Franchises that have bid on this lot and not withdrawn. One is an
+    # uncontested lot the clock may settle; two or more is a live contest.
+    contenders: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -168,6 +230,10 @@ class Snapshot:
     log: list[dict[str, Any]]
     seq: int
     phase: str
+    # Lifelines are part of what undo has to put back: reversing the sale that
+    # a timeout was spent defending, and not returning the timeout, would quietly
+    # charge a franchise for an action the room has just agreed did not happen.
+    timeouts: dict[int, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -199,8 +265,19 @@ class AuctionRoom:
     seats: dict[str, Seat] = field(default_factory=dict)
     undo_stack: list[Snapshot] = field(default_factory=list)
 
+    # team_id -> strategic buffers not yet spent, for this auction.
+    timeouts: dict[int, int] = field(default_factory=dict)
+
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     _loaded: bool = False
+
+    # The clock. One task, one token, one way to speak -- see "The clock" below.
+    _clock_task: asyncio.Task[None] | None = field(default=None, repr=False)
+    _clock_token: int = field(default=0, repr=False)
+    _broadcast: Callable[[], Awaitable[None]] | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        self._refill_timeouts()
 
     # ---------------------------------------------------------------- #
     # Roster
@@ -445,9 +522,201 @@ class AuctionRoom:
                 log=list(self.log),
                 seq=self.seq,
                 phase=self.phase,
+                timeouts=dict(self.timeouts),
             )
         )
         del self.undo_stack[:-MAX_UNDO]
+
+    # ---------------------------------------------------------------- #
+    # The clock
+    #
+    # A lot is never just a price any more; it is a price with a deadline. One
+    # `asyncio.Task` holds that deadline and `_arm` is the only thing that
+    # starts one, so "what is the room waiting for?" has a single answer
+    # instead of four.
+    #
+    # It is one deadline with a label rather than three timers on purpose.
+    # Three timers is three cancellation paths and three chances to leave one
+    # running behind a lot that has already sold. `lot.clock` says what the
+    # countdown *means* and `_fire` is a switch on it and nothing else.
+    #
+    # **The staleness guard.** `_clock_token` is bumped by every arm and every
+    # disarm. A task quotes the token it was spawned with, and is checked
+    # against the room's *after* taking the lock -- so a bid that landed in the
+    # microseconds between the sleep expiring and the lock being granted voids
+    # the settlement rather than racing it. Cancellation alone cannot do this:
+    # a task already past its sleep and queued on the lock is not cancellable,
+    # and would otherwise wake and sell a lot somebody had just bid on. Same
+    # argument as `lot.version` for bids -- the lock decides who goes first,
+    # the token decides whether going first still meant anything.
+    # ---------------------------------------------------------------- #
+
+    def set_broadcaster(self, broadcast: Callable[[], Awaitable[None]]) -> None:
+        """
+        Install the function the clock speaks through.
+
+        Every other change in this module is made and returned, and `ws.py`
+        decides who is told. A settlement the *clock* made has no request to
+        answer, so it needs its own way out. One callable, installed once, is
+        the smallest hole to cut for that; leaving it None keeps every rule
+        here testable without a socket.
+        """
+        self._broadcast = broadcast
+
+    def _refill_timeouts(self) -> None:
+        """Every franchise back to a full set of lifelines."""
+        self.timeouts = {t["id"]: self.rules["timeouts_per_team"] for t in self.teams}
+
+    def timeouts_left(self, team_id: int) -> int:
+        return self.timeouts.get(team_id, self.rules["timeouts_per_team"])
+
+    def _arm(self, clock: Clock, seconds: float) -> None:
+        """Start the countdown, replacing whatever was running. Lock held."""
+        if self.lot is None:
+            return
+        self._clock_token += 1
+        self.lot.clock = clock
+        self.lot.deadline = time.time() + seconds
+        self._spawn(self._clock_token, seconds)
+
+    def _disarm(self) -> None:
+        """Stop the countdown. Lock held. Safe when nothing is armed."""
+        self._clock_token += 1
+        task, self._clock_task = self._clock_task, None
+        # Never cancel the task we are running inside: `_fire` reaches here
+        # through `_hammer_down`, and a task cancelling itself raises at its
+        # next await instead of finishing the sale it is in the middle of.
+        if task is not None and task is not _current_task():
+            task.cancel()
+        if self.lot is not None:
+            self.lot.clock = None
+            self.lot.deadline = None
+            self.lot.timeout_by = None
+
+    def _spawn(self, token: int, seconds: float) -> None:
+        task, self._clock_task = self._clock_task, None
+        if task is not None and task is not _current_task():
+            task.cancel()
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No loop -- a synchronous test driving the room directly. Every
+            # rule still holds; only automatic settlement is absent, and the
+            # auctioneer's gavel settles the lot exactly as it always did.
+            return
+        self._clock_task = loop.create_task(self._run_clock(token, seconds))
+
+    async def _run_clock(self, token: int, seconds: float) -> None:
+        try:
+            await asyncio.sleep(seconds)
+        except asyncio.CancelledError:
+            return
+
+        async with self._lock:
+            if token != self._clock_token or self.lot is None or self.phase != "live":
+                return  # superseded -- a bid, a timeout, or the gavel got here first
+            self._fire()
+
+        # Outside the lock: broadcasting is I/O to an arbitrary number of
+        # sockets, and holding the auction still for it would let one slow peer
+        # delay everybody else's next bid.
+        await self._announce()
+
+    def _fire(self) -> None:
+        """The countdown lapsed. Lock held, lot present, phase live."""
+        assert self.lot is not None
+        if self.lot.clock == "opening":
+            self._pass_over("no bid in %ds" % self.rules["open_seconds"])
+            return
+
+        # "closing" and "timeout" both lapse into a sale, however many
+        # franchises are in the contest. Seven seconds of silence from all of
+        # them is the room agreeing, and the highest bid is what it agreed to.
+        try:
+            self._hammer_down(how="on the clock")
+        except RoomError as exc:
+            # The standing bidder can no longer take the lot. It should not be
+            # reachable -- a bid is checked on the way in and nothing between
+            # then and here spends a purse -- but an exception escaping into a
+            # background task would freeze the lot with nobody to tell.
+            logger.warning("clock could not settle lot: %s", exc.message)
+            self._pass_over(exc.message)
+
+    def _hammer_down(self, *, how: str | None = None, checkpoint: bool = True) -> None:
+        """
+        Knock the lot down to the standing bidder. Lock held, lot present.
+
+        Shared by the auctioneer's gavel, the clock and a resolving withdrawal,
+        so no two of them can settle a lot differently. It raises rather than
+        returning a failure: the gavel has a client to answer and the clock has
+        a fallback, and neither wants a silent no-op.
+
+        `checkpoint=False` is for a caller that has already taken one. A
+        withdrawal that ends a contest is *one* action and must cost *one*
+        undo: without this, `withdraw` would snapshot before removing the
+        contender and this would snapshot again after, so the auctioneer's
+        first undo would land in a half-applied state -- the sale reversed but
+        the withdrawal still standing -- and only the second would get back to
+        the contest. An undo that needs pressing twice to mean anything is
+        worse than no undo, because the intermediate state looks legitimate.
+        """
+        lot = self.lot
+        assert lot is not None
+        if lot.bidder_id is None:
+            raise RoomError("No bids — mark it unsold instead.", about="sell")
+
+        player = self.players[lot.player_id]
+        team = self.team_by_id(lot.bidder_id)
+
+        # Re-check legality at the hammer. It cannot fail in this design, but a
+        # rule enforced only on the way in is a rule waiting to be bypassed.
+        blocked = self.blocked_reason(lot.bidder_id, player, lot.bid)
+        if blocked:
+            raise RoomError(
+                f"{team['name']} cannot take this lot: {blocked}", about="sell"
+            )
+
+        # Taken only after every refusal above, so a raised hammer leaves no
+        # orphan snapshot on the undo stack.
+        if checkpoint:
+            self._checkpoint()
+        self.records[player.id] = Record(
+            status="sold", team_id=lot.bidder_id, price=lot.bid
+        )
+        self._append(
+            "sold",
+            f"{player.name} → {team['code']}" + (f" {how}" if how else ""),
+            lot.bid,
+        )
+        self._disarm()
+        self.lot = None
+        self.version += 1
+
+    def _pass_over(self, why: str | None = None, *, checkpoint: bool = True) -> None:
+        """
+        Mark the lot unsold. Lock held, lot present.
+
+        `checkpoint=False` as in `_hammer_down`: one action, one undo entry.
+        """
+        lot = self.lot
+        assert lot is not None
+        player = self.players[lot.player_id]
+        if checkpoint:
+            self._checkpoint()
+        self.records[player.id] = Record(status="unsold")
+        self._append("unsold", f"{player.name} unsold" + (f" — {why}" if why else ""))
+        self._disarm()
+        self.lot = None
+        self.version += 1
+
+    async def _announce(self) -> None:
+        """Tell every client what the clock just did."""
+        if self._broadcast is None:
+            return
+        try:
+            await self._broadcast()
+        except Exception:
+            logger.exception("clock broadcast failed")
 
     # ---------------------------------------------------------------- #
     # Auctioneer actions
@@ -512,47 +781,35 @@ class AuctionRoom:
             self.lot = Lot(player_id=player_id, bid=player.base, bidder_id=None, version=0)
             record.status = "available"
             self._append("note", f"{player.name} on the block", player.base)
+            # The clock starts the instant the player appears, not when the
+            # auctioneer gets round to asking for bids. That is the point of
+            # the rule: an unwanted lot costs the room seven seconds, not
+            # however long it takes somebody to decide nobody wants him.
+            self._arm("opening", self.rules["open_seconds"])
             self.version += 1
 
     async def sell(self, client_id: str) -> None:
+        """
+        The gavel, brought down early.
+
+        The clock would settle this lot on its own within seven seconds, so
+        this is now an override rather than the only way a lot closes: an
+        auctioneer who can see the room has finished bidding should not have to
+        wait out a buffer nobody is going to use.
+        """
         self._require_auctioneer(client_id, "sell a lot")
         async with self._lock:
             if not self.lot:
                 raise RoomError("Nothing is on the block.", about="sell")
-            if self.lot.bidder_id is None:
-                raise RoomError(
-                    "No bids — mark it unsold instead.", about="sell"
-                )
-
-            player = self.players[self.lot.player_id]
-            team = self.team_by_id(self.lot.bidder_id)
-
-            # Re-check legality at the hammer. The squad may have filled since
-            # the bid was accepted -- it cannot in this design, but a rule that
-            # is only enforced on the way in is a rule waiting to be bypassed.
-            blocked = self.blocked_reason(self.lot.bidder_id, player, self.lot.bid)
-            if blocked:
-                raise RoomError(f"{team['name']} cannot take this lot: {blocked}", about="sell")
-
-            self._checkpoint()
-            self.records[player.id] = Record(
-                status="sold", team_id=self.lot.bidder_id, price=self.lot.bid
-            )
-            self._append("sold", f"{player.name} → {team['code']}", self.lot.bid)
-            self.lot = None
-            self.version += 1
+            self._hammer_down()
 
     async def mark_unsold(self, client_id: str) -> None:
+        """Pass over the lot now, rather than waiting for the opening buffer."""
         self._require_auctioneer(client_id, "mark a lot unsold")
         async with self._lock:
             if not self.lot:
                 raise RoomError("Nothing is on the block.", about="unsold")
-            player = self.players[self.lot.player_id]
-            self._checkpoint()
-            self.records[player.id] = Record(status="unsold")
-            self._append("unsold", f"{player.name} unsold")
-            self.lot = None
-            self.version += 1
+            self._pass_over()
 
     async def undo(self, client_id: str) -> None:
         self._require_auctioneer(client_id, "undo")
@@ -565,6 +822,21 @@ class AuctionRoom:
             self.log = snap.log
             self.seq = snap.seq
             self.phase = snap.phase  # type: ignore[assignment]
+            if snap.timeouts:
+                self.timeouts = dict(snap.timeouts)
+
+            # The restored deadline is in the past by definition, so it is not
+            # restored -- a lot handed back with 0.2 seconds on it would settle
+            # again before anyone in the room could react to seeing it return.
+            # The buffer it gets is a fresh full one, matched to whether a bid
+            # stands on it.
+            self._disarm()
+            if self.lot is not None and self.phase == "live":
+                if self.lot.bidder_id is not None:
+                    self._arm("closing", self.rules["close_seconds"])
+                else:
+                    self._arm("opening", self.rules["open_seconds"])
+
             self._note("Undone")
             self.version += 1
 
@@ -574,6 +846,7 @@ class AuctionRoom:
             if self.phase == "finished":
                 raise RoomError("Already finished.", about="finish")
             self._checkpoint()
+            self._disarm()
             self.phase = "finished"
             self.lot = None
             self._note("Auction closed")
@@ -588,18 +861,30 @@ class AuctionRoom:
         run would be a worse experience than the reset is worth. The undo stack
         goes, because undoing across a reset would restore an auction that no
         longer exists.
+
+        What it clears, in the order the client cares about: the lot and any
+        bid standing on it, the clock running underneath it, every franchise's
+        lifelines, every player's status back to available -- which is what
+        restores the purses, since a purse here is derived from what a
+        franchise has bought and never stored -- and the ledger.
         """
         self._require_auctioneer(client_id, "reset the room")
         async with self._lock:
+            # Disarmed first. A clock left running across a reset would wake up
+            # inside a fresh lobby holding a token from the auction before it;
+            # the token check would refuse it, but stopping the task is honest
+            # where relying on the guard is merely lucky.
+            self._disarm()
             for pid in self.records:
                 self.records[pid] = Record()
             self.lot = None
             self.log = []
             self.seq = 0
             self.undo_stack = []
+            self._refill_timeouts()
             self.phase = "lobby"
             self.countdown_ends_at = None
-            self._note("Room reset")
+            self._note("Room reset — pool, purses and lifelines restored")
             self.version += 1
 
     # ---------------------------------------------------------------- #
@@ -672,8 +957,184 @@ class AuctionRoom:
                 f"{team['code']} {'jumps to' if jump else 'bids'}",
                 target,
             )
+
+            # Bidding puts you in the contest, and stays that way until you
+            # withdraw. It is what the clock consults before knocking a lot
+            # down: one contender is a lot the buffer may settle, two is a
+            # contest that only a withdrawal resolves.
+            if team_id not in self.lot.contenders:
+                self.lot.contenders.append(team_id)
+
+            # Every bid resets the buffer to a full seven seconds, from
+            # whichever clock was running -- a timeout somebody just spent a
+            # lifeline on. That is the intended trade: a
+            # lifeline buys the room thirty seconds to think, and the moment
+            # somebody acts on the thinking, the ordinary rule resumes.
+            self._arm("closing", self.rules["close_seconds"])
+
             self.version += 1
             return target
+
+    # ---------------------------------------------------------------- #
+    # Withdrawal
+    # ---------------------------------------------------------------- #
+
+    async def withdraw(self, client_id: str) -> int:
+        """
+        Step out of the contest for the lot on the block.
+
+        Withdrawing is an accelerator, never a block. The seven-second buffer
+        settles every lot on its own; stepping out only says "do not wait for
+        me", and once everybody but the standing bidder has said it there is
+        nothing left to wait for, so the lot goes at once instead of sitting
+        out a buffer nobody is going to use.
+
+        It replaces a workaround rather than adding a feature. Before this, the
+        only way to signal "I am done with this player" was to leave the seat --
+        which drops the socket, frees the franchise for anyone to claim, and
+        says something far broader than was meant. A withdrawal is per-lot and
+        costs nothing: the next player puts every franchise back in contention.
+
+        Two refusals, both rules:
+
+        **You must be in the contest.** Withdrawing from a player you never bid
+        on communicates nothing the room does not already know, and a log full
+        of them would bury the withdrawals that mean something.
+
+        **The leader may not withdraw.** Stepping back from your own standing
+        bid is retracting it, which is a different act with different
+        consequences for the ladder -- and one the auctioneer's undo exists for.
+
+        Returns how many contenders remain.
+        """
+        seat = self._require_franchise(client_id, "withdraw")
+        team_id = seat.team_id
+        assert team_id is not None  # guaranteed by _require_franchise
+
+        async with self._lock:
+            if self.phase != "live":
+                raise RoomError("The auction is not running.", about="withdraw")
+            if not self.lot:
+                raise RoomError("Nothing is on the block.", about="withdraw")
+            if team_id not in self.lot.contenders:
+                raise RoomError(
+                    "You are not in this contest — you have not bid on this lot.",
+                    about="withdraw",
+                )
+            if self.lot.bidder_id == team_id:
+                raise RoomError(
+                    "You hold the bid — withdrawing would retract it. "
+                    "Let it stand, or be outbid.",
+                    about="withdraw",
+                )
+
+            self._checkpoint()
+            self.lot.contenders = [t for t in self.lot.contenders if t != team_id]
+            self.lot.version += 1
+
+            team = self.team_by_id(team_id)
+            remaining = len(self.lot.contenders)
+            self._append("withdraw", f"{team['code']} withdraws")
+
+            if remaining <= 1 and self.lot.bidder_id is not None:
+                # Everyone who was in has stepped back but the standing bidder.
+                # The contest is over, so the lot goes now -- making the room
+                # sit out a seven-second buffer it has already answered would be
+                # ceremony, not process.
+                # `checkpoint=False`: the snapshot above already covers this
+                # whole action, and a second one would make the withdrawal take
+                # two undos to reverse.
+                try:
+                    self._hammer_down(how="unopposed", checkpoint=False)
+                except RoomError as exc:
+                    logger.warning("withdrawal could not settle lot: %s", exc.message)
+                    self._pass_over(exc.message, checkpoint=False)
+            else:
+                # Somebody is still in. The remaining franchises get a fresh
+                # full buffer to act in: a withdrawal should never shorten
+                # anyone else's thinking time, only their own.
+                self._arm("closing", self.rules["close_seconds"])
+
+            self.version += 1
+            return remaining
+
+    # ---------------------------------------------------------------- #
+    # Lifelines
+    # ---------------------------------------------------------------- #
+
+    async def call_timeout(self, client_id: str) -> int:
+        """
+        Spend a lifeline and freeze the block for thirty seconds.
+
+        Three refusals, and each one is a rule rather than a guard:
+
+        **Only while the closing buffer runs.** A timeout is for answering a
+        bid. Before anyone has bid there is nothing to answer, and allowing one
+        there would let a franchise freeze a lot nobody wants for half a minute
+        at a time.
+
+        **Not by the franchise holding the bid.** The leader already has what
+        they want; thirty more seconds of it is a filibuster, not a strategy.
+        The lifeline exists for the teams deciding whether to come back at
+        them.
+
+        **Not on top of another timeout.** The check that the closing buffer is
+        running is also the check that stops two of these stacking into a
+        minute, and it is what makes the simultaneous case safe -- see below.
+
+        **The race.** Two franchises pressing this in the same millisecond both
+        serialise on `self._lock`. The winner finds `clock == "closing"`,
+        spends a lifeline and arms the freeze. The loser then finds
+        `clock == "timeout"` and is refused -- with their own lifeline
+        untouched, because the decrement happens after the check and under the
+        same lock. Neither team is charged for an action the room did not take.
+        """
+        seat = self._require_franchise(client_id, "call a timeout")
+        team_id = seat.team_id
+        assert team_id is not None  # guaranteed by _require_franchise
+
+        async with self._lock:
+            if self.phase != "live":
+                raise RoomError("The auction is not running.", about="timeout")
+            if not self.lot:
+                raise RoomError("Nothing is on the block.", about="timeout")
+
+            if self.lot.clock == "timeout":
+                holder = self.team_by_id(self.lot.timeout_by)
+                raise RoomError(
+                    f"{holder['code'] if holder else 'Another franchise'} already "
+                    "has the room held.",
+                    about="timeout",
+                )
+            if self.lot.clock != "closing":
+                raise RoomError(
+                    "A timeout answers a bid — nobody has bid yet.", about="timeout"
+                )
+            if self.lot.bidder_id == team_id:
+                raise RoomError(
+                    "You hold the bid — a timeout is for the teams answering it.",
+                    about="timeout",
+                )
+
+            left = self.timeouts_left(team_id)
+            if left <= 0:
+                raise RoomError(
+                    f"No timeouts left — all {self.rules['timeouts_per_team']} are spent.",
+                    about="timeout",
+                )
+
+            self._checkpoint()
+            self.timeouts[team_id] = left - 1
+            self.lot.timeout_by = team_id
+
+            team = self.team_by_id(team_id)
+            self._append(
+                "timeout",
+                f"{team['code']} calls timeout — {left - 1} left",
+            )
+            self._arm("timeout", self.rules["timeout_seconds"])
+            self.version += 1
+            return left - 1
 
     # ---------------------------------------------------------------- #
     # Broadcast shape
@@ -682,6 +1143,7 @@ class AuctionRoom:
     def state_payload(self) -> dict[str, Any]:
         """The room as every client sees it. No player pool — see RoomState."""
         connected = self.connected_team_ids()
+        now = time.time()
 
         # Who bought whom, so a client can rebuild squads and the price column
         # without a second request. Sent as [player_id, price] pairs rather than
@@ -708,6 +1170,7 @@ class AuctionRoom:
                     "color": team["color"],
                     "connected": team["id"] in connected,
                     "buys": buys[team["id"]],
+                    "timeouts_left": self.timeouts_left(team["id"]),
                     **summary,
                 }
             )
@@ -729,6 +1192,27 @@ class AuctionRoom:
                 "bidder_code": bidder["code"] if bidder else None,
                 "next_ask": self.next_ask,
                 "version": self.lot.version,
+                "clock": self.lot.clock,
+                "deadline": self.lot.deadline,
+                # Seconds left as this frame is written. Sent beside the
+                # absolute deadline because seven seconds is short enough for
+                # clock skew to matter: a client two seconds fast would show a
+                # lot expiring while the room still holds it open. Anchoring on
+                # this and counting down locally has no skew to accumulate.
+                "ends_in": (
+                    max(0.0, round(self.lot.deadline - now, 3))
+                    if self.lot.deadline is not None
+                    else None
+                ),
+                "timeout_by_id": self.lot.timeout_by,
+                "timeout_by_code": (
+                    (self.team_by_id(self.lot.timeout_by) or {}).get("code")
+                ),
+                "contenders": list(self.lot.contenders),
+                "contender_codes": [
+                    (self.team_by_id(t) or {}).get("code", "?")
+                    for t in self.lot.contenders
+                ],
             }
 
         return {
