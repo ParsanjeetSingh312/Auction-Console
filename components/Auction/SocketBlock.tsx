@@ -78,7 +78,7 @@ export default function SocketBlock({ socket, engine, onLeave }: SocketBlockProp
     const code = seat?.team_code ?? "";
     return (room?.log ?? []).slice(0, 12).map((entry) => ({
       id: entry.seq,
-      kind: entry.kind === "note" ? "note" : entry.kind,
+      kind: entry.kind,
       text: entry.what,
       amount: entry.amount,
       mine: code !== "" && entry.what.includes(code),
@@ -117,6 +117,23 @@ export default function SocketBlock({ socket, engine, onLeave }: SocketBlockProp
       // matter of opinion.
       onBid={() => socket.bid()}
       onJumpBid={(amount) => socket.bid(amount)}
+      /*
+        The clock and the two controls that answer it.
+
+        Same principle as every other prop on this component: the room decides,
+        this asks. `canWithdraw` and `canTimeout` are the room's own rules
+        mirrored so a control that would be refused is never offered as live --
+        the room re-checks both regardless, and if the two ever disagree the
+        room wins and the cost is a button that looked enabled.
+      */
+      clock={socket.lotClock}
+      timeoutBy={room?.lot?.timeout_by_code ?? null}
+      contenders={room?.lot?.contender_codes ?? []}
+      onWithdraw={socket.withdraw}
+      canWithdraw={socket.canWithdraw}
+      onTimeout={socket.callTimeout}
+      canTimeout={socket.canCallTimeout}
+      timeoutsLeft={socket.timeoutsLeft}
       corner={
         <div className="flex items-center gap-3">
           <button

@@ -216,6 +216,7 @@ def parse_excel(file_path: str | None = None) -> pd.DataFrame:
             "overseas": overseas,
             "base_price": known.get("base_price"),
             "rating": known.get("rating"),
+            "jersey_number": known.get("jersey_number"),
             **parsed,
         })
 
@@ -251,12 +252,14 @@ def _load_known_pool_metadata() -> dict[str, dict]:
     """
     known: dict[str, dict] = {}
 
-    def remember(name: str, country, base_price, rating, cap_status) -> None:
+    def remember(name: str, country, base_price, rating, cap_status,
+                 jersey_number=None) -> None:
         known[name.strip().lower()] = {
             "country": country,
             "base_price": base_price,
             "rating": rating,
             "cap_status": str(cap_status).upper(),
+            "jersey_number": jersey_number,
         }
 
     import json
@@ -269,7 +272,8 @@ def _load_known_pool_metadata() -> dict[str, dict]:
             payload = json.loads(json_path.read_text(encoding="utf-8"))
             for row in payload.get("players", []):
                 remember(row["name"], row.get("country"), row.get("base_price"),
-                         row.get("rating"), row.get("cap_status"))
+                         row.get("rating"), row.get("cap_status"),
+                         row.get("jersey_number"))
             logger.info("Loaded auction metadata for %d players from %s",
                         len(known), json_path.name)
             return known

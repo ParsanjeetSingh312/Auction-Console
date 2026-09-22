@@ -43,6 +43,7 @@ import ReloadPoolButton from "../ReloadPoolButton";
 import CommandSearch from "./CommandSearch";
 import LedgerPanel from "./LedgerPanel";
 import PoolTable from "./PoolTable";
+import type { PoolLayout } from "./PoolTable";
 import ResultsView from "./ResultsView";
 import ScoutView from "./ScoutView";
 import TeamBudgetGrid from "./TeamBudgetGrid";
@@ -70,7 +71,16 @@ const INITIAL_FILTERS: PoolFilters = {
 };
 
 export default function DataDashboard() {
-  const live = useAuctionEngine();
+  /*
+    A private auction, deliberately.
+
+    `persist: false` means this engine neither reads nor writes the saved
+    auction, so the header's AVAILABLE / SOLD / UNSOLD / SPENT always describe
+    the pool as registered rather than whatever auction happens to be sitting in
+    localStorage from /console. The Data Interface is a scouting view of the
+    pool; a sale made in another room is not its business to report.
+  */
+  const live = useAuctionEngine({ persist: false });
   const scout = useScout();
 
   /*
@@ -81,6 +91,21 @@ export default function DataDashboard() {
   const engine = useMemo(() => readOnlyEngine(live), [live]);
 
   const [view, setView] = useState<View>("pool");
+
+  /*
+    The pool opens on the box grid, not the sheet.
+
+    This is the Data Interface's own default and deliberately not PoolTable's:
+    /console still opens on the sheet, because it is the auctioneer's working
+    surface and sorting eleven columns is the job it exists for. /data is the
+    read-only scouting view, where the reference layout — four role columns of
+    player boxes — is what it should show first.
+
+    The sheet is one click away in the filter rail, and switching does not
+    change which players are on screen: both views render the same filtered,
+    sorted result.
+  */
+  const [layout, setLayout] = useState<PoolLayout>("grid");
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<PoolFilters>(INITIAL_FILTERS);
   const [sortKey, setSortKey] = useState<SortKey>("sno");
@@ -275,11 +300,30 @@ export default function DataDashboard() {
                   query={query}
                   filters={filters}
                   onFiltersChange={setFilters}
+                  layout={layout}
+                  onLayoutChange={setLayout}
                   sortKey={sortKey}
                   sortDir={sortDir}
                   onSort={toggleSort}
                   onOpenCard={setCardPlayer}
                   onNotice={notify}
+                  /*
+                    The Data Interface is the participant's view of the pool.
+
+                    A fixed role rather than one read from a seat, because this
+                    route has no socket and therefore no seat to read — it runs
+                    on `readOnlyEngine` over the REST roster alone. Anyone can
+                    open /data, including someone about to bid against nine
+                    others, so it is given the narrower of the two views: the
+                    sheet up to Rating, with no status, no prices and no
+                    controls.
+
+                    Note this is the *presentation* half of the guarantee. The
+                    engine being sealed is what makes the route read-only; this
+                    is what makes it discreet. Neither substitutes for the
+                    other.
+                  */
+                  viewerRole="participant"
                 />
               )}
               {view === "teams" && <TeamsView engine={engine} onNotice={notify} />}

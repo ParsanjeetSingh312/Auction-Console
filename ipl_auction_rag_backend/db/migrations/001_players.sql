@@ -35,6 +35,11 @@ CREATE TABLE IF NOT EXISTS players (
     base_price         DOUBLE PRECISION,
     rating             DOUBLE PRECISION,
 
+    -- Squad number. Null means "not verified", not "has none": it is the
+    -- largest element on a player card, so an unverified number is left blank
+    -- and the card falls back to the role badge rather than inventing one.
+    jersey_number      INTEGER,
+
     -- Match Stats
     matches            INTEGER,
     total_runs         INTEGER,
@@ -56,6 +61,15 @@ CREATE TABLE IF NOT EXISTS players (
     econ_vs_lhb        DOUBLE PRECISION,
     econ_vs_rhb        DOUBLE PRECISION
 );
+
+-- Columns added after this file was first run somewhere.
+--
+-- `CREATE TABLE IF NOT EXISTS` above is a no-op against a table that already
+-- exists, so it cannot add a column to a deployed database -- the file would
+-- still run clean and silently leave the schema a column short. Every column
+-- added after the first deployment therefore needs its own idempotent ALTER
+-- here as well as its place in the CREATE above. Both, not either.
+ALTER TABLE players ADD COLUMN IF NOT EXISTS jersey_number INTEGER;
 
 CREATE INDEX IF NOT EXISTS idx_players_role       ON players(role);
 CREATE INDEX IF NOT EXISTS idx_players_cap_status ON players(cap_status);

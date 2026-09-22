@@ -22,6 +22,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 
+import { apiUrl } from "../../console/apiBase";
 import { money } from "../../console/format";
 import { EASE, gridVariants, panelVariants, rowVariants, viewVariants } from "../../console/motion";
 
@@ -70,15 +71,35 @@ const ROLE_CLASS: Record<ReportPlayer["role_short"], string> = {
 export interface PostAuctionReportProps {
   /** Passed in when the socket already delivered it; otherwise fetched. */
   report?: AuctionReport | null;
+  /**
+   * Drop the seat and reload.
+   *
+   * Note what this does NOT do: it does not get you off this screen. The
+   * reload reconnects to a room whose phase is still `finished`, and
+   * `LiveAuction` tests that phase before it tests whether you hold a seat —
+   * so the report is what renders again. That is correct behaviour for a
+   * finished auction and a badly named button, which is why the control
+   * below is labelled for what it does rather than where it goes.
+   */
   onLeave?: () => void;
   /** Auctioneer only: clear the auction and send everyone back to the lobby. */
   onReset?: () => void;
+  /**
+   * Auctioneer only: go back to the split-screen console with the seat intact.
+   *
+   * This is the one that answers "take me back to the room". The report is a
+   * document, not a destination — after the hammer an auctioneer still wants
+   * the pool, the ledger and the Scout, and before this existed the only ways
+   * off this screen were resetting the whole auction or leaving the site.
+   */
+  onEnterControlRoom?: () => void;
 }
 
 export default function PostAuctionReport({
   report,
   onLeave,
   onReset,
+  onEnterControlRoom,
 }: PostAuctionReportProps) {
   const reduced = useReducedMotion();
   const [fetched, setFetched] = useState<AuctionReport | null>(null);
@@ -93,10 +114,12 @@ export default function PostAuctionReport({
   */
   useEffect(() => {
     if (report) return;
-    const base = import.meta.env?.DEV ? "http://localhost:8001" : "";
     const controller = new AbortController();
 
-    fetch(`${base}/api/v1/auction/report`, { signal: controller.signal })
+    // `apiUrl` rather than a local base. This call site was the worst of the
+    // three copies: it had no override variable at all, so when the backend
+    // moved off :8001 there was no setting that could point the report at it.
+    fetch(apiUrl("/api/v1/auction/report"), { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error(`Report unavailable (${response.status})`);
         return response.json();
@@ -145,7 +168,7 @@ export default function PostAuctionReport({
     data.totals.purse_pool > 0 ? (data.totals.spent / data.totals.purse_pool) * 100 : 0;
 
   return (
-    <Shell onLeave={onLeave} onReset={onReset}>
+    <Shell onLeave={onLeave} onReset={onReset} onEnterControlRoom={onEnterControlRoom}>
       <motion.div
         variants={reduced ? undefined : viewVariants}
         initial={reduced ? false : "initial"}
@@ -187,10 +210,12 @@ function Shell({
   children,
   onLeave,
   onReset,
+  onEnterControlRoom,
 }: {
   children: React.ReactNode;
   onLeave?: () => void;
   onReset?: () => void;
+  onEnterControlRoom?: () => void;
 }) {
   return (
     <div className="min-h-screen bg-surface bg-dots px-5 py-8">
@@ -219,13 +244,37 @@ function Shell({
                 New auction
               </button>
             )}
+            {/*
+              The way back to the console, for the auctioneer who still has
+              work to do after the hammer.
+
+              This replaces what the "← Room" button below used to promise. That
+              one calls `onLeave`, which reloads — and a reload reconnects to a
+              room still in the `finished` phase, which `LiveAuction` checks
+              before it checks for a seat. So it returned you to this very
+              screen, every time. A button named after a place it could not
+              reach.
+            */}
+            {onEnterControlRoom && (
+              <button
+                type="button"
+                data-testid="report-control-room"
+                onClick={onEnterControlRoom}
+                title="Back to the pool, the ledger and the Scout, keeping your seat"
+                className="rounded-lg border border-line bg-surface-card px-3.5 py-2 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-body transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
+              >
+                ← Control room
+              </button>
+            )}
             {onLeave && (
               <button
                 type="button"
+                data-testid="report-leave-seat"
                 onClick={onLeave}
+                title="Give up your seat. The report stays on screen until the auctioneer starts a new auction."
                 className="rounded-lg border border-line bg-surface-card px-3.5 py-2 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-body transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
               >
-                ← Room
+                Leave seat
               </button>
             )}
             <Link

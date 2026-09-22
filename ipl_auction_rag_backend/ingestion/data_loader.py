@@ -190,7 +190,7 @@ def run_ingestion(
     # Select only columns that match the SQLite schema
     db_columns = [
         "player_name", "country", "role", "cap_status", "overseas",
-        "base_price", "rating", "matches", "total_runs",
+        "base_price", "rating", "jersey_number", "matches", "total_runs",
         "bat_avg", "bat_sr", "boundary_pct_spin", "boundary_pct_fast",
         "sr_vs_spin", "sr_vs_fast",
         "wickets", "runs_conceded", "economy",

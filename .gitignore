@@ -27,6 +27,12 @@ ipl_auction_rag_backend/data/database/*.db-shm
 ipl_auction_rag_backend/data/database/*.db-wal
 ipl_auction_rag_backend/data/database/chroma_db/
 
+# Datasets SCOUT downloads. Fetched by the scraper, rebuilt on demand, and
+# large -- the Cricsheet IPL archive alone is 5 MB of binary. The .gitkeep
+# keeps the directory itself.
+ipl_auction_rag_backend/data/raw/*
+!ipl_auction_rag_backend/data/raw/.gitkeep
+
 # Editor / OS
 .DS_Store
 Thumbs.db

@@ -37,6 +37,7 @@ import { useScout } from "../console/useScout";
 import { useAuctionSocket } from "../hooks/useAuctionSocket";
 
 import ReloadPoolButton from "../components/ReloadPoolButton";
+import StadiumBackdrop from "../components/Sections/StadiumBackdrop";
 import AdminSplitScreen from "../components/Auction/AdminSplitScreen";
 import PostAuctionReport from "../components/Auction/PostAuctionReport";
 import SocketBlock from "../components/Auction/SocketBlock";
@@ -50,7 +51,28 @@ interface Toast {
   kind?: "err";
 }
 
+/**
+ * The night theme, applied once around every screen this route can show.
+ *
+ * `LiveAuctionInner` returns from seven different places — the join form, the
+ * waiting room, the block, the report, and the error states — so wrapping the
+ * component rather than each return is the only way to cover them all without
+ * seven identical edits that a future eighth return would silently miss.
+ *
+ * Nothing inside is touched: no props, no logic, no markup. `.console-dark`
+ * redefines console.css's palette tokens for this subtree and the backdrop is a
+ * fixed layer behind it.
+ */
 export default function LiveAuction() {
+  return (
+    <div className="console-dark">
+      <StadiumBackdrop variant="console" />
+      <LiveAuctionInner />
+    </div>
+  );
+}
+
+function LiveAuctionInner() {
   const local = useAuctionEngine();
   const socket = useAuctionSocket();
   const engine = useSocketEngine(local, socket);
@@ -104,9 +126,22 @@ export default function LiveAuction() {
   }, [isLoadingRoster, rosterError, checkHealth]);
 
   const leaveSeat = useCallback(() => {
-    // A page reload is the honest way to drop a seat: the room frees it on
-    // disconnect, and re-mounting the socket is exactly what we want.
-    window.location.reload();
+    // Dropping a seat means disconnecting. The room frees it when the socket
+    // closes and there is no "release my seat" message to send, so a reload is
+    // still the mechanism.
+    //
+    // What the reload cannot carry is the *intent*. Local state does not
+    // survive one, and the finished-phase branch below is evaluated before the
+    // seat is looked at — so a plain reload dropped the seat and then rendered
+    // the auction report again, which is the screen the user was trying to
+    // leave. From the outside the button did nothing at all.
+    //
+    // So the intent goes in the URL, which is the one thing that does survive.
+    // `replace` rather than `assign`: the seat has been given up, and a back
+    // button that appears to return you to it is a lie.
+    const url = new URL(window.location.href);
+    url.searchParams.set("seat", "pick");
+    window.location.replace(url.toString());
   }, []);
 
   const toastLayer = (
@@ -122,9 +157,46 @@ export default function LiveAuction() {
   const phase = socket.state?.phase ?? "lobby";
   const role = socket.seat?.role ?? null;
 
+  /*
+    Whether the auctioneer has stepped out of the waiting room and back into
+    the console.
+
+    Local state, not a room message, and that distinction is the whole design.
+    Which screen one auctioneer is looking at is nobody else's business: the
+    room's `phase` is shared truth that moves every client at once, and using
+    it here would mean an auctioneer glancing at the pool dragged ten
+    franchises out of their waiting room with them. So `phase` stays "waiting"
+    for everyone; only this browser renders something different.
+
+    Reset whenever the phase changes. Each new waiting period should open on
+    the waiting room — that is the screen that answers "is everyone here yet",
+    and it is the reason the phase exists. The override is a deliberate step
+    away from it, not a preference to be remembered.
+  */
+  const [inControlRoom, setInControlRoom] = useState(false);
+  useEffect(() => {
+    setInControlRoom(false);
+  }, [phase]);
+
+  /*
+    Someone who just clicked "Leave seat" is asking for the seat picker, not for
+    whatever screen the room's phase would otherwise dictate.
+
+    `leaveSeat` sets `?seat=pick` before reloading; this reads it back. It is
+    deliberately conjoined with `role === null` rather than trusted on its own,
+    so the parameter cannot be used to skip past a seat somebody actually
+    holds — a stale one left in the address bar after re-claiming a seat simply
+    stops applying.
+  */
+  const leaving =
+    role === null && new URLSearchParams(window.location.search).get("seat") === "pick";
+
   /* ---------------- the report ---------------- */
 
-  if (phase === "finished") {
+  // `!leaving` is what makes "Leave seat" work on this screen. Without it the
+  // report claims every seatless visitor, including the one who just asked to
+  // stop being seated, and the branch below is never reached.
+  if (phase === "finished" && !(role === "auctioneer" && inControlRoom) && !leaving) {
     return (
       <>
         <PostAuctionReport
@@ -133,6 +205,13 @@ export default function LiveAuction() {
           // that regardless — this just avoids showing a franchise a button
           // that would be refused.
           onReset={role === "auctioneer" ? socket.resetRoom : undefined}
+          // Same door as the waiting room's, for the same reason. An auctioneer
+          // reviewing the report still wants the pool and the ledger, and
+          // "finished" is a phase of the room, not a reason to strand the
+          // person running it on one screen.
+          onEnterControlRoom={
+            role === "auctioneer" ? () => setInControlRoom(true) : undefined
+          }
         />
         {toastLayer}
       </>
@@ -155,10 +234,21 @@ export default function LiveAuction() {
   if (role === "auctioneer") {
     // The waiting room is shown to the auctioneer too, so they can watch the
     // franchises arrive — it is the only screen that shows who is actually in.
-    if (phase === "waiting") {
+    //
+    // `inControlRoom` is the way back out. Without it this branch was
+    // unconditional, and the only other control on that screen is "Leave
+    // seat", which drops the chair: an auctioneer who opened the waiting room
+    // could reach the pool again only by surrendering their seat and
+    // re-claiming it. The waiting room is still what they see first, every
+    // time — it is simply no longer a room with one exit.
+    if (phase === "waiting" && !inControlRoom) {
       return (
         <>
-          <WaitingRoom socket={socket} onLeave={leaveSeat} />
+          <WaitingRoom
+            socket={socket}
+            onLeave={leaveSeat}
+            onEnterControlRoom={() => setInControlRoom(true)}
+          />
           {toastLayer}
         </>
       );
@@ -171,6 +261,25 @@ export default function LiveAuction() {
           scout={scout}
           onNotice={notify}
           socket={socket}
+          /*
+            Supplied only while the room is actually waiting, so the control
+            bar grows a "Waiting room" button exactly when there is a waiting
+            room to go back to. The door swings both ways or it is still a
+            lock-out, just facing the other direction.
+          */
+          onReturnToWaitingRoom={
+            phase === "waiting" ? () => setInControlRoom(false) : undefined
+          }
+          /*
+            And the same door back to the report, so stepping into the console
+            after the hammer is not itself a one-way trip. Both of these are the
+            same piece of state seen from the other side; which label the
+            control bar shows depends only on which screen the override is
+            currently hiding.
+          */
+          onReturnToReport={
+            phase === "finished" ? () => setInControlRoom(false) : undefined
+          }
         />
         {toastLayer}
       </>

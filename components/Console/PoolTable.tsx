@@ -27,6 +27,9 @@ import {
 } from "../../console/format";
 import { panelVariants } from "../../console/motion";
 import { runQuery } from "../../console/search";
+import PoolGrid from "./PoolGrid";
+import { canControlPool, canSeeMarketData } from "../../hooks/useViewerRole";
+import type { ViewerRole } from "../../hooks/useViewerRole";
 import type { AuctionEngine } from "../../console/useAuctionEngine";
 import type {
   CapStatus,
@@ -52,7 +55,25 @@ const ROLE_CHIPS: RoleShort[] = ["BAT", "BOWL", "AR", "WK"];
 const STATUS_CHIPS: PoolFilters["status"][] = ["all", "available", "sold", "unsold"];
 const CAP_CHIPS: (CapStatus | "all")[] = ["all", "CAPPED", "UNCAPPED"];
 
-const COLUMNS: { key: SortKey; label: string; className?: string }[] = [
+/**
+ * The sheet's columns, in order.
+ *
+ * `market: true` marks the two an auctioneer sees and a participant does not.
+ * They are the live state of the auction — who has been sold and for how much —
+ * and the brief's rule is that a participant sees the sheet up to and including
+ * `Rating` and no further.
+ *
+ * Declaring it on the column rather than slicing the array at a magic index
+ * matters: a column inserted between `Rating` and `Status` later would silently
+ * become visible to participants under an index-based cut, and would not here.
+ */
+const COLUMNS: {
+  key: SortKey;
+  label: string;
+  className?: string;
+  /** Auction state, hidden from everyone but the auctioneer. */
+  market?: boolean;
+}[] = [
   { key: "sno", label: "#", className: "c-no" },
   { key: "set", label: "Band", className: "c-set" },
   { key: "name", label: "Player", className: "c-name" },
@@ -61,8 +82,8 @@ const COLUMNS: { key: SortKey; label: string; className?: string }[] = [
   { key: "cap", label: "C/UC" },
   { key: "base", label: "Base", className: "c-num" },
   { key: "rating", label: "Rating", className: "c-num" },
-  { key: "status", label: "Status" },
-  { key: "price", label: "Price", className: "c-num" },
+  { key: "status", label: "Status", market: true },
+  { key: "price", label: "Price", className: "c-num", market: true },
 ];
 
 export interface PoolTableProps {
@@ -75,20 +96,73 @@ export interface PoolTableProps {
   onSort: (key: SortKey) => void;
   onOpenCard: (player: ConsolePlayer) => void;
   onNotice: (message: string, kind?: "err") => void;
+  /**
+   * Who is looking. Decides whether the `Status` and `Price` columns and the
+   * per-row action control are rendered at all.
+   *
+   * Defaults to `auctioneer` so that every existing call site keeps the
+   * behaviour it had before this prop existed. A default of `participant`
+   * would have been the safer direction in the abstract, but it would silently
+   * strip the operator's controls off `/console` the moment this shipped —
+   * breaking a working screen is a worse failure than the one it guards
+   * against, and the three call sites are all updated in this same phase.
+   */
+  viewerRole?: ViewerRole;
+  /**
+   * Which presentation of the pool to render.
+   *
+   * `grid` is the role-columned box layout the reference calls for; `sheet` is
+   * the eleven-column sortable table this component has always been.
+   *
+   * Defaults to `sheet` for the same reason `viewerRole` defaults to
+   * `auctioneer`: every existing call site keeps exactly the behaviour it had
+   * before this prop existed. `/data` opts into the grid; `/console` is
+   * untouched and still opens on the sheet.
+   *
+   * The filter rail, the search query and the sort are shared by both — only
+   * the rendering below the rail changes — so switching views never changes
+   * which players are on screen.
+   */
+  layout?: PoolLayout;
+  onLayoutChange?: (next: PoolLayout) => void;
 }
+
+export type PoolLayout = "grid" | "sheet";
 
 export default function PoolTable({
   engine,
   query,
   filters,
   onFiltersChange,
+  layout = "sheet",
+  onLayoutChange,
   sortKey,
   sortDir,
   onSort,
   onOpenCard,
   onNotice,
+  viewerRole = "auctioneer",
 }: PoolTableProps) {
   const { players, recordFor, teams, block, teamById } = engine;
+
+  const showMarket = canSeeMarketData(viewerRole);
+  const showActions = canControlPool(viewerRole);
+
+  /** The columns this viewer actually gets. */
+  const columns = useMemo(
+    () => (showMarket ? COLUMNS : COLUMNS.filter((column) => !column.market)),
+    [showMarket],
+  );
+
+  /**
+   * Cells in a full-width row: the colour rail, every visible column, and the
+   * action cell when there is one.
+   *
+   * Computed rather than written as `COLUMNS.length + 2`, which was already
+   * only correct by coincidence and would have spanned two columns too many
+   * the moment anything was hidden.
+   */
+  const spanAll = columns.length + 1 + (showActions ? 1 : 0);
 
   /** Country options, built from the pool rather than a hardcoded list. */
   const countries = useMemo(() => {
@@ -105,7 +179,13 @@ export default function PoolTable({
   const rows = useMemo(() => {
     const passes = (player: ConsolePlayer): boolean => {
       const record = recordFor(player.id);
-      if (filters.status !== "all" && record.status !== filters.status) return false;
+      // The status filter is ignored for a viewer who cannot see status. All
+      // three call sites currently default it to "all", so this changes
+      // nothing today — it is here so that a parent which someday seeds
+      // filters from a URL cannot reintroduce the leak the hidden chips close.
+      if (showMarket && filters.status !== "all" && record.status !== filters.status) {
+        return false;
+      }
       if (filters.role !== "all" && player.roleShort !== filters.role) return false;
       if (filters.cap !== "all" && player.cap !== filters.cap) return false;
       if (filters.set !== "all" && player.set !== filters.set) return false;
@@ -160,7 +240,7 @@ export default function PoolTable({
       // renders.
       return primary || a.player.sno - b.player.sno;
     });
-  }, [players, recordFor, teams, block, query, filters, sortKey, sortDir]);
+  }, [players, recordFor, teams, block, query, filters, sortKey, sortDir, showMarket]);
 
   function set<K extends keyof PoolFilters>(key: K, value: PoolFilters[K]) {
     onFiltersChange({ ...filters, [key]: value });
@@ -174,20 +254,32 @@ export default function PoolTable({
   return (
     <>
       <motion.div className="filters" variants={panelVariants}>
-        <div className="fgroup">
-          <span className="eyebrow">Status</span>
-          {STATUS_CHIPS.map((option) => (
-            <button
-              key={option}
-              type="button"
-              className="chip"
-              aria-pressed={filters.status === option}
-              onClick={() => set("status", option)}
-            >
-              {option === "all" ? "All" : option[0].toUpperCase() + option.slice(1)}
-            </button>
-          ))}
-        </div>
+        {/*
+          The status filter goes with the status column.
+
+          Hiding the column while leaving these chips would defeat the point:
+          filtering to "sold" and reading the row count tells a participant
+          exactly which players have gone, which is the fact the column was
+          hidden to withhold. This is slightly beyond the letter of the brief,
+          which names columns and buttons — but a mask with a hole in it is not
+          a mask, so the filter follows the column it filters.
+        */}
+        {showMarket && (
+          <div className="fgroup" data-testid="pool-filter-status">
+            <span className="eyebrow">Status</span>
+            {STATUS_CHIPS.map((option) => (
+              <button
+                key={option}
+                type="button"
+                className="chip"
+                aria-pressed={filters.status === option}
+                onClick={() => set("status", option)}
+              >
+                {option === "all" ? "All" : option[0].toUpperCase() + option.slice(1)}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="fgroup">
           <span className="eyebrow">Role</span>
@@ -280,6 +372,33 @@ export default function PoolTable({
           <span className="eyebrow">
             {rows.length} of {players.length} shown
           </span>
+
+          {/* The view toggle. Rendered only where a parent is holding the
+              state — `/console` passes neither prop and therefore never sees
+              a control that would do nothing. */}
+          {onLayoutChange && (
+            <div
+              className="inline-flex rounded-full border border-[var(--rule)] p-0.5"
+              role="group"
+              aria-label="Pool layout"
+            >
+              {(["grid", "sheet"] as PoolLayout[]).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => onLayoutChange(option)}
+                  aria-pressed={layout === option}
+                  className={`rounded-full px-2.5 py-1 font-ui text-[10px] font-semibold uppercase tracking-[0.12em] transition-colors ${
+                    layout === option
+                      ? "bg-[var(--teal-tint)] text-[var(--teal-ink)]"
+                      : "text-[var(--muted)] hover:text-[var(--ink-2)]"
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          )}
           <button
             type="button"
             className="linkbtn"
@@ -299,16 +418,29 @@ export default function PoolTable({
         </div>
       </motion.div>
 
+      {layout === "grid" && (
+        <motion.div variants={panelVariants}>
+          <PoolGrid
+            players={rows.map((hit) => hit.player)}
+            recordFor={recordFor}
+            showMarket={showMarket}
+            onOpenCard={onOpenCard}
+          />
+        </motion.div>
+      )}
+
+      {layout === "sheet" && (
       <motion.div className="tablewrap" variants={panelVariants}>
         <div className="max-h-[calc(100vh-320px)] overflow-auto">
-          <table className="sheet">
+          <table className="sheet" data-testid="pool-table" data-viewer-role={viewerRole}>
             <thead>
               <tr>
                 <th className="c-rail" aria-hidden />
-                {COLUMNS.map((column) => (
+                {columns.map((column) => (
                   <th
                     key={column.key}
                     scope="col"
+                    data-testid={`pool-col-${column.key}`}
                     className={`sortable ${column.className ?? ""}`}
                     aria-sort={
                       sortKey === column.key
@@ -328,14 +460,16 @@ export default function PoolTable({
                     </span>
                   </th>
                 ))}
-                <th className="c-act" aria-label="Actions" />
+                {showActions && (
+                  <th className="c-act" aria-label="Actions" data-testid="pool-col-actions" />
+                )}
               </tr>
             </thead>
 
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={COLUMNS.length + 2}>
+                  <td colSpan={spanAll}>
                     <div className="empty">
                       <b>Nothing matches</b>
                       Loosen a filter, or clear the search to see all {players.length} players.
@@ -417,41 +551,62 @@ export default function PoolTable({
                         </span>
                       )}
                     </td>
-                    <td>
-                      <StatusTag
-                        onBlock={onBlock}
-                        status={record.status}
-                        teamCode={team?.code ?? null}
-                      />
-                    </td>
-                    <td className={`c-num font-mono ${record.price ? "font-semibold" : ""}`}>
-                      {record.price ? moneyTight(record.price) : "·"}
-                    </td>
-                    <td className="c-act">
-                      {record.status === "sold" ? (
-                        <button
-                          type="button"
-                          className="mini"
-                          onClick={() => {
-                            const result = engine.returnToPool(player.id);
-                            if (result.message) onNotice(result.message);
-                          }}
-                        >
-                          Release
-                        </button>
-                      ) : (
-                        <button type="button" className="mini" onClick={() => putUp(player)}>
-                          {onBlock ? "On block" : "Put up"}
-                        </button>
-                      )}
-                    </td>
+                    {/*
+                      Status and price are rendered only for the auctioneer.
+                      Omitted entirely rather than blanked or hidden with CSS —
+                      an empty cell still occupies a column and still carries
+                      the value in the DOM, which is neither honest nor useful.
+                    */}
+                    {showMarket && (
+                      <td data-testid="pool-cell-status">
+                        <StatusTag
+                          onBlock={onBlock}
+                          status={record.status}
+                          teamCode={team?.code ?? null}
+                        />
+                      </td>
+                    )}
+                    {showMarket && (
+                      <td
+                        data-testid="pool-cell-price"
+                        className={`c-num font-mono ${record.price ? "font-semibold" : ""}`}
+                      >
+                        {record.price ? moneyTight(record.price) : "·"}
+                      </td>
+                    )}
+                    {showActions && (
+                      <td className="c-act">
+                        {record.status === "sold" ? (
+                          <button
+                            type="button"
+                            className="mini"
+                            data-testid="pool-action-release"
+                            onClick={() => {
+                              const result = engine.returnToPool(player.id);
+                              if (result.message) onNotice(result.message);
+                            }}
+                          >
+                            Release
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="mini"
+                            data-testid={onBlock ? "pool-action-onblock" : "pool-action-putup"}
+                            onClick={() => putUp(player)}
+                          >
+                            {onBlock ? "On block" : "Put up"}
+                          </button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 );
               })}
 
               {rows.length > RENDER_CAP && (
                 <tr>
-                  <td colSpan={COLUMNS.length + 2}>
+                  <td colSpan={spanAll}>
                     <div className="empty">
                       Showing the first {RENDER_CAP} of {rows.length} matches.
                     </div>
@@ -471,6 +626,7 @@ export default function PoolTable({
           </span>
         </div>
       </motion.div>
+      )}
     </>
   );
 }

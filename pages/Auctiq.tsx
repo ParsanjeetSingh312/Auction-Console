@@ -14,15 +14,50 @@
  * everywhere, would mean editing thirty-odd existing components to describe a
  * theme none of them will ever be shown in.
  */
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+
 import { useReducedMotion } from "framer-motion";
 
-import AuctiqLogo from "../components/Global/AuctiqLogo";
+import { useQuality } from "../components/3D/rig/quality";
+import { useJourneyProgress } from "../hooks/useJourney";
+import CricketCursor from "../components/UI/CricketCursor";
+import AuctiqFooter from "../components/Global/AuctiqFooter";
 import AuctiqNav from "../components/Global/AuctiqNav";
-import HeroSection from "../components/Sections/HeroSection";
+import BroadcastHero from "../components/Sections/BroadcastHero";
+import StadiumBackdrop from "../components/Sections/StadiumBackdrop";
 import PlayerShowcase from "../components/Sections/PlayerShowcase";
 
 export default function Auctiq() {
+  const page = useRef<HTMLDivElement>(null);
+  const quality = useQuality();
+  const reduced = useReducedMotion() ?? false;
+
+  /*
+    The journey runs off this page's own scroll rather than a dedicated track.
+
+    The landing already scrolls a long way, so adding a separate tall element to
+    drive the camera would double the page height. Binding the trigger to the
+    page root instead means the arena's beats play out across the sections that
+    are already there — the arena wakes up over the hero, the camera descends
+    through the showcase.
+
+    **No Lenis here, deliberately.** Smooth scroll is what gives the prototype
+    its gliding camera, and it was the plan — but Lenis takes ownership of the
+    page by transforming its wrapper, and this landing is built on `position:
+    fixed` atmospheric layers plus a `position: sticky` showcase stage. Enabling
+    it pushed the whole page down behind an empty band and detached the nav.
+    That is a visible regression on a page that is supposed to be untouched, to
+    buy an easing curve.
+
+    ScrollTrigger does not need it. `self.progress` is computed from the
+    element's own position in the viewport, so the journey runs identically on
+    native scroll; only the easing feel is lost. `useSmoothScroll` is still
+    exported and still correct — it belongs on a page built for it, not
+    retrofitted under one that is not.
+  */
+  const journeyOn = quality.canvas && !reduced;
+  useJourneyProgress(page, journeyOn);
+
   useEffect(() => {
     document.title = "AUCTIQ · IPL 2026 Mega Auction";
   }, []);
@@ -39,97 +74,48 @@ export default function Auctiq() {
     working.
   */
   return (
-    <div className="auctiq relative min-h-screen overflow-x-clip">
+    <div ref={page} className="auctiq relative min-h-screen overflow-x-clip">
       {/*
         Fixed atmospheric layers, behind everything and ignoring the pointer.
         Fixed rather than scrolled so they read as the room the content is in,
         not as a texture printed on it.
       */}
+      {/* The photograph goes underneath the gradient pools, not instead of
+          them: the pools are what tie the page's blue and gold to the arc's
+          own light, and they still do that job over a picture. */}
+      <StadiumBackdrop live3d />
       <div className="auctiq-stadium" aria-hidden />
       <div className="auctiq-grid" aria-hidden />
 
-      <AuctiqLogo to="/" />
+      {/* The mark is part of the header bar now — AuctiqNav renders it with
+          `inline`, so mounting it separately here would put two of them on the
+          page, one in the bar and one floating in the opposite corner. */}
+      {/* The pointer, as a cricket ball. Landing only — a ball bouncing over
+          a live auction grid during bidding would be a distraction. */}
+      <CricketCursor />
+
       <AuctiqNav />
 
-      <HeroSection />
+      {/*
+        The mockup's front page.
+
+        `HeroSection` used to sit directly below this one and is now unmounted —
+        unmounted, not deleted. It carries a revolving trophy and a headline of
+        its own, so with BroadcastHero above it the landing ran the same trophy
+        animation twice: once centre-left where the mockup puts it, and again a
+        screen further down. Two WebGL canvases showing the same object is not a
+        second section, it is the same section twice.
+
+        The file is untouched at components/Sections/HeroSection.tsx and nothing
+        else in the app imports it, so bringing it back is this import and one
+        line. Its copy — the 284/10/₹120Cr figures — has no home on this page;
+        its two calls to action are covered by the JOIN NOW controls in the
+        header and the footer, both of which reach the auction room.
+      */}
+      <BroadcastHero />
       <PlayerShowcase />
 
-      {/*
-        The four destinations used to live here. They are the top nav now, and
-        that nav is fixed — so it is still on screen at this point in the page
-        and repeating it below would be four links to nowhere new. What the
-        bottom of a 400vh page actually needs is a way back up.
-      */}
-      <footer className="relative z-10 border-t border-white/[0.07] px-5 py-8 sm:px-8">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4">
-          <span className="font-tech text-[10px] uppercase tracking-[0.2em] text-auctiq-dim">
-            AUCTIQ · IPL 2026
-          </span>
-          <BackToTop />
-        </div>
-      </footer>
+      <AuctiqFooter />
     </div>
-  );
-}
-
-/**
- * Scrolls home. A button rather than an `<a href="#top">`, because the anchor
- * would leave `#top` in the address bar and a reload would then land mid-page.
- *
- * `behavior` is read from the platform setting rather than hard-coded to
- * "smooth": smooth-scrolling four viewports is precisely the motion that
- * triggers vestibular symptoms, and an instant jump is the correct answer
- * there, not a slower animation.
- */
-function BackToTop() {
-  const reduced = useReducedMotion();
-
-  const goTop = () => {
-    if (reduced) {
-      window.scrollTo({ top: 0, behavior: "auto" });
-      return;
-    }
-
-    const from = window.scrollY;
-    window.scrollTo({ top: 0, behavior: "smooth" });
-
-    /*
-      Some engines accept `behavior: "smooth"` and then quietly do nothing —
-      embedded and headless Chrome among them, and anything with scroll
-      animations disabled. `"scrollBehavior" in style` is true on all of them,
-      so there is no feature test; the only reliable check is whether the page
-      actually moved. A real smooth scroll is underway within a frame, so if
-      the offset is untouched a beat later it never started, and a control
-      whose entire job is to scroll has to fall back rather than sit dead.
-    */
-    window.setTimeout(() => {
-      if (window.scrollY === from && from > 0) {
-        window.scrollTo({ top: 0, behavior: "auto" });
-      }
-    }, 400);
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={goTop}
-      className="group flex min-h-[44px] items-center gap-2 rounded-full px-3 font-tech text-[11px] uppercase tracking-[0.16em] text-auctiq-dim transition-colors duration-200 hover:text-auctiq-gold"
-    >
-      Back to top
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="transition-transform duration-200 group-hover:-translate-y-0.5"
-        aria-hidden
-      >
-        <path d="m18 15-6-6-6 6" />
-      </svg>
-    </button>
   );
 }

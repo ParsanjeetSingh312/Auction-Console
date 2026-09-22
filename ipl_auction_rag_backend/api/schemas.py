@@ -45,6 +45,9 @@ class PlayerResponse(BaseModel):
     overseas: int | None = None
     base_price: float | None = None
     rating: float | None = None
+    #: Null means not verified, not absent. The card falls back to the role
+    #: badge rather than rendering an invented number at hero size.
+    jersey_number: int | None = None
     matches: int | None = None
     total_runs: int | None = None
     bat_avg: float | None = None

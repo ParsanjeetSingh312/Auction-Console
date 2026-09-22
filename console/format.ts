@@ -335,6 +335,7 @@ export function toConsolePlayer(row: ApiPlayer, index: number): ConsolePlayer {
     // ordinal rather than dropping the player from the pool entirely.
     id: row.id ?? index + 1,
     sno: index + 1,
+    jersey: row.jersey_number ?? null,
     name: row.player_name,
     first,
     surname,

@@ -23,14 +23,18 @@ straight out of Chroma's own SQLite file, and the one genuinely remote check
 """
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
+import time
 import uuid
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from config.settings import get_settings
@@ -278,6 +282,163 @@ async def advise(request: AdviseRequest) -> ScoutOutput:
         raise HTTPException(status_code=500, detail=f"SCOUT failed: {exc}") from exc
 
     return output.model_copy(update={"notes": team_notes + output.notes})
+
+
+# ---------------------------------------------------------------------------
+# The pipeline, as it happens
+# ---------------------------------------------------------------------------
+
+#: What each graph node is called in the interface, and what it is doing while
+#: it runs.
+#:
+#: Keyed by the node's real name in `scout/graph/workflow.py`, so a node that is
+#: renamed there stops appearing here rather than appearing under a stale label.
+#: The stream sends this map to the client instead of the client hard-coding it,
+#: which means the interface cannot claim a pipeline the graph does not have --
+#: the same rule `graph_shape()` already follows.
+NODE_LABELS: dict[str, dict[str, str]] = {
+    "supervisor": {
+        "title": "Supervisor",
+        "running": "Reading the question and extracting constraints",
+        "done": "Intent classified",
+    },
+    "researcher": {
+        "title": "Data Researcher",
+        "running": "Gathering IPL stats, economy rates and recent form",
+        "done": "Research indexed",
+    },
+    "advisor": {
+        "title": "Cricket Advisor",
+        "running": "Cross-checking squad gaps, purse and role fit",
+        "done": "Recommendation ready",
+    },
+}
+
+
+def _sse(payload: dict[str, Any]) -> str:
+    """
+    One Server-Sent Event.
+
+    `default=str` because the state carries datetimes on its research batch, and
+    a serialisation error halfway through a stream closes the connection with no
+    status code the client can report.
+    """
+    return "data: " + json.dumps(payload, default=str) + "\n\n"
+
+
+@router.post("/advise/stream")
+async def advise_stream(request: AdviseRequest) -> StreamingResponse:
+    """
+    The same answer as `/advise`, with the graph's progress as it happens.
+
+    **Why a second route rather than a flag on the first.** `/advise` returns a
+    validated `ScoutOutput` and is what a script or a test should call; this one
+    returns an event stream and is what an interface should call. A single route
+    returning either shape depending on a query parameter has no usable
+    `response_model` and cannot be typed on either side.
+
+    **The progress is real, not a timed animation.** `stream_mode="tasks"` emits
+    one chunk when a node starts and another when it finishes -- distinguishable
+    because only the finish chunk carries a `result` key. So a node lights up
+    because it is running, and the refresh cycle back to the Researcher shows up
+    as the Researcher genuinely lighting a second time.
+
+    **`values` is requested only for the final state.** The last chunk of that
+    mode is the whole state at the end of the run, which is exactly what
+    `output_from` needs. Accumulating it from `updates` instead would mean
+    reimplementing LangGraph's reducers out here, including `merge_notes`.
+
+    Nothing in this handler blocks: the auction's seven-second bid timers run on
+    this same event loop, and a synchronous call in here would stall them.
+    """
+    from scout.graph.state import NOTES_RESET
+    from scout.graph.workflow import compiled, output_from
+
+    team, team_notes = _team_context(request.team_id)
+    thread_id = request.thread_id or f"req-{uuid.uuid4().hex[:16]}"
+
+    async def events() -> AsyncIterator[str]:
+        started = time.perf_counter()
+
+        # The shape first, so the interface can draw the whole pipeline greyed
+        # out before anything runs rather than growing it a node at a time.
+        yield _sse({"type": "graph", "labels": NODE_LABELS})
+
+        if team_notes:
+            yield _sse({"type": "notes", "notes": team_notes})
+
+        final: dict[str, Any] = {}
+
+        try:
+            app = await compiled()
+            payload = ScoutInput(
+                question=request.question,
+                team=team,
+                on_block_player_id=request.on_block_player_id,
+                budget_seconds=request.budget_seconds,
+            )
+
+            async for mode, chunk in app.astream(
+                payload.model_dump(),
+                {"configurable": {"thread_id": thread_id}},
+                stream_mode=["tasks", "updates", "values"],
+            ):
+                if mode == "tasks":
+                    name = chunk.get("name")
+                    if name not in NODE_LABELS:
+                        continue
+                    if "result" in chunk:
+                        error = chunk.get("error")
+                        yield _sse(
+                            {
+                                "type": "node",
+                                "node": name,
+                                "status": "failed" if error else "done",
+                                "detail": str(error) if error else None,
+                            }
+                        )
+                    else:
+                        yield _sse({"type": "node", "node": name, "status": "running"})
+
+                elif mode == "updates":
+                    # Notes as each node produces them, so a degradation is
+                    # visible while the turn is still running rather than only
+                    # in the final payload.
+                    for node, update in (chunk or {}).items():
+                        if not isinstance(update, dict):
+                            continue
+                        fresh = [
+                            n for n in (update.get("notes") or []) if n != NOTES_RESET
+                        ]
+                        if fresh:
+                            yield _sse({"type": "notes", "node": node, "notes": fresh})
+
+                elif mode == "values":
+                    final = chunk
+
+            output = output_from(final, time.perf_counter() - started)
+            output = output.model_copy(update={"notes": team_notes + output.notes})
+            yield _sse({"type": "result", "output": output.model_dump(mode="json")})
+
+        except Exception as exc:  # noqa: BLE001
+            # A stream cannot raise an HTTPException once the first byte is out,
+            # so the failure is delivered as an event the client can render.
+            logger.error("SCOUT stream failed: %s", exc, exc_info=True)
+            yield _sse({"type": "error", "detail": f"SCOUT failed: {exc}"})
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            # `no-transform` matters as much as `no-cache`: a proxy that
+            # compresses the body will also buffer it, and a buffered event
+            # stream arrives all at once at the end -- which looks exactly like
+            # the pipeline not working.
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.post("/research", response_model=ScoutOutput)
