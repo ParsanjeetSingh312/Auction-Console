@@ -38,6 +38,10 @@ import {
 } from "react-router-dom";
 
 import Home from "./pages/Home";
+import ErrorBoundary from "./components/Global/ErrorBoundary";
+import ScoutDrawer from "./components/Scout/ScoutDrawer";
+import ScoutLauncher from "./components/Scout/ScoutLauncher";
+import { useScoutHotkey } from "./console/scoutStore";
 
 // The AUCTIQ landing — now the front door.
 const Auctiq = lazy(() => import("./pages/Auctiq"));
@@ -45,6 +49,8 @@ const DataRoom = lazy(() => import("./pages/DataRoom"));
 const LiveAuction = lazy(() => import("./pages/LiveAuction"));
 const AuctionConsole = lazy(() => import("./components/Console/AuctionConsole"));
 const AuctionBlock = lazy(() => import("./components/Auction/AuctionBlock"));
+// The scene bench, while the 3D landing is being built piece by piece.
+const StadiumLab = lazy(() => import("./pages/StadiumLab"));
 
 export default function App() {
   return (
@@ -60,12 +66,84 @@ export default function App() {
           <Route path="/auctiq" element={<Navigate replace to="/" />} />
           <Route path="/data" element={<DataRoom />} />
           <Route path="/auction" element={<LiveAuction />} />
+          {/*
+            `/auction/live` is the same room, under the name the rest of the
+            product calls it.
+
+            A second path to one component rather than a redirect, because both
+            are legitimate addresses for it and a redirect would rewrite the URL
+            under anyone who typed the other one. `/auction` has been the route
+            since Phase 4 and is in bookmarks; `/auction/live` is what the nav
+            and the specification call the live bidding control panel. Neither
+            should win.
+          */}
+          <Route path="/auction/live" element={<LiveAuction />} />
+          {/* A near-miss worth catching rather than 404ing. */}
+          <Route path="/auction/room" element={<Navigate replace to="/auction/live" />} />
           <Route path="/auction/demo" element={<BlockDemo />} />
+          {/* The stadium bench. Mounted from the first step of the 3D build so
+              each piece can be scrolled and judged as it lands, rather than
+              only once the whole scene is wired into the hero. */}
+          <Route path="/stadium" element={<StadiumLab />} />
           <Route path="/console" element={<AuctionConsole />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
+
+      {/*
+        SCOUT, on every route.
+
+        Mounted here rather than per-page for the reason the brief asks for it
+        to be global: the assistant has to be reachable from the landing, the
+        Data Interface, the live room and the console without each of them
+        knowing it exists. Inside `BrowserRouter` so the panel can link into
+        the app later, and outside `Suspense` so it is not replaced by the
+        route fallback while a lazy chunk is in flight — a launcher that
+        disappears during navigation reads as a bug.
+
+        Not lazy, deliberately. The whole point is that it is always there, and
+        a chunk fetched on first click would make the first open the slowest.
+      */}
+      {/*
+        SCOUT is advisory; the auction is not.
+
+        A render fault anywhere inside the drawer would otherwise unmount the
+        whole tree from the root and leave a blank page — during a live lot.
+        The boundary confines it to the panel, so a broken assistant costs the
+        assistant and nothing else.
+
+        It does NOT catch a failed request: those are already handled as state
+        by useScoutOrchestrator and rendered as a message. And it cannot help
+        when the backend is down, because uvicorn serves this page too — there
+        is no React left running to catch anything.
+      */}
+      <ErrorBoundary label="SCOUT">
+        <GlobalScout />
+      </ErrorBoundary>
     </BrowserRouter>
+  );
+}
+
+/**
+ * The launcher, the panel, and the keyboard shortcut that opens them.
+ *
+ * A component rather than three lines in `App` because `useScoutHotkey` is a
+ * hook and has to be called from one. Keeping it here also means the shortcut
+ * is registered exactly once for the life of the application, which is what
+ * the store's own header asks for.
+ *
+ * The drawer is rendered before the launcher so the button paints over the
+ * panel it opened. Both carry explicit z-indices as well, because paint order
+ * alone would not survive either of them gaining a stacking context.
+ */
+function GlobalScout() {
+  useScoutHotkey();
+
+  return (
+    <>
+      <ScoutDrawer />
+      <ScoutLauncher />
+    </>
   );
 }
 

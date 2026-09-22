@@ -42,6 +42,8 @@ export interface ApiPlayer {
   cap_status: string | null;
   overseas: number | null;
   base_price: number | null;
+  /** Squad number. Null where it has not been verified. */
+  jersey_number: number | null;
   rating: number | null;
   matches: number | null;
   total_runs: number | null;
@@ -110,6 +112,12 @@ export interface ConsolePlayer {
   set: string;
   /** True when `set` was derived here rather than read from the backend. */
   setDerived: boolean;
+  /**
+   * Squad number. Null means "not verified", not "has none" — it is the
+   * largest element on a player card, so an unverified number renders as a
+   * role badge rather than as an invented figure.
+   */
+  jersey: number | null;
   base: number;
   /**
    * True when `base` is the auction floor standing in for a missing figure.
@@ -151,7 +159,7 @@ export interface BlockState {
   bidderId: number | null;
 }
 
-export type LogKind = "note" | "bid" | "sold" | "unsold";
+export type LogKind = "note" | "bid" | "sold" | "unsold" | "timeout" | "withdraw";
 
 export interface LogEntry {
   seq: number;

@@ -34,7 +34,10 @@ import { Canvas } from "@react-three/fiber";
 import { Environment, Float, Lightformer, PerspectiveCamera } from "@react-three/drei";
 import { useReducedMotion } from "framer-motion";
 
-import RevolvingTrophy from "./RevolvingTrophy";
+// The cup, in place of the covered urn. `RevolvingTrophy` is kept beside it:
+// swapping back is this one import line.
+import ChaliceTrophy from "./ChaliceTrophy";
+import { useQuality } from "./rig/quality";
 
 export interface TrophyCanvasProps {
   className?: string;
@@ -43,6 +46,7 @@ export interface TrophyCanvasProps {
 }
 
 export default function TrophyCanvas({ className = "", fallback }: TrophyCanvasProps) {
+  const quality = useQuality();
   const reduced = useReducedMotion();
   const hostRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(true);
@@ -75,15 +79,68 @@ export default function TrophyCanvas({ className = "", fallback }: TrophyCanvasP
           // fights useFrame; "never" while offscreen achieves the same saving
           // without touching the animation code.
           frameloop={visible ? "always" : "never"}
-          // Capped at 2: past that the pixel count quadruples for a difference
-          // nobody can see on a 3-inch canvas.
-          dpr={[1, 2]}
-          gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+          /*
+            Measure without a debounce.
+
+            react-three-fiber sizes the drawing buffer from a ResizeObserver on
+            the host element and debounces the result. When that first callback
+            is delayed or coalesced away — which happens in embedded and
+            throttled renderers — the canvas is left at the HTML default of
+            300x150 while its host is correctly sized, so the scene renders into
+            a box a fraction of the space it was given and the trophy is
+            effectively invisible. Observed here: host 596x540, canvas 150 tall,
+            and any real resize or scroll corrected it instantly.
+
+            debounce 0 makes the initial measurement synchronous with the first
+            observation. There is nothing to debounce on this canvas anyway: it
+            is not resized by user interaction, only by the viewport.
+          */
+          resize={{ debounce: 0, scroll: false }}
+          /*
+            Budgeted by the same quality profile the stadium uses.
+
+            This used to be a hardcoded `dpr={[1, 2]}` with antialiasing always
+            on, which made it the only canvas in the product that ignored the
+            tier. That is affordable in isolation and expensive here, because
+            the landing mounts this *and* the fullscreen stadium scene at the
+            same time: on an integrated GPU two contexts were competing, one of
+            them rendering four times the pixels the machine had been judged fit
+            for. Measured on the development machine -- Intel Iris Xe, which
+            `detectTier` correctly puts on tier 2 -- the stadium was honouring a
+            1.5 cap while this one rendered at 2 with MSAA on top.
+
+            On tier 3 nothing changes: maxDpr is 2 and antialias stays on. On
+            tier 2 it drops to 1.5 without it, which is the whole point.
+          */
+          dpr={[1, quality.maxDpr]}
+          gl={{
+            antialias: quality.tier === 3,
+            alpha: true,
+            powerPreference: "high-performance",
+          }}
           // Transparent, so the stadium gradient behind the page shows through
           // and the trophy sits *in* the scene rather than on a grey tile.
           style={{ background: "transparent" }}
         >
-          <PerspectiveCamera makeDefault position={[0, 0.35, 5.4]} fov={38} />
+          {/*
+            z=6.4, not 5.4.
+
+            `fov` is the VERTICAL field of view, so the framing is identical at
+            every canvas size — which means the clipping this fixes was present
+            at every canvas size too, just small enough to miss until the hero
+            rendered the trophy at 700px. At z=5.4 the visible band is
+            0.35 +/- tan(19deg)*5.4, so it stops at y=-1.509. The plinth's
+            underside sits at -1.407 once the 1.05 scale is applied, and three
+            things then push it past the edge: the model's own 0.08 bob, Float's
+            0.05 drift, and — much the largest — Float's 0.22rad tilt, which
+            drops the rim of a 1.155-radius disc by about a quarter of a unit.
+
+            Pulling back to 6.4 opens the band to -1.854 and clears the worst
+            case at roughly -1.79. The trophy renders slightly smaller in frame
+            as a result, which the taller canvas in BroadcastHero more than
+            takes back.
+          */}
+          <PerspectiveCamera makeDefault position={[0, 0.35, 6.4]} fov={38} />
 
           {/* Base fill. Deliberately dim — the environment provides the body of
               the light, and a bright ambient would flatten the metal. */}
@@ -168,11 +225,25 @@ export default function TrophyCanvas({ className = "", fallback }: TrophyCanvasP
             />
           </Environment>
 
+          {/*
+            `scrollLinked` turns the idle spin into a scroll-driven one, which
+            is what the brief asks for: the trophy should turn as the page moves
+            rather than on a timer of its own.
+
+            It is rotation only. The prototype's scroll-linked trophy also
+            translates out of frame as the pitch beat takes over — right there,
+            where it lives inside the journey's own scene. Here it sits in the
+            hero's layout, so sliding it out would leave a hole in a page that
+            is meant to be otherwise unchanged. `ChaliceTrophy` applies the exit
+            translation only when it is the one driving its own position; inside
+            `Float` the wrapper owns the transform, so the turn survives and the
+            drift does not.
+          */}
           {reduced ? (
-            <RevolvingTrophy still scale={1.05} />
+            <ChaliceTrophy still scale={1.05} />
           ) : (
             <Float speed={1.1} rotationIntensity={0.22} floatIntensity={0.5}>
-              <RevolvingTrophy scale={1.05} />
+              <ChaliceTrophy scale={1.05} scrollLinked />
             </Float>
           )}
         </Canvas>

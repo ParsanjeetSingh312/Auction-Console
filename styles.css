@@ -25,6 +25,19 @@
  */
 @import url("https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;500;600;700&family=Russo+One&display=swap");
 
+/**
+ * Barlow Condensed, for the broadcast hero's headline and nothing else.
+ *
+ * Both italic cuts are requested explicitly — note the `ital,wght@` axis list
+ * below, which asks for 1,700 and 1,800 alongside the romans. The headline is
+ * set in 800 italic, and requesting only roman weights would leave the browser
+ * synthesising the slant by shearing the uprights. That is invisible in a
+ * caption and unmistakable at clamp(2.5rem, 7vw, 5.5rem), and it is the whole
+ * reason this face was chosen over the Teko the brief offered, which ships no
+ * italic at all.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700;1,800&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -353,6 +366,149 @@
       transparent
     );
     opacity: 0.65;
+  }
+
+  /* ----------------------------------------------------------------------
+     The broadcast hero's entrance.
+
+     A CSS animation rather than Framer Motion variants, for the reason spelled
+     out above the nav's own entrance: Framer writes the `initial` styles inline
+     and drives the animation on requestAnimationFrame, so a frame where rAF
+     never runs leaves the element at `initial` forever. That is not theoretical
+     here — earlier in this phase the previous hero rendered at opacity 0 in an
+     embedded preview and looked, from outside, exactly like a blank page. The
+     hero is the first thing anyone sees; it cannot depend on a callback.
+     A CSS animation runs off the document timeline and starts regardless.
+
+     One class on a column staggers whatever is inside it, so the panels do not
+     each need a delay prop threaded down from the parent — and the sequence
+     stays correct when a child is added or reordered.
+
+     Reduced motion is already handled: the rule at the foot of this file
+     collapses duration AND delay to 0.001ms under `.auctiq *`, with
+     `!important`. The entrance does not disappear under that setting, it simply
+     arrives instantly.
+
+     **Movement only. No fade.** This is the other half of the nav's argument and
+     it was learned the hard way here: the first version of these keyframes
+     started at `opacity: 0`, and in an embedded preview every element in the
+     hero sat at zero opacity indefinitely — animations assigned, delays correct,
+     never advanced. Running off the document timeline makes an animation
+     independent of rAF; it does not guarantee the document is being painted at
+     all. So the stuck state has to be survivable, and an element eighteen pixels
+     low is survivable where an invisible one is not. Nobody will ever notice the
+     offset; everybody notices a blank hero.
+  ---------------------------------------------------------------------- */
+  .auctiq-stagger > * {
+    animation: auctiq-rise 0.62s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .auctiq-stagger > *:nth-child(1) {
+    animation-delay: 0.06s;
+  }
+  .auctiq-stagger > *:nth-child(2) {
+    animation-delay: 0.17s;
+  }
+  .auctiq-stagger > *:nth-child(3) {
+    animation-delay: 0.28s;
+  }
+  .auctiq-stagger > *:nth-child(4) {
+    animation-delay: 0.39s;
+  }
+
+  /* Opt out of the entrance entirely.
+
+     For the trophy's canvas. react-three-fiber sizes its drawing buffer from a
+     ResizeObserver on this element, and that measurement already proved fragile
+     enough this phase to need its debounce removed; animating a transform on it
+     is a needless second chance at a stale box. With the fade gone there is
+     nothing left to give it that does not touch the transform, so it simply
+     arrives — which reads fine, because the two things above it are moving and
+     the eye is on them.
+
+     It still has to win the cascade against `.auctiq-stagger > *`, hence the
+     `none` rather than the absence of a rule. */
+  .auctiq-no-lift {
+    animation: none;
+  }
+
+  @keyframes auctiq-rise {
+    from {
+      transform: translateY(18px);
+    }
+    to {
+      transform: none;
+    }
+  }
+
+  /* ----------------------------------------------------------------------
+     The broadcast hero's neon panels.
+
+     One class for all three cards rather than three separate card classes,
+     because the hue appears in four places on a single panel — the edge ring,
+     the outer bloom, the inset falloff, and the rule beneath the title. Writing
+     a literal colour into four declarations per card is four chances for them
+     to drift out of step. `--neon` carries the hue as space-separated channels
+     so each layer can take its own alpha: `rgb(var(--neon) / 0.55)`.
+
+     Cyan is the default because the live bid is the panel that matters; the two
+     modifiers reassign nothing but the custom property.
+
+     Bare class names rather than `.auctiq .neon-card`, matching `.glass` and
+     `.gold-rail` above. Nothing outside this surface references a `neon-*`
+     token, so there is nothing for them to leak into.
+  ---------------------------------------------------------------------- */
+  .neon-card {
+    --neon: 34 211 238;
+    position: relative;
+    /* 10px, not the `rounded-2xl` the rest of the landing uses. The reference's
+       corners are markedly tighter, and that is doing real work: a broadcast
+       overlay should read as instrumentation bolted onto the picture, and
+       instrumentation has hard corners. */
+    border-radius: 10px;
+    background: theme("colors.neon.pane");
+    /* Deliberately light. The brief asks for `backdrop-blur-md`, but the
+       reference's panels are far closer to a tinted sheet of glass — the
+       stadium stays legible through them, and the edge does the separating.
+       That is the same argument GlassCard.tsx already makes for this surface:
+       on a near-black ground the border does more work than the blur. */
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-shadow:
+      0 0 0 1px rgb(var(--neon) / 0.55),
+      0 0 24px -4px rgb(var(--neon) / 0.42),
+      inset 0 0 20px -12px rgb(var(--neon) / 0.6);
+  }
+  .neon-card--orange {
+    --neon: 251 146 60;
+  }
+  .neon-card--purple {
+    --neon: 168 85 247;
+  }
+
+  /* The hairline beneath a card's title, in that card's hue.
+
+     Inherits `--neon` from the panel, so recolouring a card is one declaration
+     and the rule follows. Brightest at the title end and falling away rather
+     than a flat bar: the reference lights its rules from the left, and an even
+     2px line across a dark panel reads as a table border instead of a glow. */
+  .neon-rule {
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(
+      90deg,
+      rgb(var(--neon) / 0.95),
+      rgb(var(--neon) / 0.12)
+    );
+    box-shadow: 0 0 8px -1px rgb(var(--neon) / 0.55);
+  }
+
+  /* The wordmark's neon. Two shadows, not one: a tight bright halo that reads
+     as the glass tube itself, and a wide dim bloom that reads as the light it
+     throws. A single large-radius shadow just looks blurred. */
+  .text-glow-orange {
+    text-shadow:
+      0 0 8px rgba(251, 146, 60, 0.55),
+      0 0 28px rgba(251, 146, 60, 0.35);
   }
 
   .text-glow-gold {

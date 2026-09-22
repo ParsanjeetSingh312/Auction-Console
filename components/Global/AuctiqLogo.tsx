@@ -27,19 +27,35 @@ export interface AuctiqLogoProps {
   to?: string;
   /** Hides the wordmark, leaving the mark alone — for narrow overlays. */
   markOnly?: boolean;
+  /**
+   * Renders without the fixed wrapper, for use as a flex child of a bar that is
+   * already positioned.
+   *
+   * Additive: left off, the mark pins itself to the top-right exactly as it
+   * always has. The broadcast header owns its own placement and needs the mark
+   * in its layout flow — a fixed element nested inside a fixed bar ignores that
+   * bar's padding and sits wherever the viewport puts it, not where the row
+   * wants it.
+   */
+  inline?: boolean;
   className?: string;
 }
 
 export default function AuctiqLogo({
   to = "/auctiq",
   markOnly = false,
+  inline = false,
   className = "",
 }: AuctiqLogoProps) {
   const reduced = useReducedMotion();
 
   return (
     <div
-      className={`pointer-events-none fixed right-4 top-4 z-50 sm:right-6 sm:top-6 ${className}`}
+      className={
+        inline
+          ? `shrink-0 ${className}`
+          : `pointer-events-none fixed right-4 top-4 z-50 sm:right-6 sm:top-6 ${className}`
+      }
     >
       <Link
         to={to}

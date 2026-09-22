@@ -40,6 +40,8 @@ import { pressable, viewVariants } from "../../console/motion";
 
 import "../../console/console.css";
 
+import StadiumBackdrop from "../Sections/StadiumBackdrop";
+
 type View = "pool" | "teams" | "results" | "scout" | "block";
 
 interface Toast {
@@ -57,7 +59,27 @@ const INITIAL_FILTERS: PoolFilters = {
   minRating: 8,
 };
 
+/**
+ * The night theme, applied once around every screen this route can show.
+ *
+ * Same shape as the wrapper on /auction and for the same reason: the component
+ * below returns from more than one place, so wrapping it is the only way to
+ * cover them all without an edit per return that a later one would miss.
+ *
+ * Nothing inside changes — no props, no logic, no markup. `.console-dark`
+ * redefines console.css's palette tokens for this subtree, and the backdrop is
+ * a fixed layer behind it.
+ */
 export default function AuctionConsole() {
+  return (
+    <div className="console-dark">
+      <StadiumBackdrop variant="console" />
+      <AuctionConsoleInner />
+    </div>
+  );
+}
+
+function AuctionConsoleInner() {
   const engine = useAuctionEngine();
   const scout = useScout();
 
@@ -343,6 +365,18 @@ export default function AuctionConsole() {
                   onSort={toggleSort}
                   onOpenCard={setCardPlayer}
                   onNotice={notify}
+                  /*
+                    The offline console is the operator's own tool: one person,
+                    one browser, no server and no seats. Whoever opens it is
+                    running the auction, so they get the full sheet.
+
+                    Stated explicitly rather than left to the prop's default.
+                    The default exists to keep call sites working during a
+                    migration, and relying on it here would leave the most
+                    privileged view in the app asserting nothing about why it
+                    is privileged.
+                  */
+                  viewerRole="auctioneer"
                 />
               )}
               {view === "teams" && <TeamsView engine={engine} onNotice={notify} />}

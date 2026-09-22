@@ -73,6 +73,12 @@ class EnvReport:
     player_count: int | None = None
     #: Embeddings in the vector store, when it could be read.
     vector_count: int | None = None
+    #: True when SCOUT's sources file is readable and its graph can run.
+    scout_ready: bool = False
+    #: True when the Data Researcher's search fallback has a key.
+    search_fallback_ready: bool = False
+    #: True when the Cricket Advisor has a Hermes endpoint to reason with.
+    hermes_configured: bool = False
 
     @property
     def blocking(self) -> list[Finding]:
@@ -109,6 +115,23 @@ class EnvReport:
             f"Vector retrieval: {'on' if self.chroma_ready else 'OFF (keyword fallback)'}",
         ]
         return " | ".join(modes)
+
+    def scout_summary(self) -> str:
+        """
+        The same, for the orchestrator.
+
+        Kept as a second line rather than folded into `summary`, because the RAG
+        chain and SCOUT fail independently: the console's search can be perfect
+        while the Data Researcher has no way to fetch anything, and reading that
+        off one crowded line is how it goes unnoticed.
+        """
+        return " | ".join(
+            [
+                f"Data Researcher: {'sources ready' if self.scout_ready else 'OFF (no enabled sources)'}",
+                f"Search fallback: {'on' if self.search_fallback_ready else 'OFF (no TAVILY_API_KEY)'}",
+                f"Cricket Advisor: {'Hermes' if self.hermes_configured else 'local provider ladder'}",
+            ]
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -354,6 +377,382 @@ def _count_vectors(chroma_dir: Path) -> Finding | None:
     return Finding("CHROMA_DB_PATH", Severity.OK, f"{count} embeddings")
 
 
+# ---------------------------------------------------------------------------
+# Model footprint
+#
+# Added after a live incident on 2026-09-22 that cost an afternoon. The console
+# reported "Cannot reach the RAG backend", which reads as a port or a URL
+# problem; the backend was in fact being killed by the operating system partway
+# through the first search. `RERANKER_MODEL_NAME` was BAAI/bge-reranker-large,
+# which is 2.2 GB on disk and took ~2.1 GB of RAM and 77 seconds to load, on a
+# machine with about 3 GB free. Switching to bge-reranker-base cut that to
+# 1.35 GB and 4 seconds.
+#
+# Nothing in the environment was misconfigured in the usual sense: every key was
+# present and valid. The problem was a size, and a size is exactly the kind of
+# thing a startup check can see before a user hits it. So this section reports
+# the reranker's footprint against the memory actually available, and says which
+# smaller model to use when the two do not fit.
+# ---------------------------------------------------------------------------
+
+#: Headroom multiplier over the on-disk size. Weights are not the whole cost --
+#: tokenizer, activations and the framework itself all want room -- and a load
+#: that exactly fits is a load that fails the moment anything else allocates.
+_MEMORY_HEADROOM = 1.4
+
+#: Suggested when the configured reranker does not fit. Roughly half the size of
+#: the -large variant and, on this dataset, a small quality difference against a
+#: large reliability one.
+_SMALLER_RERANKER = "BAAI/bge-reranker-base"
+
+
+def _hf_cache_dir(model_name: str) -> Path | None:
+    """
+    Where the Hub keeps one model, if it has been downloaded.
+
+    The Hub flattens "BAAI/bge-reranker-base" to "models--BAAI--bge-reranker-base".
+    Returns None when the model has never been fetched, which is a fact worth
+    reporting rather than an error: the first load will simply download it.
+    """
+    root = os.environ.get("HF_HUB_CACHE")
+    if root:
+        base = Path(root)
+    elif os.environ.get("HF_HOME"):
+        base = Path(os.environ["HF_HOME"]) / "hub"
+    else:
+        base = Path.home() / ".cache" / "huggingface" / "hub"
+
+    candidate = base / f"models--{model_name.replace('/', '--')}"
+    return candidate if candidate.is_dir() else None
+
+
+def _dir_size(path: Path) -> int:
+    """Bytes on disk under `path`. Unreadable entries are skipped, not raised."""
+    total = 0
+    for root, _dirs, files in os.walk(path, onerror=lambda _e: None):
+        for name in files:
+            try:
+                total += (Path(root) / name).stat().st_size
+            except OSError:
+                continue
+    return total
+
+
+def _available_memory() -> int | None:
+    """
+    Free physical memory in bytes, or None when it cannot be determined.
+
+    Deliberately dependency-free: psutil is not installed in this project's
+    virtualenv, and adding a package so that a health check can print a number
+    is a poor trade. Windows answers through GlobalMemoryStatusEx; Linux through
+    /proc/meminfo. Anything else returns None and the check simply reports the
+    model size without a verdict.
+    """
+    if sys.platform == "win32":
+        import ctypes
+
+        class _MemoryStatusEx(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+
+        try:
+            status = _MemoryStatusEx()
+            status.dwLength = ctypes.sizeof(_MemoryStatusEx)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+                return int(status.ullAvailPhys)
+        except Exception:  # noqa: BLE001 - a health check must not raise
+            return None
+        return None
+
+    try:
+        with open("/proc/meminfo", "r", encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) * 1024
+    except OSError:
+        return None
+    return None
+
+
+def _gb(value: float) -> str:
+    return f"{value / (1024 ** 3):.1f} GB"
+
+
+def _check_reranker_footprint(settings: Settings) -> Finding:
+    """Will the configured reranker fit in the memory this machine has spare?"""
+    name = settings.RERANKER_MODEL_NAME
+    cache = _hf_cache_dir(name)
+
+    if cache is None:
+        return Finding(
+            "RERANKER_MODEL_NAME",
+            Severity.OK,
+            f"{name} (not downloaded yet; the first search will fetch it)",
+        )
+
+    size = _dir_size(cache)
+    free = _available_memory()
+
+    if free is None:
+        return Finding("RERANKER_MODEL_NAME", Severity.OK, f"{name}, {_gb(size)} on disk")
+
+    needed = size * _MEMORY_HEADROOM
+    if free < needed:
+        remedy = (
+            f"Free some memory, or set RERANKER_MODEL_NAME={_SMALLER_RERANKER} "
+            "in .env (about half the size) and restart. A .env change needs a "
+            "full restart -- uvicorn --reload watches .py files only."
+        )
+        if name == _SMALLER_RERANKER:
+            remedy = (
+                "Free some memory before searching, or set use_reranker=false on "
+                "the search request to skip the cross-encoder entirely."
+            )
+        return Finding(
+            "RERANKER_MODEL_NAME",
+            Severity.DEGRADED,
+            f"{name} is {_gb(size)} on disk and about {_gb(needed)} is wanted to "
+            f"load it, but only {_gb(free)} is free. The first search may be "
+            "killed by the operating system, which the console reports as "
+            "'cannot reach the backend'.",
+            remedy,
+        )
+
+    return Finding(
+        "RERANKER_MODEL_NAME",
+        Severity.OK,
+        f"{name}, {_gb(size)} on disk, {_gb(free)} free",
+    )
+
+
+# ---------------------------------------------------------------------------
+# SCOUT
+#
+# The orchestrator's own settings were previously unchecked: this module
+# validated the RAG chain thoroughly and said nothing at all about Hermes,
+# Tavily, sources.yaml or the checkpoint store. So the Data Researcher and the
+# Cricket Advisor could both be switched off by an absent key and the startup
+# log would report a clean bill of health.
+#
+# Everything here is DEGRADED at worst. That is not leniency -- it matches what
+# the code actually does. `scout/agents/cricket_advisor.py` falls back to the
+# local provider ladder when Hermes is unset, and the search fallback declares
+# itself unavailable rather than raising. An unset value costs a capability,
+# and the point of this section is to say which one, out loud, at startup.
+# ---------------------------------------------------------------------------
+
+
+def _check_scout(settings: Settings, report: EnvReport) -> None:
+    """Append SCOUT's findings to `report`, and set its capability flags."""
+    # --- the Cricket Advisor's reasoning engine ---------------------------
+    hermes = (settings.HERMES_API_BASE_URL or "").strip()
+    if not hermes:
+        report.findings.append(
+            Finding(
+                "HERMES_API_BASE_URL",
+                Severity.OK,
+                "not set - the Cricket Advisor uses the local provider ladder",
+            )
+        )
+    elif not hermes.startswith(("http://", "https://")):
+        report.findings.append(
+            Finding(
+                "HERMES_API_BASE_URL",
+                Severity.INVALID,
+                f"'{hermes}' is not an http(s) URL",
+                "Include the scheme, e.g. http://localhost:11434/v1",
+            )
+        )
+    elif not hermes.rstrip("/").endswith("/v1"):
+        # The transport appends /chat/completions to this value, so a base
+        # without /v1 produces a 404 on every call -- at request time, far from
+        # the setting that caused it.
+        report.findings.append(
+            Finding(
+                "HERMES_API_BASE_URL",
+                Severity.INVALID,
+                f"{hermes} does not end in /v1",
+                "OpenAI-compatible servers mount at /v1, e.g. "
+                "http://localhost:11434/v1. Confirm with: curl {base}/models",
+            )
+        )
+    else:
+        report.hermes_configured = True
+        report.findings.append(Finding("HERMES_API_BASE_URL", Severity.OK, hermes))
+
+    if report.hermes_configured:
+        for label, value in (
+            ("HERMES_RESEARCHER_MODEL", settings.HERMES_RESEARCHER_MODEL),
+            ("HERMES_ADVISOR_MODEL", settings.HERMES_ADVISOR_MODEL),
+        ):
+            if not (value or "").strip():
+                report.findings.append(
+                    Finding(
+                        label,
+                        Severity.INVALID,
+                        "empty while Hermes is configured",
+                        "Name a model the server answers to: curl {base}/models",
+                    )
+                )
+            else:
+                report.findings.append(Finding(label, Severity.OK, value))
+
+        if settings.HERMES_TIMEOUT <= 0:
+            report.findings.append(
+                Finding(
+                    "HERMES_TIMEOUT",
+                    Severity.INVALID,
+                    f"{settings.HERMES_TIMEOUT} is not a usable timeout",
+                    "Use seconds greater than zero; 20 is the default.",
+                )
+            )
+
+    # --- the Data Researcher's search fallback ----------------------------
+    tavily = (settings.TAVILY_API_KEY or "").strip()
+    if tavily.lower() in PLACEHOLDERS:
+        report.findings.append(
+            Finding(
+                "TAVILY_API_KEY",
+                Severity.OK,
+                "not set - the Data Researcher cannot fall back to web search "
+                "when a scrape is blocked or times out",
+                "Optional. A free key from https://tavily.com allows 1,000 "
+                "searches a month.",
+            )
+        )
+    else:
+        report.search_fallback_ready = True
+        report.findings.append(
+            Finding("TAVILY_API_KEY", Severity.OK, f"set ({len(tavily)} chars)")
+        )
+
+    # --- what the Researcher is allowed to read ---------------------------
+    sources = Path(settings.SCOUT_SOURCES_PATH)
+    if not sources.is_file():
+        report.findings.append(
+            Finding(
+                "SCOUT_SOURCES_PATH",
+                Severity.DEGRADED,
+                f"no sources file at {sources} - the Data Researcher has nothing "
+                "to read and will return an empty batch",
+                "Restore config/sources.yaml, or point this at another list.",
+            )
+        )
+    else:
+        try:
+            import yaml
+
+            with sources.open("r", encoding="utf-8") as fh:
+                config = yaml.safe_load(fh) or {}
+            entries = config.get("sources") or []
+            enabled = sum(1 for s in entries if isinstance(s, dict) and s.get("enabled"))
+            if enabled == 0:
+                report.findings.append(
+                    Finding(
+                        "SCOUT_SOURCES_PATH",
+                        Severity.DEGRADED,
+                        f"{len(entries)} source(s) defined, none enabled",
+                        "Set `enabled: true` on at least one source.",
+                    )
+                )
+            else:
+                report.scout_ready = True
+                report.findings.append(
+                    Finding(
+                        "SCOUT_SOURCES_PATH",
+                        Severity.OK,
+                        f"{enabled} of {len(entries)} source(s) enabled",
+                    )
+                )
+        except Exception as exc:  # noqa: BLE001 - a bad file is a config error
+            report.findings.append(
+                Finding(
+                    "SCOUT_SOURCES_PATH",
+                    Severity.INVALID,
+                    f"could not be parsed: {exc}",
+                    "Fix the YAML, or `python -c \"import yaml,sys; "
+                    'yaml.safe_load(open(sys.argv[1]))" <path>` to locate it.',
+                )
+            )
+
+    # --- where the graph keeps its memory ---------------------------------
+    checkpoint = Path(settings.SCOUT_CHECKPOINT_PATH)
+    if checkpoint.is_file():
+        report.findings.append(Finding("SCOUT_CHECKPOINT_PATH", Severity.OK, str(checkpoint)))
+    elif checkpoint.parent.is_dir():
+        # Absent is the correct state before SCOUT has ever run; the graph
+        # creates it. Only an unwritable parent is worth flagging.
+        report.findings.append(
+            Finding(
+                "SCOUT_CHECKPOINT_PATH",
+                Severity.OK,
+                f"not created yet - the graph will make it at {checkpoint}",
+            )
+        )
+    else:
+        report.findings.append(
+            Finding(
+                "SCOUT_CHECKPOINT_PATH",
+                Severity.DEGRADED,
+                f"the directory {checkpoint.parent} does not exist, so "
+                "conversations cannot be checkpointed",
+                "Create the directory, or point SCOUT_CHECKPOINT_PATH elsewhere.",
+            )
+        )
+
+    # --- the research store -----------------------------------------------
+    if not (settings.SCOUT_COLLECTION_NAME or "").strip():
+        report.findings.append(
+            Finding(
+                "SCOUT_COLLECTION_NAME",
+                Severity.INVALID,
+                "empty - research would have nowhere to go",
+                "Use a name distinct from 'ipl_players'; the default is "
+                "'scout_research'. POST /api/v1/ingest resets ipl_players, so "
+                "research written there would be silently destroyed.",
+            )
+        )
+    elif settings.SCOUT_COLLECTION_NAME.strip() == "ipl_players":
+        report.findings.append(
+            Finding(
+                "SCOUT_COLLECTION_NAME",
+                Severity.INVALID,
+                "is 'ipl_players', the pool's own collection",
+                "POST /api/v1/ingest defaults to reset=True and drops that "
+                "collection, so scraped research would vanish on the next "
+                "ingest without an error. Use 'scout_research'.",
+            )
+        )
+    else:
+        report.findings.append(
+            Finding("SCOUT_COLLECTION_NAME", Severity.OK, settings.SCOUT_COLLECTION_NAME)
+        )
+
+    # --- the refresh budget ------------------------------------------------
+    # The room opens a lot for 7 seconds (OPEN_SECONDS in auction/room.py), so a
+    # refresh allowed to run longer than that answers after the hammer.
+    if settings.SCOUT_CYCLE_TIMEOUT > 7 and settings.SCOUT_MAX_REFRESH_CYCLES > 0:
+        report.findings.append(
+            Finding(
+                "SCOUT_CYCLE_TIMEOUT",
+                Severity.DEGRADED,
+                f"{settings.SCOUT_CYCLE_TIMEOUT}s exceeds the 7s a lot stays "
+                "open, so a refreshed answer can arrive after the lot closes",
+                "Lower it to 7 or less for live use, or set "
+                "SCOUT_MAX_REFRESH_CYCLES=0 to answer from what is already held.",
+            )
+        )
+
+
 def check_environment(settings: Settings | None = None) -> EnvReport:
     """
     Inspect the environment and return a report. Never raises.
@@ -434,7 +833,9 @@ def check_environment(settings: Settings | None = None) -> EnvReport:
         ("SQL_LLM_MODEL", settings.SQL_LLM_MODEL),
         ("ROUTER_LLM_MODEL", settings.ROUTER_LLM_MODEL),
         ("EMBEDDING_MODEL_NAME", settings.EMBEDDING_MODEL_NAME),
-        ("RERANKER_MODEL_NAME", settings.RERANKER_MODEL_NAME),
+        # RERANKER_MODEL_NAME is deliberately absent: it gets its own check
+        # below, which weighs it against available memory rather than only
+        # asking whether the string is non-empty.
     ):
         if not (value or "").strip():
             report.findings.append(
@@ -516,6 +917,14 @@ def check_environment(settings: Settings | None = None) -> EnvReport:
             Finding("CORS_ORIGINS", Severity.OK, f"{len(origins)} origin(s)")
         )
 
+    # --- model footprint ---------------------------------------------------
+    # Placed after the stores so the report reads in the order things happen:
+    # what is configured, what is on disk, then what will actually fit.
+    report.findings.append(_check_reranker_footprint(settings))
+
+    # --- SCOUT -------------------------------------------------------------
+    _check_scout(settings, report)
+
     return report
 
 
@@ -525,6 +934,7 @@ def log_report(report: EnvReport, logger) -> None:
     for line in report.render().splitlines():
         logger.info(line)
     logger.info("Capabilities: %s", report.summary())
+    logger.info("SCOUT:        %s", report.scout_summary())
 
     if report.blocking:
         for finding in report.blocking:
@@ -555,6 +965,7 @@ def main() -> int:
     print(report.render())
     print()
     print(report.summary())
+    print(report.scout_summary())
     print()
 
     if report.blocking:

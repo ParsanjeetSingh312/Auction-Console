@@ -99,6 +99,41 @@ export default {
           line: "rgba(255,255,255,0.10)",
         },
 
+        /* ------------------------------------------------------------------
+           Neon — the broadcast hero's three card accents.
+
+           Additive, and reachable only under `.auctiq` like the block above.
+           Three hues because the reference gives each card a job: cyan is the
+           live bid, orange the form table, purple the schedule. A visitor
+           learns that mapping once and then reads the panel by colour alone.
+
+           Split by role rather than by hue, the same way `gold`/`bar` and
+           `blue`/`beam` are split above. Every figure below is measured
+           against the #020617 ground rather than estimated:
+
+             cyan    #22D3EE   11.16:1  — AAA
+             orange  #FB923C    8.91:1  — AAA
+             purple  #A855F7    5.10:1  — AA, short of AAA
+             lilac   #C084FC    7.63:1  — AAA
+
+           So purple is legible rather than unusable, and the split is a margin
+           decision, not a rescue. The schedule card's team labels sit at 10px
+           beneath the fixture times and are the smallest type in the panel, so
+           they take `lilac` and its headroom; `purple` keeps the border and
+           its bloom, where nothing has to be read off it.
+        ------------------------------------------------------------------ */
+        neon: {
+          cyan: "#22D3EE",
+          orange: "#FB923C",
+          purple: "#A855F7",
+          lilac: "#C084FC",
+          /* The card ground. Dark enough that 11px labels stay readable over a
+             lit stadium, translucent enough that the stadium still reads
+             through — the reference's panels are far closer to a tinted sheet
+             of glass than to the heavy frosted blur the brief describes. */
+          pane: "rgba(10, 20, 40, 0.78)",
+        },
+
         paper: "#F2F5F1",
         card: "#FFFFFF",
         ink: { DEFAULT: "#111614", soft: "#3C453F" },
@@ -141,6 +176,18 @@ export default {
            distinct names. */
         auctiq: ["Russo One", "Impact", "Haettenschweiler", "sans-serif"],
         tech: ["Chakra Petch", "Inter", "Segoe UI", "system-ui", "sans-serif"],
+        /* The broadcast headline, and only that.
+
+           Barlow Condensed rather than the Teko the brief offered, for one
+           hard reason: Teko ships weights 300-700 and no italic cut at all,
+           and this headline is italic. Asked for an italic Teko, a browser
+           synthesises one by shearing the uprights — which is invisible in a
+           caption and obvious at clamp(2.5rem, 7vw, 5.5rem). Barlow Condensed
+           has drawn italics through 800.
+
+           Russo One keeps every other display job on this surface. This key is
+           additive: nothing that reads `font-auctiq` today changes. */
+        stadium: ["Barlow Condensed", "Oswald", "Arial Narrow", "sans-serif"],
 
         // Figures: bids, purses, percentages.
         num: ["Rajdhani", "Teko", "Arial Narrow", "sans-serif"],
@@ -195,6 +242,23 @@ export default {
         glass: "0 8px 32px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)",
         "gold-glow": "0 0 24px -6px rgba(246,196,90,0.45)",
         "blue-glow": "0 0 40px -10px rgba(0,87,226,0.55)",
+        /* The neon card edges.
+
+           Each is three layers: a 1px ring that draws the actual edge, an
+           outer bloom, and an inset falloff that tints the first few pixels
+           inside the panel. The bloom alone leaves the edge soft and the card
+           reads as a smudge on the stadium; the ring alone is flat and looks
+           printed rather than lit.
+
+           Held at moderate alpha deliberately. Three cards glowing at full
+           strength leave the live bid — the one card that should escalate when
+           something happens — with nowhere brighter to go. */
+        "neon-cyan":
+          "0 0 0 1px rgba(34,211,238,0.55), 0 0 24px -4px rgba(34,211,238,0.42), inset 0 0 20px -12px rgba(34,211,238,0.60)",
+        "neon-orange":
+          "0 0 0 1px rgba(251,146,60,0.55), 0 0 24px -4px rgba(251,146,60,0.42), inset 0 0 20px -12px rgba(251,146,60,0.60)",
+        "neon-purple":
+          "0 0 0 1px rgba(168,85,247,0.55), 0 0 24px -4px rgba(168,85,247,0.42), inset 0 0 20px -12px rgba(168,85,247,0.60)",
       },
       spacing: {
         rail: "6px",

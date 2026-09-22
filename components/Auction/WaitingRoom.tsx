@@ -26,9 +26,27 @@ export interface WaitingRoomProps {
   socket: AuctionSocket;
   /** Leave the room and go back to the seat picker. */
   onLeave: () => void;
+  /**
+   * Return to the split-screen control console without leaving the room.
+   *
+   * Optional, and supplied only for the auctioneer. Before this existed, an
+   * auctioneer who opened the waiting room was held on this screen until they
+   * started the auction: the only other control was "Leave seat", which drops
+   * the seat entirely. So the way back to the pool, the ledger and the Scout
+   * was to give up the chair and re-claim it — which is a lock-out, not a
+   * navigation choice.
+   *
+   * A franchise is never given this. There is nothing for them to go back to,
+   * and the room would refuse it regardless.
+   */
+  onEnterControlRoom?: () => void;
 }
 
-export default function WaitingRoom({ socket, onLeave }: WaitingRoomProps) {
+export default function WaitingRoom({
+  socket,
+  onLeave,
+  onEnterControlRoom,
+}: WaitingRoomProps) {
   const reduced = useReducedMotion();
   const { state, seat, secondsLeft } = socket;
 
@@ -151,6 +169,7 @@ export default function WaitingRoom({ socket, onLeave }: WaitingRoomProps) {
             <motion.button
               {...(reduced ? {} : pressable)}
               type="button"
+              data-testid="waiting-start-auction"
               onClick={socket.startAuction}
               className="rounded-lg border border-slate-ink bg-slate-ink px-5 py-2.5 font-ui text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-slate-ink/90"
             >
@@ -162,8 +181,36 @@ export default function WaitingRoom({ socket, onLeave }: WaitingRoomProps) {
             </span>
           )}
 
+          {/*
+            The way back to the console.
+
+            Placed between "start" and "leave" deliberately: it is the middle
+            option in every sense — less final than starting the auction, far
+            less destructive than giving up the chair. An auctioneer watching
+            franchises trickle in has ten minutes with nothing to do, and this
+            is the button that lets them spend it reading the pool instead of
+            staring at a countdown they are not allowed to leave.
+
+            Rendered only when a handler is supplied, which is only for the
+            auctioneer. The room enforces that independently; this just avoids
+            offering a franchise a door that would be shut in their face.
+          */}
+          {isAuctioneer && onEnterControlRoom && (
+            <motion.button
+              {...(reduced ? {} : pressable)}
+              type="button"
+              data-testid="waiting-control-room"
+              onClick={onEnterControlRoom}
+              title="Return to the pool, the ledger and the Scout without leaving the room"
+              className="rounded-lg border border-line bg-surface-card px-4 py-2.5 font-ui text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-body transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
+            >
+              Control room
+            </motion.button>
+          )}
+
           <button
             type="button"
+            data-testid="waiting-leave-seat"
             onClick={onLeave}
             className="rounded-lg border border-line bg-surface-card px-3.5 py-2 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-body transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
           >

@@ -30,7 +30,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
 import { money } from "../../console/format";
 import { EASE, pressable, viewVariants } from "../../console/motion";
@@ -38,18 +38,37 @@ import type { AuctionEngine } from "../../console/useAuctionEngine";
 import type { ConsolePlayer, PoolFilters, SortKey } from "../../console/types";
 import type { ScoutState } from "../../console/useScout";
 import type { AuctionSocket } from "../../hooks/useAuctionSocket";
+import { useViewerRole } from "../../hooks/useViewerRole";
+import type { ViewerRole } from "../../hooks/useViewerRole";
 
 import ReloadPoolButton from "../ReloadPoolButton";
+import TimerDisplay from "./TimerDisplay";
 import BlockPanel from "../Console/BlockPanel";
 import CommandSearch from "../Console/CommandSearch";
-import LedgerPanel from "../Console/LedgerPanel";
+// Superseded in place by BiddingHistoryGrid. `LedgerPanel` stays on disk and
+// unmounted; restoring the ruled-paper tally is this import and one line below.
+import AuctionIntelligence from "../Console/AuctionIntelligence";
+import BiddingHistoryGrid from "../Console/BiddingHistoryGrid";
+import TeamLeaderboard from "../Console/TeamLeaderboard";
 import PoolTable from "../Console/PoolTable";
+import { SetupDialog } from "../Console/PlayerCard";
 import ScoutView from "../Console/ScoutView";
 import TeamBudgetGrid from "../Console/TeamBudgetGrid";
 import TeamsView from "../Console/TeamsView";
 
 /** Left-pane tools. The right pane never changes — that is the point. */
-type Tool = "teams" | "pool" | "scout";
+type Tool = "teams" | "pool" | "scout" | "stats";
+
+/**
+ * Tab labels. Split out because "stats" needs two words and the others do not,
+ * and a tab bar that derives its labels from its keys can only ever show one.
+ */
+const TOOL_LABEL: Record<Tool, string> = {
+  teams: "Teams",
+  pool: "Pool",
+  scout: "Scout",
+  stats: "Leaderboard & Stats",
+};
 
 /** Fraction of the width given to the left pane. */
 const PRESETS = { tools: 0.7, even: 0.5, block: 0.25 } as const;
@@ -81,6 +100,24 @@ export interface AdminSplitScreenProps {
    * the waiting room, start, and close the auction.
    */
   socket?: AuctionSocket;
+  /**
+   * Go back to the waiting room.
+   *
+   * Supplied by `LiveAuction` only while the room's phase is `waiting` — that
+   * is, only when the auctioneer reached this screen by stepping out of the
+   * waiting room rather than by the auction being live. Undefined at every
+   * other time, and the control is not rendered.
+   */
+  onReturnToWaitingRoom?: () => void;
+  /**
+   * Go back to the auction report.
+   *
+   * Supplied only while the phase is `finished`. The mirror of
+   * `onReturnToWaitingRoom`: both hand back the same override, and which
+   * one is defined says which screen stepping into this console stepped
+   * away from.
+   */
+  onReturnToReport?: () => void;
 }
 
 export default function AdminSplitScreen({
@@ -88,8 +125,29 @@ export default function AdminSplitScreen({
   scout,
   onNotice,
   socket,
+  onReturnToWaitingRoom,
+  onReturnToReport,
 }: AdminSplitScreenProps) {
   const reduced = useReducedMotion();
+
+  /*
+    The seat decides what the sheet shows.
+
+    Read from the socket rather than hardcoded, even though `LiveAuction` only
+    ever renders this screen for an auctioneer. Hardcoding would make that
+    routing decision load-bearing in a second place: the day someone mounts
+    this component somewhere else, a hardcoded "auctioneer" would hand a
+    franchise the full price sheet, and nothing in this file would look wrong.
+    Deriving it means the room's own answer is the one that applies.
+
+    With no socket the screen is running on the offline engine, where there are
+    no seats at all and whoever opened it is the operator — the same reasoning
+    /console uses. Note that is NOT what `useViewerRole(undefined)` returns on
+    its own: it answers "spectator" for an absent seat, which is the right safe
+    default for a live room and the wrong one for a local tool.
+  */
+  const seatRole = useViewerRole(socket?.seat);
+  const viewerRole: ViewerRole = socket ? seatRole : "auctioneer";
 
   const [tool, setTool] = useState<Tool>("teams");
   const [split, setSplit] = useState<number>(PRESETS.even);
@@ -149,6 +207,17 @@ export default function AdminSplitScreen({
   const nudge = useCallback((delta: number) => {
     setSplit((current) => Math.min(CLAMP.max, Math.max(CLAMP.min, current + delta)));
   }, []);
+
+  /*
+    The auction setup dialog, as the classic console has always had it.
+
+    Same component, same two fields -- purse per team and the squad limits --
+    and the same destructive reset at the bottom. Reusing it rather than writing
+    a second one means the rules a reset restores cannot drift between the two
+    screens, which is the kind of divergence nobody notices until two rooms
+    disagree about what a team can afford.
+  */
+  const [showSetup, setShowSetup] = useState(false);
 
   const activePreset: Preset | null = useMemo(() => {
     const match = (Object.keys(PRESETS) as Preset[]).find(
@@ -258,11 +327,37 @@ export default function AdminSplitScreen({
         )}
 
         <div className="flex items-center gap-3">
+          {/*
+            Auctioneers only, and labelled "Setup" rather than "Reset".
+
+            `ResetAuction` below is already the destructive control, and it is
+            the correct one in a live room: it goes through the socket, the
+            server refuses it for anyone not holding the auctioneer's seat, and
+            it arms before it fires. What it has never had is the *inputs* --
+            purse per team and the squad limits -- which is what this opens.
+          */}
+          {viewerRole === "auctioneer" && (
+            <motion.button
+              {...(reduced ? {} : pressable)}
+              type="button"
+              onClick={() => setShowSetup(true)}
+              className="rounded-md border border-line px-2.5 py-1 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-muted transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
+            >
+              Setup
+            </motion.button>
+          )}
           <span className="hidden font-ui text-[10px] uppercase tracking-[0.1em] text-slate-faint sm:inline">
             {engine.counts.sold} sold · {money(engine.counts.spent)} spent
           </span>
 
-          {socket && <RunControls socket={socket} reduced={!!reduced} />}
+          {socket && (
+            <RunControls
+              socket={socket}
+              reduced={!!reduced}
+              onReturnToWaitingRoom={onReturnToWaitingRoom}
+              onReturnToReport={onReturnToReport}
+            />
+          )}
 
           {/*
             Re-fetch the pool from the backend.
@@ -278,6 +373,8 @@ export default function AdminSplitScreen({
             onReload={engine.reloadRoster}
             reduced={!!reduced}
           />
+
+          {socket && <ResetAuction socket={socket} reduced={!!reduced} />}
 
           <Link
             to="/"
@@ -307,7 +404,7 @@ export default function AdminSplitScreen({
             className="flex items-center gap-1 border-b border-line bg-surface-card/70 px-3 py-1.5"
             role="tablist"
           >
-            {(["teams", "pool", "scout"] as Tool[]).map((key) => (
+            {(["teams", "pool", "scout", "stats"] as Tool[]).map((key) => (
               <motion.button
                 key={key}
                 whileHover={reduced ? undefined : { y: -1 }}
@@ -323,7 +420,7 @@ export default function AdminSplitScreen({
                     : "text-slate-muted hover:text-slate-body"
                 }`}
               >
-                {key}
+                {TOOL_LABEL[key]}
               </motion.button>
             ))}
           </nav>
@@ -342,6 +439,28 @@ export default function AdminSplitScreen({
                 animate="animate"
               >
                 {tool === "teams" && <TeamsView engine={engine} onNotice={onNotice} />}
+                {tool === "stats" && (
+                  /*
+                    All three read-only panels in one pane.
+
+                    They were stacked under the block first, which was wrong on
+                    its own terms: the right half is the lot and the left half is
+                    whatever you are working on, so analysis belongs in the left
+                    half beside the pool and the scout — not squeezed under the
+                    thing it is analysing.
+                  */
+                  <div className="space-y-3 p-3">
+                    <div className="overflow-hidden rounded-xl border border-line bg-surface-card shadow-soft">
+                      <TeamLeaderboard teams={engine.summaries} rules={engine.rules} />
+                    </div>
+                    <div className="overflow-hidden rounded-xl border border-line bg-surface-card shadow-soft">
+                      <AuctionIntelligence teams={engine.summaries} rules={engine.rules} />
+                    </div>
+                    <div className="overflow-hidden rounded-xl border border-line bg-surface-card shadow-soft">
+                      <BiddingHistoryGrid log={engine.log} />
+                    </div>
+                  </div>
+                )}
                 {tool === "pool" && (
                   <PoolTable
                     engine={engine}
@@ -353,6 +472,7 @@ export default function AdminSplitScreen({
                     onSort={toggleSort}
                     onOpenCard={() => {}}
                     onNotice={onNotice}
+                    viewerRole={viewerRole}
                   />
                 )}
               </motion.div>
@@ -384,10 +504,28 @@ export default function AdminSplitScreen({
           }`}
           aria-label="Live bidding"
         >
-          <div className="flex items-center justify-between border-b border-line bg-surface-card px-3 py-1.5">
-            <span className="font-ui text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-muted">
+          <div className="flex items-center justify-between gap-3 border-b border-line bg-surface-card px-3 py-1.5">
+            <span className="shrink-0 font-ui text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-muted">
               Live bidding
             </span>
+
+            {/*
+              The clock, in the header of the pane the auctioneer is already
+              watching. They are the one person who cannot act on it directly —
+              they do not bid — but they are the one who has to *narrate* it,
+              and "going once" is impossible to time from a screen that does
+              not show how long is left.
+            */}
+            {socket?.lotClock && (
+              <div className="w-36 shrink-0">
+                <TimerDisplay
+                  clock={socket.lotClock}
+                  timeoutBy={socket.state?.lot?.timeout_by_code ?? null}
+                  variant="panel"
+                  compact
+                />
+              </div>
+            )}
             <span className="flex items-center gap-1.5">
               <span
                 aria-hidden
@@ -403,14 +541,47 @@ export default function AdminSplitScreen({
           <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3">
             <BlockPanel engine={engine} onNotice={onNotice} onAskScout={askScout} />
 
+            {socket && <LifelineBoard socket={socket} />}
+
             <TeamBudgetGrid summaries={engine.summaries} purse={engine.rules.purse} />
 
+            {/* The tally, still here. The analysis panels live in the
+                Leaderboard & Stats tab on the left, beside the pool and the
+                scout, rather than under the lot they are analysing. */}
             <div className="overflow-hidden rounded-xl border border-line bg-surface-card shadow-soft">
-              <LedgerPanel log={engine.log} />
+              <BiddingHistoryGrid log={engine.log} limit={20} />
             </div>
           </div>
         </motion.section>
       </div>
+
+      {/*
+        The setup dialog, reused from the classic console rather than rewritten.
+
+        `onSave` writes the rules through the engine, which is what every purse
+        and squad check reads. `onReset` is the offline engine's own reset and
+        is the right one when this screen runs without a room; in a live room
+        the socket-backed `ResetAuction` control is authoritative, and the
+        dialog closes onto it rather than competing with it.
+      */}
+      <AnimatePresence>
+        {showSetup && (
+          <SetupDialog
+            rules={engine.rules}
+            onSave={(next) => {
+              engine.setRules(next);
+              setShowSetup(false);
+              onNotice("Auction rules updated");
+            }}
+            onReset={() => {
+              engine.resetAuction();
+              setShowSetup(false);
+              onNotice("Auction reset");
+            }}
+            onClose={() => setShowSetup(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -483,6 +654,177 @@ function Divider({
 }
 
 /**
+ * Who can still freeze the room.
+ *
+ * Strictly the auctioneer's information rather than a control — they cannot
+ * call a timeout and would not want to. It earns its place because a lifeline
+ * is the one thing on this screen that can change how long a lot takes without
+ * anyone bidding, and an auctioneer who can see that six franchises are out of
+ * timeouts knows the back half of the auction will run faster than the front.
+ *
+ * Pips in the franchise's own colour, because at this size a coloured dot is
+ * read faster than a digit, and the colour is already how every other panel on
+ * this screen identifies a team.
+ */
+function LifelineBoard({ socket }: { socket: AuctionSocket }) {
+  const teams = socket.state?.teams ?? [];
+  const per = socket.state?.rules.timeouts_per_team ?? 3;
+  if (teams.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-line bg-surface-card p-3 shadow-soft">
+      <div className="mb-2 flex items-baseline justify-between">
+        <span className="font-ui text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-muted">
+          Timeout lifelines
+        </span>
+        <span className="font-ui text-[9.5px] uppercase tracking-[0.1em] text-slate-faint">
+          {per} each
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
+        {teams.map((team) => (
+          <div
+            key={team.id}
+            title={`${team.name} — ${team.timeouts_left} of ${per} left`}
+            className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 ${
+              team.timeouts_left === 0
+                ? "border-dashed border-line bg-surface-sunken/50"
+                : "border-line bg-surface-sunken"
+            }`}
+          >
+            <span
+              className={`font-ui text-[9.5px] font-semibold uppercase tracking-[0.06em] ${
+                team.timeouts_left === 0 ? "text-slate-faint" : "text-slate-body"
+              }`}
+            >
+              {team.code}
+            </span>
+            <span className="ml-auto flex gap-0.5" aria-hidden>
+              {Array.from({ length: per }).map((_, index) => (
+                <i
+                  key={index}
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{
+                    backgroundColor:
+                      index < team.timeouts_left ? team.color : "#D8DEE6",
+                  }}
+                />
+              ))}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Reset the auction — behind a door, and available in every phase.
+ *
+ * This is the most destructive control in the product: it returns all 284
+ * players to the pool, every purse to its opening figure, every lifeline to
+ * three, and empties the ledger. There is no undo across it, deliberately —
+ * undoing into an auction that no longer exists is worse than not offering it.
+ *
+ * So what makes it "secure" is three things, none of which is a password:
+ *
+ *   **The room decides, not the button.** `reset` is refused for anyone whose
+ *   seat is not the auctioneer's, server-side, whatever the client sends. The
+ *   control is hidden for everyone else purely so a franchise is not shown a
+ *   button that would bounce.
+ *
+ *   **It arms rather than fires.** One click opens a confirmation; a second,
+ *   differently-placed click commits. Nothing destructive in this product
+ *   should be one stray click from an auctioneer reaching for the pool tab.
+ *
+ *   **It says what it will destroy, in figures.** "Reset?" invites a reflexive
+ *   yes. "47 sold · ₹412 Cr committed — this cannot be undone" does not. The
+ *   numbers come from the room, so they are what will actually be lost.
+ *
+ * It disarms itself after a few seconds. An armed destructive control left
+ * sitting on screen is a worse hazard than the unarmed one, because the next
+ * person to touch the keyboard has no idea it is armed.
+ */
+function ResetAuction({
+  socket,
+  reduced,
+}: {
+  socket: AuctionSocket;
+  reduced: boolean;
+}) {
+  const [armed, setArmed] = useState(false);
+
+  useEffect(() => {
+    if (!armed) return;
+    const timer = window.setTimeout(() => setArmed(false), 8000);
+    return () => window.clearTimeout(timer);
+  }, [armed]);
+
+  const counts = socket.state?.counts;
+  const purse = socket.state?.rules.purse ?? 0;
+  const touched = (counts?.sold ?? 0) + (counts?.unsold ?? 0);
+
+  if (socket.seat?.role !== "auctioneer") return null;
+
+  if (!armed) {
+    return (
+      <motion.button
+        {...(reduced ? {} : pressable)}
+        type="button"
+        onClick={() => setArmed(true)}
+        title="Return every player to the pool and every purse to full"
+        className="rounded-lg border border-line px-3 py-1.5 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-muted transition-colors hover:border-unsold/50 hover:text-unsold"
+      >
+        Reset auction
+      </motion.button>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={reduced ? false : { opacity: 0, x: 8 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.18, ease: EASE }}
+      className="flex items-center gap-2 rounded-lg border border-unsold/40 bg-unsold/5 px-2.5 py-1.5"
+      role="alertdialog"
+      aria-label="Confirm auction reset"
+    >
+      <span className="font-ui text-[10px] leading-tight text-slate-body">
+        <b className="font-semibold">Reset everything?</b>{" "}
+        <span className="text-slate-muted">
+          {touched > 0
+            ? `${counts?.sold ?? 0} sold · ${counts?.unsold ?? 0} unsold · ${money(
+                counts?.spent ?? 0,
+              )} committed`
+            : "nothing sold yet"}
+          {" — purses back to "}
+          {money(purse)}, lifelines restored. Cannot be undone.
+        </span>
+      </span>
+
+      <button
+        type="button"
+        onClick={() => {
+          socket.resetRoom();
+          setArmed(false);
+        }}
+        className="shrink-0 rounded-md border border-unsold bg-unsold px-2.5 py-1 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-white transition-opacity hover:opacity-90"
+      >
+        Reset
+      </button>
+      <button
+        type="button"
+        onClick={() => setArmed(false)}
+        className="shrink-0 rounded-md border border-line px-2.5 py-1 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-body transition-colors hover:text-slate-ink"
+      >
+        Cancel
+      </button>
+    </motion.div>
+  );
+}
+
+/**
  * The three buttons only the auctioneer has.
  *
  * Which one is shown depends on the phase, because at any given moment exactly
@@ -493,10 +835,23 @@ function Divider({
  * `finish` is the only destructive one here — it closes the auction and
  * generates the report — so it is the only one that asks first.
  */
+/**
+ * The auctioneer's run controls, by phase.
+ *
+ * The `waiting` phase used to fall through to the bare label at the bottom of
+ * this function — the control bar simply read "waiting" and offered nothing.
+ * That was the other half of the lock-out: even once an auctioneer reached
+ * this screen during a waiting period, there was no control here acknowledging
+ * that a waiting room existed, let alone taking them back to it.
+ */
 function RunControls({
   socket,
   reduced,
+  onReturnToWaitingRoom,
+  onReturnToReport,
 }: {
+  onReturnToWaitingRoom?: () => void;
+  onReturnToReport?: () => void;
   socket: AuctionSocket;
   reduced: boolean;
 }) {
@@ -578,21 +933,69 @@ function RunControls({
     );
   }
 
+  if (phase === "waiting") {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="flex items-center gap-1.5 rounded-lg border border-line bg-surface-sunken px-2.5 py-1.5">
+          <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-live" />
+          <span className="font-ui text-[9.5px] uppercase tracking-[0.1em] text-slate-muted">
+            waiting · {socket.state?.connected ?? 0} in room
+          </span>
+        </span>
+        {onReturnToWaitingRoom && (
+          <motion.button
+            {...(reduced ? {} : pressable)}
+            type="button"
+            data-testid="run-return-waiting-room"
+            onClick={onReturnToWaitingRoom}
+            className={quiet}
+            title="Go back to the waiting room and watch the franchises arrive"
+          >
+            Waiting room
+          </motion.button>
+        )}
+        <motion.button
+          {...(reduced ? {} : pressable)}
+          type="button"
+          data-testid="run-start-auction"
+          onClick={socket.startAuction}
+          className={primary}
+          title="Begin the auction — every client opens its block at once"
+        >
+          Start the auction
+        </motion.button>
+      </div>
+    );
+  }
+
   if (phase === "finished") {
     return (
       <div className="flex items-center gap-2">
         <span className="rounded-lg border border-line bg-surface-sunken px-2.5 py-1.5 font-ui text-[9.5px] uppercase tracking-[0.1em] text-slate-muted">
           finished
         </span>
-        <motion.button
-          {...(reduced ? {} : pressable)}
-          type="button"
-          onClick={socket.resetRoom}
-          className={quiet}
-          title="Clear the auction and return every client to the lobby"
-        >
-          Reset room
-        </motion.button>
+        {/*
+          The reset used to live only here, as a single unguarded click that
+          was reachable only once the auction had already finished. It is now
+          the header control below, which asks first and is available in every
+          phase — an auctioneer who needs to wipe a practice run needs it most
+          *during* the run, not after it.
+        */}
+        {onReturnToReport && (
+          <motion.button
+            {...(reduced ? {} : pressable)}
+            type="button"
+            data-testid="run-return-report"
+            onClick={onReturnToReport}
+            className={quiet}
+            title="Back to the auction report"
+          >
+            Report
+          </motion.button>
+        )}
+        <span className="font-ui text-[9.5px] uppercase tracking-[0.1em] text-slate-faint">
+          reset from the control bar →
+        </span>
       </div>
     );
   }

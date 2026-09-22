@@ -32,6 +32,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { wsUrl } from "../console/apiBase";
+
 /* ------------------------------------------------------------------ *
  * The wire format, mirroring auction/schemas.py
  * ------------------------------------------------------------------ */
@@ -59,6 +61,8 @@ export interface TeamState {
   overseas: number;
   max_bid: number;
   connected: boolean;
+  /** Strategic buffers this franchise has not spent yet. */
+  timeouts_left: number;
 }
 
 export interface LotState {
@@ -74,11 +78,48 @@ export interface LotState {
   bidder_code: string | null;
   next_ask: number;
   version: number;
+
+  /**
+   * Which countdown is running, and therefore what its expiry means:
+   * `opening` -> UNSOLD, `closing` and `timeout` -> SOLD to the highest bid.
+   */
+  clock: "opening" | "closing" | "timeout" | null;
+  /** Unix seconds the countdown fires. */
+  deadline: number | null;
+  /**
+   * Seconds left when the room wrote this frame.
+   *
+   * This, not `deadline`, is what a display should count down from. Seven
+   * seconds is short enough that a laptop whose clock runs two seconds fast
+   * would otherwise show a lot expiring while the room still holds it open.
+   */
+  ends_in: number | null;
+  timeout_by_id: number | null;
+  timeout_by_code: string | null;
+  /** Franchises that have bid on this lot and not withdrawn from it. */
+  contenders: number[];
+  contender_codes: string[];
+}
+
+/**
+ * A countdown, packaged so a display can tick it locally.
+ *
+ * `key` changes on every re-arm. A component keyed on it restarts its own
+ * animation from the top rather than interpolating from wherever the last
+ * buffer had got to, which is what makes a bid visibly reset the clock.
+ */
+export interface LotClock {
+  kind: "opening" | "closing" | "timeout";
+  /** Seconds remaining as of the frame this came from. */
+  endsIn: number;
+  /** The full length of this kind of buffer, for a progress bar's denominator. */
+  total: number;
+  key: string;
 }
 
 export interface LogItem {
   seq: number;
-  kind: "note" | "bid" | "sold" | "unsold";
+  kind: "note" | "bid" | "sold" | "unsold" | "timeout" | "withdraw";
   what: string;
   amount: number | null;
   ts: number;
@@ -87,7 +128,17 @@ export interface LogItem {
 export interface RoomState {
   version: number;
   phase: Phase;
-  rules: { purse: number; max_squad: number; min_squad: number; max_overseas: number };
+  rules: {
+    purse: number;
+    max_squad: number;
+    min_squad: number;
+    max_overseas: number;
+    /** The clock, owned by the room so the dial cannot disagree with it. */
+    open_seconds: number;
+    close_seconds: number;
+    timeout_seconds: number;
+    timeouts_per_team: number;
+  };
   teams: TeamState[];
   lot: LotState | null;
   log: LogItem[];
@@ -111,21 +162,20 @@ export interface SeatRequest {
  * ------------------------------------------------------------------ */
 
 /**
- * Same dev/production split as `ragClient`, in websocket terms.
+ * The room's address, resolved by `apiBase` rather than worked out here.
  *
- * In production the console is served by the same FastAPI app, so the socket
- * is same-origin and the scheme simply follows the page's. In dev the console
- * is on Vite's 5173 and the backend on 8001, which is the only case that needs
- * an absolute origin.
+ * This function used to carry its own copy of the dev/production split, which
+ * meant the socket could disagree with `ragClient` about where the backend is.
+ * That disagreement had a specific and confusing symptom: the console would
+ * hydrate its 284-player roster over REST perfectly well and then fail to join
+ * the room, because the two halves were dialling different places.
+ *
+ * `wsUrl` derives ws/wss and the authority from the same base the REST client
+ * uses, so the two can no longer drift. VITE_AUCTION_WS still overrides it
+ * outright for the case where the socket really does live somewhere else.
  */
 function socketUrl(): string {
-  const override = import.meta.env?.VITE_AUCTION_WS as string | undefined;
-  if (override) return override;
-
-  if (import.meta.env?.DEV) return "ws://localhost:8001/api/v1/auction/ws";
-
-  const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${scheme}//${window.location.host}/api/v1/auction/ws`;
+  return wsUrl();
 }
 
 /** Backoff schedule, in ms. Caps rather than growing without bound. */
@@ -155,11 +205,38 @@ export interface AuctionSocket {
   finish: () => void;
   /** Auctioneer: wipe the auction back to an empty lobby, keeping seats. */
   resetRoom: () => void;
+  /**
+   * Franchise: step out of the contest for the lot on the block.
+   *
+   * An accelerator, not a veto. The buffer settles every lot on its own; this
+   * says "do not wait for me", and once everyone but the standing bidder has
+   * said it the lot goes at once instead of sitting out a buffer nobody will
+   * use. Per-lot: the next player puts you back in contention.
+   */
+  withdraw: () => void;
+  /** Franchise: spend a lifeline and freeze the block for thirty seconds. */
+  callTimeout: () => void;
 
   /** Convenience readings derived from `state` and `seat`. */
   myTeam: TeamState | null;
   isWinning: boolean;
   canAct: boolean;
+
+  /** The running countdown, or null when nothing is armed. */
+  lotClock: LotClock | null;
+  /** Lifelines this franchise has left. */
+  timeoutsLeft: number;
+  /** This franchise has bid on the current lot and not withdrawn. */
+  amContending: boolean;
+  /**
+   * Whether these two controls should be offered at all.
+   *
+   * Mirrors the room's own refusals so a control that would be rejected is
+   * never presented as available. The room re-checks regardless and its answer
+   * is the one that counts -- this only avoids offering a dead button.
+   */
+  canWithdraw: boolean;
+  canCallTimeout: boolean;
 }
 
 export function useAuctionSocket(): AuctionSocket {
@@ -339,6 +416,8 @@ export function useAuctionSocket(): AuctionSocket {
       undo: () => send({ type: "undo" }),
       finish: () => send({ type: "finish" }),
       resetRoom: () => send({ type: "reset" }),
+      withdraw: () => send({ type: "withdraw" }),
+      callTimeout: () => send({ type: "timeout" }),
     }),
     [send],
   );
@@ -359,6 +438,58 @@ export function useAuctionSocket(): AuctionSocket {
     state.lot.bidder_id === seat.team_id
   );
 
+  /* ---------------- the clock ----------------
+     Packaged, not ticked. Counting down here would re-render every consumer of
+     this hook ten times a second during the tensest part of a lot; the display
+     component owns its own tick and this only tells it where to start. */
+
+  const lotClock = useMemo<LotClock | null>(() => {
+    const lot = state?.lot;
+    if (!lot?.clock || lot.ends_in == null || !state) return null;
+    const total =
+      lot.clock === "opening"
+        ? state.rules.open_seconds
+        : lot.clock === "timeout"
+          ? state.rules.timeout_seconds
+          : state.rules.close_seconds;
+    return {
+      kind: lot.clock,
+      endsIn: lot.ends_in,
+      total: total || 7,
+      // Deadline is in the key, so re-arming the same kind of buffer still
+      // reads as a new clock and restarts the dial.
+      key: `${lot.player_id}:${lot.clock}:${lot.deadline}`,
+    };
+  }, [state]);
+
+  const myTeamId = seat?.team_id ?? null;
+  const timeoutsLeft = myTeam?.timeouts_left ?? 0;
+  const live = state?.phase === "live";
+  const connected = status === "open" && seat !== null;
+
+  const amContending = !!(
+    state?.lot &&
+    myTeamId != null &&
+    (state.lot.contenders ?? []).includes(myTeamId)
+  );
+
+  // You may not withdraw from your own standing bid: that is retracting an
+  // offer, not declining a player, and the ladder underneath it was built on
+  // the assumption it stands.
+  const canWithdraw = !!(
+    connected && live && amContending && state?.lot?.bidder_id !== myTeamId
+  );
+
+  // A timeout answers a bid, so it needs one to answer -- and the franchise
+  // holding it cannot call one on itself.
+  const canCallTimeout = !!(
+    connected &&
+    live &&
+    state?.lot?.clock === "closing" &&
+    state.lot.bidder_id !== myTeamId &&
+    timeoutsLeft > 0
+  );
+
   return {
     status,
     state,
@@ -371,6 +502,11 @@ export function useAuctionSocket(): AuctionSocket {
     ...actions,
     myTeam,
     isWinning,
-    canAct: status === "open" && seat !== null,
+    canAct: connected,
+    lotClock,
+    timeoutsLeft,
+    amContending,
+    canWithdraw,
+    canCallTimeout,
   };
 }

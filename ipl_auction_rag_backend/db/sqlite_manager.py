@@ -34,7 +34,13 @@ CREATE TABLE IF NOT EXISTS players (
     overseas INTEGER NOT NULL DEFAULT 0,
     base_price REAL,
     rating REAL,
-    
+
+    -- Squad number. Nullable, and null means "not verified" rather than
+    -- "has none" -- it is the largest element on a player card, so an
+    -- unverified number is left blank and the card shows the role instead.
+    -- Source: data/pool_metadata.json, joined on name during ingestion.
+    jersey_number INTEGER,
+
     -- Match Stats
     matches INTEGER,
     total_runs INTEGER,

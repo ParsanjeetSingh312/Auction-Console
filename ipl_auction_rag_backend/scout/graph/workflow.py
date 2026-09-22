@@ -319,6 +319,19 @@ async def run(payload: ScoutInput, *, thread_id: str = "default") -> ScoutOutput
         payload.model_dump(), {"configurable": {"thread_id": thread_id}}
     )
 
+    return output_from(final, time.perf_counter() - started)
+
+
+def output_from(final: ScoutState, elapsed_seconds: float) -> ScoutOutput:
+    """
+    The final state, as the thing a caller gets back.
+
+    Extracted from `run` because there are now two ways to drive the graph --
+    `ainvoke` above and `astream` in the streaming route -- and both have to
+    produce an identical ScoutOutput. Two hand-written copies of this mapping
+    would drift the first time a field is added, and the drift would show up as
+    a field that is present over one transport and missing over the other.
+    """
     return ScoutOutput(
         intent=final.get("intent") or "advise",
         recommendation=final.get("recommendation"),
@@ -329,7 +342,7 @@ async def run(payload: ScoutInput, *, thread_id: str = "default") -> ScoutOutput
         # assumes something ran twice.
         notes=list(dict.fromkeys(final.get("notes") or [])),
         refresh_cycles=final.get("refresh_cycles", 0),
-        elapsed_seconds=round(time.perf_counter() - started, 2),
+        elapsed_seconds=round(elapsed_seconds, 2),
     )
 
 

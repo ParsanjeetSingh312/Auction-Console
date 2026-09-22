@@ -278,8 +278,24 @@ export function useSocketEngine(
       // room answers "nothing to undo" if there is nothing.
       canUndo: socket.seat?.role === "auctioneer",
 
+      // The room owns the rules and does not take instruction on them.
       setRules: () => {},
-      resetAuction: () => {},
+
+      /**
+       * The legacy console's reset, pointed at the room.
+       *
+       * This was a no-op for the whole of Phase 4, which made every view
+       * offering it quietly dishonest: `LedgerPanel` rendered its "Reset
+       * auction" control, the auctioneer pressed it, and the auction carried
+       * on unchanged. The room has always had `reset` — only the wire was
+       * missing.
+       *
+       * Unguarded on purpose at this layer. The confirmation belongs to the
+       * control that offers it (see `ResetAuction` in AdminSplitScreen), not
+       * to the adapter, and the room refuses anyone who is not the auctioneer
+       * regardless of which client asked.
+       */
+      resetAuction: () => socket.resetRoom(),
     };
   }, [room, local, socket]);
 }

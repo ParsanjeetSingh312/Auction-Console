@@ -56,6 +56,121 @@
 }
 
 /* ============================================================
+   THE NIGHT PALETTE
+
+   The same token names as :root above, redefined under one wrapper class, so
+   every one of the 210 `var()` reads in this file moves with them. That is the
+   promise the :root comment makes — "the palette is one edit, not a rewrite" —
+   and it holds: nothing below this block needed rewriting to change theme.
+
+   **Scoped rather than global on purpose.** These rules are reachable only
+   inside `.console-dark`, which /data and /auction opt into. /console does not,
+   and keeps the white enterprise theme exactly as it is. One stylesheet serves
+   all three routes, so a global edit here would have re-themed a page nobody
+   asked to change.
+
+   Every value carrying text is one already contrast-checked against #020617 for
+   the landing, rather than a fresh guess: the auctiq-* tokens in
+   tailwind.config.js record what passes on this ground and what does not.
+
+   The grounds are translucent, not solid. The stadium photograph sits behind
+   these pages now, and an opaque --paper would cover it completely — which is
+   exactly what the first attempt at this did.
+   ============================================================ */
+
+.console-dark {
+  /* Grounds. Translucent so the stadium reads through.
+
+     0.52 is a compromise between two pages that use this token very differently.
+     /data is mostly panels — the pool table, the purse grid — so the ground is
+     masked over nearly all of it and can be very open before anything suffers.
+     /auction is mostly open field, with the seat picker and a couple of rows of
+     cards floating on it, so the same value that looked right on one page had
+     the arc's spokes cutting straight through the content on the other.
+
+     Legibility does not rest on this number either way: the dense material sits
+     inside `.panel`, which paints `--card` on top. What this controls is how
+     loud the photograph is in the gaps between panels, and it is tuned for the
+     page with the most gaps. */
+  --paper: rgba(2, 6, 23, 0.52);
+  --card: rgba(14, 18, 35, 0.86);
+
+  /* Text. 19.3:1, 12.1:1 and 7.9:1 on the ground behind them. */
+  --ink: #f8fafc;
+  --ink-2: #cbd5e1;
+  --muted: #94a3b8;
+
+  /* Hairlines. A light rule on a dark ground, which is the inverse of the
+     white theme's dark rule on a light one. */
+  --rule: rgba(255, 255, 255, 0.12);
+  --rule-2: rgba(255, 255, 255, 0.07);
+
+  /* The structural accent becomes the landing's cyan. #1e3a8a is a deep blue
+     chosen to read on white and measures 1.7:1 here — invisible. */
+  --teal: #22d3ee;
+  --teal-ink: #67e8f9;
+  --teal-tint: rgba(34, 211, 238, 0.14);
+
+  /* Auction state, lifted. The white theme's #1e6b47 / #a2382c / #9c6414 are
+     all under 3:1 on this ground. */
+  --sold: #34d399;
+  --sold-tint: rgba(52, 211, 153, 0.15);
+  --unsold: #f87171;
+  --unsold-tint: rgba(248, 113, 113, 0.15);
+  --live: #f6c45a;
+  --live-tint: rgba(246, 196, 90, 0.15);
+
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+
+  color-scheme: dark;
+
+  /* styles.css sets `body { @apply text-ink }` — the white theme's near-black —
+     so every element without a colour of its own inherits it, including the
+     player surnames, the figures and the rating values. One declaration here
+     re-points all of them. */
+  color: var(--ink);
+}
+
+/* The shell has to sit above the fixed backdrop and let it through.
+
+   `.shell` paints `--paper` plus a dot grid, and that grid is a dark dot for a
+   light page — invisible here. Inverted to a faint light dot, which is the same
+   trick at the same weight. */
+.console-dark .shell {
+  position: relative;
+  z-index: 1;
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(255, 255, 255, 0.05) 1px,
+    transparent 0
+  );
+}
+
+/* Focus and selection, which the white theme sets against its own accent. */
+.console-dark :focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+.console-dark ::selection {
+  background: rgba(34, 211, 238, 0.3);
+}
+
+/* Form controls default to a light UA appearance and stay light inside a dark
+   page unless told otherwise — a white select on a night console is the single
+   most obvious thing left after the tokens flip. */
+.console-dark select,
+.console-dark input,
+.console-dark textarea {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--ink);
+  border-color: var(--rule);
+}
+.console-dark option {
+  background-color: #0e1223;
+  color: #f8fafc;
+}
+
+/* ============================================================
    SHELL
    ============================================================ */
 
@@ -860,6 +975,17 @@ select.pick {
   color: var(--muted);
   font-style: italic;
 }
+/* A lifeline being spent is an event the auctioneer needs to catch mid-scan,
+   so it carries the live hue and weight. */
+.lrow.k-timeout .w {
+  color: var(--live);
+  font-weight: 600;
+}
+/* A withdrawal is deliberately quieter than ordinary traffic: it is context
+   for the franchises still in, not something to chase across the ledger. */
+.lrow.k-withdraw {
+  color: var(--muted);
+}
 .ledger .lempty {
   padding: 16px 14px;
   color: var(--muted);
@@ -1379,4 +1505,335 @@ select.pick {
     animation-delay: 0.001ms !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+
+/* ============================================================
+   THE NIGHT PALETTE — PART TWO
+
+   Everything above this point moved by redefining console.css's own tokens.
+   These rules cover the two colour systems that do not read those tokens:
+
+   1. Tailwind utilities written straight into the Console components' JSX —
+      `text-slate-ink`, `bg-surface-card`, `border-line` and the rest. They
+      compile to fixed hex values from tailwind.config.js and know nothing about
+      a CSS variable.
+
+   2. The component classes in styles.css built with `@apply`. `.tag-neutral`
+      is `@apply border-rule text-muted`, which inlines #6D7873 into the rule —
+      so overriding the `.text-muted` utility would not reach it, because the
+      element never carries that class.
+
+   Both are re-pointed at the night tokens rather than given new literal values,
+   so a later change to the palette above still moves everything at once.
+
+   Selector weight: `.console-dark .x` is (0,2,0) against a utility's (0,1,0),
+   so these win without `!important` anywhere. Nothing here is reachable outside
+   the wrapper, and /console is untouched.
+   ============================================================ */
+
+/* --- 1. Tailwind utilities used directly in the JSX -------------------- */
+
+.console-dark .text-slate-ink,
+.console-dark .text-ink {
+  color: var(--ink);
+}
+.console-dark .text-slate-body,
+.console-dark .text-ink-soft {
+  color: var(--ink-2);
+}
+.console-dark .text-slate-muted,
+.console-dark .text-muted {
+  color: var(--muted);
+}
+.console-dark .text-slate-faint,
+.console-dark .text-slate-faint\/60 {
+  color: var(--muted);
+  opacity: 0.85;
+}
+.console-dark .text-teal-ink {
+  color: var(--teal-ink);
+}
+.console-dark .text-live {
+  color: var(--live);
+}
+.console-dark .text-unsold {
+  color: var(--unsold);
+}
+
+.console-dark .bg-surface-card,
+.console-dark .bg-card {
+  background-color: var(--card);
+}
+.console-dark .bg-surface,
+.console-dark .bg-paper {
+  background-color: var(--paper);
+}
+.console-dark .bg-surface-sunken,
+.console-dark .bg-surface-sunken\/60,
+.console-dark .bg-surface-sunken\/50 {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+.console-dark .bg-slate-ink,
+.console-dark .bg-slate-ink\/90 {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--ink);
+}
+.console-dark .bg-slate-faint {
+  background-color: rgba(255, 255, 255, 0.14);
+}
+.console-dark .bg-unsold-tint {
+  background-color: var(--unsold-tint);
+}
+.console-dark .bg-unsold {
+  background-color: var(--unsold);
+}
+.console-dark .bg-sold {
+  background-color: var(--sold);
+}
+
+.console-dark .border-line,
+.console-dark .border-rule {
+  border-color: var(--rule);
+}
+.console-dark .border-line-soft,
+.console-dark .border-rule-soft {
+  border-color: var(--rule-2);
+}
+.console-dark .border-slate-ink,
+.console-dark .border-slate-faint\/60 {
+  border-color: rgba(255, 255, 255, 0.28);
+}
+.console-dark .border-unsold,
+.console-dark .border-unsold\/40 {
+  border-color: var(--unsold);
+}
+
+/* --- 2. styles.css component classes built with @apply ----------------- */
+
+.console-dark .eyebrow {
+  color: var(--muted);
+}
+.console-dark .panel {
+  border-color: var(--rule);
+  background-color: var(--card);
+}
+.console-dark .panel-head {
+  border-color: var(--rule-2);
+}
+.console-dark .chip {
+  border-color: var(--rule);
+  background-color: rgba(255, 255, 255, 0.04);
+  color: var(--ink-2);
+}
+.console-dark .chip[aria-pressed="true"] {
+  border-color: var(--teal);
+  background-color: var(--teal);
+  color: #04141a;
+}
+.console-dark .tag-neutral {
+  border-color: var(--rule);
+  color: var(--muted);
+}
+.console-dark .tag-sold {
+  background-color: var(--sold-tint);
+  color: var(--sold);
+}
+.console-dark .tag-unsold {
+  background-color: var(--unsold-tint);
+  color: var(--unsold);
+}
+.console-dark .tag-live {
+  background-color: var(--live-tint);
+  color: var(--live);
+}
+.console-dark .ratebar-t {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+.console-dark .ratebar-t > i {
+  background-color: var(--teal);
+}
+
+/* The sheet header is `@apply bg-teal` — a fill, not text, so it takes the
+   deeper end of the accent and its label takes the ground colour rather than
+   white, which on cyan is unreadable. */
+.console-dark .sheet thead th {
+  background-color: #0b3b46;
+  color: var(--teal-ink);
+  border-bottom: 1px solid var(--rule);
+}
+.console-dark .sheet td {
+  border-color: var(--rule-2);
+}
+.console-dark .sheet tbody tr:hover td {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.console-dark .mini {
+  border-color: var(--rule);
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--ink-2);
+}
+.console-dark .mini:hover {
+  border-color: var(--teal);
+  color: var(--teal-ink);
+}
+.console-dark .linkbtn {
+  color: var(--teal-ink);
+}
+.console-dark .field {
+  border-color: var(--rule);
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--ink);
+}
+.console-dark .btn {
+  border-color: var(--teal);
+  background-color: var(--teal);
+  color: #04141a;
+}
+.console-dark .btn:hover:not(:disabled) {
+  border-color: var(--teal-ink);
+  background-color: var(--teal-ink);
+}
+.console-dark .btn:disabled {
+  border-color: var(--rule);
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+}
+.console-dark .tab:hover {
+  color: var(--ink-2);
+}
+
+/* --- 3. The literals left in this file -------------------------------- */
+
+.console-dark .searchbar input::placeholder {
+  color: var(--muted);
+}
+/* The band pill carries its set's colour in an inline `--band`, and every one
+   of those values is a pastel picked to sit behind dark text on white — #D2EDE0
+   for WK1, and so on. Filling a pill with one on this ground gives a bright chip
+   with near-white text on it, which is what the first pass produced.
+
+   So the band moves from the fill to the type. The pastels are light enough to
+   read well against a dark ground, the set coding survives intact, and the pill
+   stops being the brightest object in a dense table. */
+.console-dark .setpill {
+  color: var(--band, var(--ink));
+  background: rgba(255, 255, 255, 0.07);
+}
+.console-dark .tfoot,
+.console-dark .hint {
+  background: rgba(255, 255, 255, 0.04);
+}
+.console-dark .res .rname i {
+  background: var(--teal-tint);
+}
+.console-dark .lrow .i {
+  color: var(--muted);
+}
+.console-dark .big.sell {
+  color: #04141a;
+}
+.console-dark .big.sell:hover:not(:disabled) {
+  background: var(--sold);
+}
+.console-dark .big.sell:disabled {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--muted);
+}
+.console-dark .slot.min {
+  border-color: var(--rule);
+}
+
+/* `bg-dots` is a Tailwind backgroundImage token: a near-black dot on a 20px
+   grid, which is texture on a white page and nothing at all on this one. Same
+   trick, inverted, at the same weight. */
+.console-dark .bg-dots {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(255, 255, 255, 0.05) 1px,
+    transparent 0
+  );
+}
+
+/* The live route's own outer surface, which is a Tailwind `bg-surface` rather
+   than console.css's `.shell`, so it needs the same z-index lift to sit above
+   the fixed backdrop. */
+.console-dark .min-h-screen {
+  position: relative;
+  z-index: 1;
+}
+
+
+/* ============================================================
+   THE NIGHT PALETTE — PART THREE
+
+   The remaining white-theme utilities, which only appear on the auctioneer's
+   split screen and the console's own panels: tints, and the opacity variants
+   of borders that the block screens use to signal state.
+
+   Generated against the same tokens as everything above, so the palette stays
+   one edit. The `/` in these selectors is how Tailwind writes an opacity
+   modifier — `border-unsold/40` is the class `border-unsold` with `/40`, and
+   the slash has to be escaped to be a selector at all.
+
+   The alpha values are written out rather than reusing the token, because
+   `border-unsold/20` means a fifth of that colour and `var(--unsold)` at full
+   strength would turn a hint into an alarm.
+   ============================================================ */
+
+.console-dark .bg-surface-card\/70 {
+  background-color: var(--card);
+}
+.console-dark .bg-unsold\/5 {
+  background-color: rgba(248, 113, 113, 0.1);
+}
+.console-dark .bg-unsold-tint {
+  background-color: var(--unsold-tint);
+}
+.console-dark .bg-live-tint {
+  background-color: var(--live-tint);
+}
+.console-dark .bg-teal-tint {
+  background-color: var(--teal-tint);
+}
+.console-dark .bg-rule-soft {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+.console-dark .border-live {
+  border-color: var(--live);
+}
+.console-dark .border-live\/20 {
+  border-color: rgba(246, 196, 90, 0.32);
+}
+.console-dark .border-slate-faint {
+  border-color: rgba(255, 255, 255, 0.28);
+}
+.console-dark .border-slate-ink\/25 {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.console-dark .border-unsold\/20 {
+  border-color: rgba(248, 113, 113, 0.32);
+}
+.console-dark .border-unsold\/50 {
+  border-color: rgba(248, 113, 113, 0.55);
+}
+
+/* The document behind the dark pages.
+
+   `.console-dark` is inside `body`, and styles.css sets `body { @apply bg-paper }`
+   — the white theme's #F2F5F1 — so the document itself stayed white underneath
+   every one of these pages. Mostly invisible, because the wrapper covers the
+   viewport, but it shows in two places that matter: the flash before the app
+   paints, and the overscroll band when you rubber-band past the top or bottom
+   of a scroll. A contrast sweep of the auctioneer's screen found it by walking
+   up from two labels and landing on a white ancestor.
+
+   `:has()` rather than a class toggled from JavaScript, for the same reason the
+   nav's entrance is not a Framer variant: the page should be the right colour
+   because of what it contains, not because an effect ran. Browsers without
+   `:has()` simply keep the old behaviour, which is the white they had before. */
+html:has(.console-dark),
+body:has(.console-dark) {
+  background-color: #020617;
 }
