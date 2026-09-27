@@ -22,6 +22,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 
+import { apiUrl } from "../../console/apiBase";
 import { money } from "../../console/format";
 import { EASE, gridVariants, panelVariants, rowVariants, viewVariants } from "../../console/motion";
 
@@ -70,15 +71,49 @@ const ROLE_CLASS: Record<ReportPlayer["role_short"], string> = {
 export interface PostAuctionReportProps {
   /** Passed in when the socket already delivered it; otherwise fetched. */
   report?: AuctionReport | null;
+  /**
+   * Drop the seat and reload.
+   *
+   * Note what this does NOT do: it does not get you off this screen. The
+   * reload reconnects to a room whose phase is still `finished`, and
+   * `LiveAuction` tests that phase before it tests whether you hold a seat —
+   * so the report is what renders again. That is correct behaviour for a
+   * finished auction and a badly named button, which is why the control
+   * below is labelled for what it does rather than where it goes.
+   */
   onLeave?: () => void;
   /** Auctioneer only: clear the auction and send everyone back to the lobby. */
   onReset?: () => void;
+  /**
+   * Auctioneer only: go back to the split-screen console with the seat intact.
+   *
+   * This is the one that answers "take me back to the room". The report is a
+   * document, not a destination — after the hammer an auctioneer still wants
+   * the pool, the ledger and the Scout, and before this existed the only ways
+   * off this screen were resetting the whole auction or leaving the site.
+   */
+  onEnterControlRoom?: () => void;
+  /**
+   * Auctioneer only: offer each franchise's PDF report for download.
+   *
+   * The report screen itself is shown to everyone — a franchise and a
+   * spectator both get to read how the auction finished. The documents are not
+   * theirs to pull: the auctioneer generates them and sends them on, which is
+   * how the person running the room stays the one who decides what leaves it.
+   *
+   * This hides the control. It is not access control — the endpoint answers
+   * any GET, because a seat lives on the websocket and a REST download has no
+   * seat to check. Anyone who knows the URL can still fetch one.
+   */
+  canDownloadReports?: boolean;
 }
 
 export default function PostAuctionReport({
   report,
   onLeave,
   onReset,
+  onEnterControlRoom,
+  canDownloadReports = false,
 }: PostAuctionReportProps) {
   const reduced = useReducedMotion();
   const [fetched, setFetched] = useState<AuctionReport | null>(null);
@@ -93,10 +128,12 @@ export default function PostAuctionReport({
   */
   useEffect(() => {
     if (report) return;
-    const base = import.meta.env?.DEV ? "http://localhost:8001" : "";
     const controller = new AbortController();
 
-    fetch(`${base}/api/v1/auction/report`, { signal: controller.signal })
+    // `apiUrl` rather than a local base. This call site was the worst of the
+    // three copies: it had no override variable at all, so when the backend
+    // moved off :8001 there was no setting that could point the report at it.
+    fetch(apiUrl("/api/v1/auction/report"), { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error(`Report unavailable (${response.status})`);
         return response.json();
@@ -111,7 +148,20 @@ export default function PostAuctionReport({
   }, [report]);
 
   useEffect(() => {
-    document.title = "AUCTIQ · Auction report";
+    /*
+      Restored on the way out, not just set on the way in.
+
+      This screen is not a route — it is a phase. A reset drops the room back to
+      `lobby` and unmounts the report under the same URL, and without the
+      cleanup the tab kept reading "Auction report" over a live control panel
+      until the page was reloaded. `LiveAuction` sets its own title once on
+      mount and never re-runs, so there was nothing else to put it back.
+    */
+    const previous = document.title;
+    document.title = "AUCTONIQ · Auction report";
+    return () => {
+      document.title = previous;
+    };
   }, []);
 
   const data = report ?? fetched;
@@ -145,7 +195,7 @@ export default function PostAuctionReport({
     data.totals.purse_pool > 0 ? (data.totals.spent / data.totals.purse_pool) * 100 : 0;
 
   return (
-    <Shell onLeave={onLeave} onReset={onReset}>
+    <Shell onLeave={onLeave} onReset={onReset} onEnterControlRoom={onEnterControlRoom}>
       <motion.div
         variants={reduced ? undefined : viewVariants}
         initial={reduced ? false : "initial"}
@@ -175,6 +225,7 @@ export default function PostAuctionReport({
                 )
               }
               reduced={!!reduced}
+              canDownload={canDownloadReports}
             />
           ))}
         </div>
@@ -187,10 +238,12 @@ function Shell({
   children,
   onLeave,
   onReset,
+  onEnterControlRoom,
 }: {
   children: React.ReactNode;
   onLeave?: () => void;
   onReset?: () => void;
+  onEnterControlRoom?: () => void;
 }) {
   return (
     <div className="min-h-screen bg-surface bg-dots px-5 py-8">
@@ -198,7 +251,7 @@ function Shell({
         <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <span className="font-ui text-[9.5px] font-semibold uppercase tracking-[0.16em] text-slate-faint">
-              AUCTIQ · IPL 2026
+              AUCTONIQ · IPL 2026
             </span>
             <h1 className="mt-1 font-head text-[30px] font-bold leading-tight text-slate-ink">
               Auction report
@@ -219,20 +272,44 @@ function Shell({
                 New auction
               </button>
             )}
+            {/*
+              The way back to the console, for the auctioneer who still has
+              work to do after the hammer.
+
+              This replaces what the "← Room" button below used to promise. That
+              one calls `onLeave`, which reloads — and a reload reconnects to a
+              room still in the `finished` phase, which `LiveAuction` checks
+              before it checks for a seat. So it returned you to this very
+              screen, every time. A button named after a place it could not
+              reach.
+            */}
+            {onEnterControlRoom && (
+              <button
+                type="button"
+                data-testid="report-control-room"
+                onClick={onEnterControlRoom}
+                title="Back to the pool, the ledger and the Scout, keeping your seat"
+                className="rounded-lg border border-line bg-surface-card px-3.5 py-2 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-body transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
+              >
+                ← Control room
+              </button>
+            )}
             {onLeave && (
               <button
                 type="button"
+                data-testid="report-leave-seat"
                 onClick={onLeave}
+                title="Give up your seat. The report stays on screen until the auctioneer starts a new auction."
                 className="rounded-lg border border-line bg-surface-card px-3.5 py-2 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-body transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
               >
-                ← Room
+                Leave seat
               </button>
             )}
             <Link
               to="/"
               className="rounded-lg border border-line bg-surface-card px-3.5 py-2 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-body transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
             >
-              AUCTIQ
+              AUCTONIQ
             </Link>
           </div>
         </header>
@@ -261,12 +338,14 @@ function FranchiseCard({
   open,
   onToggle,
   reduced,
+  canDownload,
 }: {
   franchise: ReportFranchise;
   rank: number;
   open: boolean;
   onToggle: () => void;
   reduced: boolean;
+  canDownload: boolean;
 }) {
   const { team } = franchise;
   const usedPct = franchise.purse > 0 ? (franchise.spent / franchise.purse) * 100 : 0;
@@ -306,11 +385,35 @@ function FranchiseCard({
         <Stat label="Spent" value={money(franchise.spent)} />
         <Stat label="Left" value={money(franchise.left)} />
 
+        {/*
+          This franchise's report, as a PDF.
+
+          An anchor rather than a fetch-and-blob: the endpoint already answers
+          with `Content-Disposition: attachment`, so the browser names and saves
+          the file itself, and a link survives a right-click "save as" and a
+          middle-click in a way a button handler does not.
+
+          One document per franchise, generated when asked for rather than
+          written out when the auction closes — ten unrequested PDFs is ten
+          files to clean up, and the room is the only input, so the report is
+          never stale.
+        */}
+        {canDownload && (
+          <a
+            href={apiUrl(`/api/v1/auction/report/${franchise.team.id}/pdf`)}
+            download
+            title={`Download ${team.name}'s auction report as a PDF`}
+            className="ml-auto rounded-md border border-line px-2.5 py-1 font-ui text-[9.5px] font-semibold uppercase tracking-[0.1em] text-slate-muted no-underline transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
+          >
+            PDF report
+          </a>
+        )}
+
         <button
           type="button"
           onClick={onToggle}
           aria-expanded={open}
-          className="ml-auto rounded-md border border-line px-2.5 py-1 font-ui text-[9.5px] font-semibold uppercase tracking-[0.1em] text-slate-muted transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
+          className={`${canDownload ? "" : "ml-auto "}rounded-md border border-line px-2.5 py-1 font-ui text-[9.5px] font-semibold uppercase tracking-[0.1em] text-slate-muted transition-colors hover:border-slate-faint/60 hover:text-slate-ink`}
         >
           {open ? "Hide XI" : "Playing XI"}
         </button>

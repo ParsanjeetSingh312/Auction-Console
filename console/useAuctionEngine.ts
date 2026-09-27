@@ -163,7 +163,30 @@ function savePersisted(state: AuctionState, rules: Rules): void {
  * Hook
  * ------------------------------------------------------------------ */
 
-export function useAuctionEngine(): AuctionEngine {
+export interface AuctionEngineOptions {
+  /**
+   * Whether this engine shares the browser's saved auction.
+   *
+   * True (the default) is the console's behaviour: the auction is checkpointed
+   * to localStorage so a refresh mid-auction is survivable, and every surface
+   * that opens an engine sees the same running auction.
+   *
+   * False gives a private, pristine auction that is neither read from storage
+   * nor written back. The Data Interface needs exactly that. It is a scouting
+   * view of the *pool*, and it was previously showing whatever auction happened
+   * to be saved -- open /console, sell four players, then open /data, and the
+   * header read "SOLD 4" for an auction that route cannot run and has no
+   * business reporting. Sealing the writes (see readOnlyEngine) stopped /data
+   * changing the auction; this stops the auction changing /data.
+   */
+  persist?: boolean;
+}
+
+export function useAuctionEngine(
+  options: AuctionEngineOptions = {},
+): AuctionEngine {
+  const persist = options.persist ?? true;
+
   const [players, setPlayers] = useState<ConsolePlayer[]>([]);
   const [totalPlayers, setTotalPlayers] = useState(0);
   const [isLoadingRoster, setIsLoadingRoster] = useState(true);
@@ -213,7 +236,8 @@ export function useAuctionEngine(): AuctionEngine {
     if (restored.current || players.length === 0) return;
     restored.current = true;
 
-    const saved = loadPersisted();
+    // An ephemeral engine starts empty and stays that way.
+    const saved = persist ? loadPersisted() : null;
     if (!saved) return;
 
     const ids = new Set(players.map((p) => p.id));
@@ -230,14 +254,14 @@ export function useAuctionEngine(): AuctionEngine {
       log: saved.log,
       seq: saved.seq,
     });
-  }, [players]);
+  }, [players, persist]);
 
   // Checkpoint after every committed change. Skipped until the roster is in, so
   // the initial empty state cannot overwrite a saved auction.
   useEffect(() => {
-    if (players.length === 0) return;
+    if (!persist || players.length === 0) return;
     savePersisted(state, rules);
-  }, [state, rules, players.length]);
+  }, [persist, state, rules, players.length]);
 
   /* ---------------- lookups ---------------- */
 

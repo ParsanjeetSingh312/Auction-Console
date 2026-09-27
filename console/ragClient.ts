@@ -13,20 +13,19 @@
  * milliseconds; `/search` and `/chat` may have to load a cross-encoder into
  * memory on the first call and legitimately take a minute.
  */
+import { apiUrl, connectionHint, describeTarget } from "./apiBase";
 import type { ApiPlayer } from "./types";
 
 /**
- * Where the API lives.
+ * Where the API lives is no longer decided here.
  *
- * In a production build the backend serves this bundle itself, so the API is
- * same-origin and a relative base is correct whatever host or port it is
- * reached on — localhost, a LAN address, or behind a proxy. Under `vite dev`
- * the page is served from :5173 while the API stays on :8001, so that one case
- * needs an absolute origin. `VITE_RAG_API_BASE` overrides both.
+ * It used to be a local constant, and so were two others — one in
+ * `useAuctionSocket.ts` and one in `PostAuctionReport.tsx`. Three constants
+ * meant three chances to disagree about the backend's address, and the report's
+ * copy had no override variable at all. `apiBase.ts` is now the single answer;
+ * see its header for how it is resolved and why a browser cannot simply read
+ * the backend's own API_PORT.
  */
-const API_BASE =
-  (import.meta.env?.VITE_RAG_API_BASE as string | undefined) ??
-  (import.meta.env?.DEV ? "http://localhost:8001" : "");
 
 /** How the backend router resolved a query. */
 export type Route = "METRIC_SQL" | "SEMANTIC_VECTOR" | "HYBRID";
@@ -102,11 +101,19 @@ export interface ChatTurn {
 /** Raised for any non-2xx response or transport failure, with a usable message. */
 export class RagError extends Error {
   readonly status: number | null;
+  /**
+   * Whether trying the same request again might succeed.
+   *
+   * Set by the transport, read by the retry loop, and left on the error so a
+   * caller can tell "the backend is restarting" from "the backend said no".
+   */
+  readonly retryable: boolean;
 
-  constructor(message: string, status: number | null = null) {
+  constructor(message: string, status: number | null = null, retryable = false) {
     super(message);
     this.name = "RagError";
     this.status = status;
+    this.retryable = retryable;
   }
 }
 
@@ -117,7 +124,49 @@ export class RagError extends Error {
  */
 const ROSTER_PAGE_SIZE = 500;
 
-async function request<T>(
+/**
+ * Attempts per request: the first, plus two retries.
+ *
+ * Kept small on purpose. The failures this covers resolve in a second or two or
+ * not at all, and a console that spends thirty seconds insisting before it
+ * admits the backend is down is worse company than one that says so quickly.
+ */
+const MAX_ATTEMPTS = 3;
+
+/** Pause before the second and third attempts, in ms. */
+const RETRY_BACKOFF = [300, 900];
+
+/**
+ * Statuses worth a second try.
+ *
+ * All three mean "the server is there but cannot answer right now" — which is
+ * what a reverse proxy in front of a restarting uvicorn reports. A 4xx is the
+ * backend answering correctly and is never retried; nor is a 500, which is a
+ * bug that will reproduce.
+ */
+const RETRYABLE_STATUS = new Set([502, 503, 504]);
+
+/** Sleep, unless the caller gives up first. */
+function pause(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    function onAbort() {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/** One trip to the backend. Throws `RagError` carrying its own retryability. */
+async function attempt<T>(
   path: string,
   init: RequestInit | undefined,
   timeoutMs: number,
@@ -131,7 +180,7 @@ async function request<T>(
   signal?.addEventListener("abort", relay);
 
   try {
-    const response = await fetch(`${API_BASE}${path}`, {
+    const response = await fetch(apiUrl(path), {
       ...init,
       signal: controller.signal,
       headers: { "Content-Type": "application/json", ...init?.headers },
@@ -150,6 +199,7 @@ async function request<T>(
       throw new RagError(
         `${response.status} ${response.statusText}${detail ? ` — ${detail}` : ""}`,
         response.status,
+        RETRYABLE_STATUS.has(response.status),
       );
     }
 
@@ -161,19 +211,72 @@ async function request<T>(
       // A caller-driven abort is not a failure worth reporting; rethrow it so
       // the hook can recognise and ignore it.
       if (signal?.aborted) throw error;
+
+      // A timeout is deliberately NOT retryable. These deadlines are long — two
+      // minutes for /chat — and a second attempt would double a wait the user
+      // has already sat through, on a backend that is demonstrably busy.
       throw new RagError(
         "The request timed out. The embedding or reranker model may still be loading — try again.",
       );
     }
 
+    // Everything left is a transport failure: connection refused, DNS, a
+    // socket closed mid-flight. On this project that is most often uvicorn
+    // restarting under `--reload`, which is over in about a second — so it is
+    // the one case most worth trying again.
     throw new RagError(
-      `Cannot reach the RAG backend at ${API_BASE || window.location.origin}. ` +
-        `Start it with \`uvicorn api.main:app --port 8001\` from ipl_auction_rag_backend/.`,
+      `Cannot reach the RAG backend at ${describeTarget()}. ${connectionHint()}`,
+      null,
+      true,
     );
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", relay);
   }
+}
+
+/**
+ * A request, with a short retry for failures that are plausibly transient.
+ *
+ * Retrying is safe for every endpoint here because all of them are reads:
+ * `/players`, `/search`, `/chat` and `/health` answer questions and change
+ * nothing, so a duplicate request costs time and no correctness. Were a
+ * mutating endpoint ever added, it would need to opt out of this.
+ */
+async function request<T>(
+  path: string,
+  init: RequestInit | undefined,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<T> {
+  let last: unknown;
+
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    try {
+      return await attempt<T>(path, init, timeoutMs, signal);
+    } catch (error) {
+      last = error;
+
+      // The caller gave up; stop immediately and let the hook ignore it.
+      if (signal?.aborted) throw error;
+      if (!(error instanceof RagError) || !error.retryable) throw error;
+      if (i === MAX_ATTEMPTS - 1) break;
+
+      await pause(RETRY_BACKOFF[i], signal);
+    }
+  }
+
+  // Out of attempts. The last error already carries the right message; only
+  // note that this was not a one-off, so the reader knows it was given a
+  // fair chance before being told the backend is down.
+  if (last instanceof RagError) {
+    throw new RagError(
+      `${last.message} (tried ${MAX_ATTEMPTS} times)`,
+      last.status,
+      false,
+    );
+  }
+  throw last;
 }
 
 /** GET /api/v1/players — the master roster the console runs on. */

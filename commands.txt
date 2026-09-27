@@ -1,1 +1,147 @@
-cd C:\Users\Spring\Desktop\Auction-console\ipl_auction_rag_backend && uvicorn api.main:app --reload --port 8001
+AUCTIQ — how to run it
+======================
+
+THE ONE COMMAND (copy this)
+---------------------------
+PowerShell, from ANY directory:
+
+    & "C:\Users\Spring\Desktop\Auction-console\start.ps1" -SkipBuild
+
+Command Prompt, from ANY directory:
+
+    "C:\Users\Spring\Desktop\Auction-console\start.bat" -SkipBuild
+
+Use the FULL PATH, not `.\start.ps1`. `.\` means "in the folder I am standing
+in", and the script lives at the repository ROOT -- while the backend is
+normally run from ipl_auction_rag_backend\ one level down. Typing `.\start.ps1`
+from there fails with:
+
+    The term '.\start.ps1' is not recognized as the name of a cmdlet ...
+
+That is not a broken script, a blocked execution policy or a missing file. It is
+the wrong folder. The full path removes the question entirely.
+
+start.bat exists because cmd.exe cannot execute a .ps1 file at all -- it hands
+it to the file association and nothing starts. It forwards to start.ps1, so both
+accept the same flags.
+
+Drop -SkipBuild whenever you have changed frontend code, so the build runs.
+
+
+THE SHORT VERSION
+-----------------
+From the repository root, in ONE terminal:
+
+    .\start.ps1
+
+That builds the console, then serves it on http://localhost:8001 and stays
+running. Ctrl+C stops it.
+
+    .\start.ps1 -SkipBuild     serve only, when no frontend code changed
+    .\start.ps1 -Port 8002     use a different port
+    .\start.ps1 -Reload        auto-restart on backend .py changes (see below)
+
+
+THERE IS ONLY ONE SERVER
+------------------------
+uvicorn. It serves the API at /api/v1/*, the auction WebSocket, and the
+compiled frontend from dist/ -- all on the same port. http://localhost:8001 is
+the whole application.
+
+`npm run build` is NOT a server. It compiles the frontend, prints "built", and
+exits in about eight seconds. You only need it after changing frontend code
+(anything under components/, pages/, console/, hooks/, App.tsx, styles.css).
+
+Never run the build while the server is serving: it rewrites the dist/
+directory the server is reading from.
+
+
+THE LONG VERSION (what start.ps1 does)
+--------------------------------------
+1. Build, and wait for it to finish:
+
+       cd C:\Users\Spring\Desktop\Auction-console
+       npm run build
+
+2. Then start the server:
+
+       cd C:\Users\Spring\Desktop\Auction-console\ipl_auction_rag_backend
+       ..\.venv\Scripts\python.exe -m uvicorn api.main:app --port 8001
+
+3. Open http://localhost:8001
+
+
+THE cd IN STEP 2 IS NOT OPTIONAL
+--------------------------------
+config/settings.py loads `env_file: '.env'`, and pydantic resolves that
+relative to the process working directory. Started from anywhere else, the
+.env is silently not found and the backend comes up with NO API keys -- no
+error, just every LLM unavailable and rule-based answers instead.
+
+Check the startup log for:
+
+    LLM_PROVIDER    groq - openai/gpt-oss-120b (falls back to gemini)
+
+If that says the provider is off while .env clearly has keys, the working
+directory is why.
+
+
+SCOUT SAYS IT CANNOT CONNECT, BUT THE SERVER IS RUNNING
+-------------------------------------------------------
+Almost always a STALE PROCESS. uvicorn reads the Python source once, at startup,
+and never again unless it was started with --reload. A server that has been up
+since before a backend change is still running the OLD code: a route added since
+then does not exist in that process, so the browser gets a 404 -- which the
+console reports as SCOUT failing to connect.
+
+Check whether the running server actually has the route:
+
+    curl.exe -s http://localhost:8001/openapi.json | Select-String "advise/stream"
+
+A matching line means the server is current. Nothing printed means it is running
+old code: stop it with Ctrl+C and start it again.
+
+The other cause is the working directory. Started from anywhere other than
+ipl_auction_rag_backend\, the .env is silently not found, so SCOUT connects but
+has no API keys. See "THE cd IN STEP 2 IS NOT OPTIONAL" below.
+
+
+WHEN DO I NEED TO RESTART?
+--------------------------
+Frontend change (.tsx, .ts, .css)   npm run build, then restart the server
+Backend change (.py)                restart the server
+.env change                         restart the server (--reload never
+                                    watched .env, only .py)
+Nothing changed                     leave it running
+
+
+WHY --reload IS OFF BY DEFAULT
+------------------------------
+It restarts the server whenever a .py file changes. Two problems:
+
+  - A restart drops every open WebSocket. During a live auction that
+    disconnects all ten franchises mid-lot.
+  - While anyone is editing files, the server appears to die at random, and
+    the console reports it as "cannot reach the RAG backend".
+
+Use `.\start.ps1 -Reload` when you are actively editing backend code and no
+auction is running.
+
+
+FIRST SEARCH IS SLOW
+--------------------
+About 5-20 seconds after each server start, while the reranker model loads
+from disk. Every search after that is roughly 5 seconds. This is normal and
+the client waits up to 120 seconds for it.
+
+
+USEFUL CHECKS
+-------------
+Environment report, without starting the server:
+
+    cd ipl_auction_rag_backend
+    ..\.venv\Scripts\python.exe -m config.env_check
+
+Is the API alive?
+
+    curl http://localhost:8001/api/v1/health

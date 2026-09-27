@@ -28,7 +28,7 @@ deliberately stricter than it looks:
 The server->client side is modelled loosely by comparison, because it is not a
 trust boundary: the server is the one writing it.
 """
-from typing import Annotated, Literal
+from typing import Annotated, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -62,6 +62,11 @@ class Join(BaseModel):
     # the actual team list in the room, not just this range.
     team_id: int | None = Field(default=None, ge=1, le=100)
     display_name: str | None = Field(default=None, max_length=40)
+    # Sent only for an auctioneer login, ignored for a franchise. The chair is
+    # password-gated (settings.AUCTIONEER_PASSWORD); this carries the attempt.
+    # Bounded like every other field, verified server-side, and never echoed
+    # back -- there is no server->client message that contains it.
+    password: str | None = Field(default=None, max_length=200)
 
 
 class OpenWaitingRoom(BaseModel):
@@ -189,6 +194,34 @@ class ResetRoom(BaseModel):
     type: Literal["reset"]
 
 
+class SetRules(BaseModel):
+    """
+    Auctioneer: change the auction's own parameters.
+
+    The Auction Setup panel has offered these four fields since Phase 4 and
+    until now there was no message to carry them, so the dialog wrote to a
+    local engine the live room never reads -- an auctioneer could set a squad
+    cap of 11, be told "Auction rules updated", and watch the leaderboard go on
+    saying 25. Same class of break as `reset` before its wire existed.
+
+    Only the four the panel edits. The clock durations and the lifeline count
+    are not in the dialog, and a message that could rewrite them would be a
+    wider hole than the feature needs -- the server merges these over whatever
+    else the rules hold.
+
+    Bounds are generous but finite: a purse of 2^31 lakh or a squad of a
+    million is not a configuration, it is a way to make some other part of the
+    room misbehave.
+    """
+
+    model_config = Strict
+    type: Literal["set_rules"]
+    purse: int = Field(ge=1, le=10_000_000)
+    max_squad: int = Field(ge=1, le=100)
+    min_squad: int = Field(ge=1, le=100)
+    max_overseas: int = Field(ge=1, le=100)
+
+
 class Ping(BaseModel):
     """Keepalive. Answered with a pong; touches no state."""
 
@@ -209,25 +242,50 @@ ClientMessage = Annotated[
     | Undo
     | FinishAuction
     | ResetRoom
+    | SetRules
     | Ping,
     Field(discriminator="type"),
 ]
 
 
-class ClientEnvelope(BaseModel):
+def supported_message_types() -> list[str]:
     """
-    Wrapper used to parse an arbitrary incoming frame.
+    Every `type` the server will accept, derived from the union itself.
 
-    Pydantic needs a model to hang the discriminated union on; this is it.
-    `parse_client_message` below is the only thing that should build one.
+    Broadcast in the room state so a client can tell whether the server it is
+    talking to understands the messages it intends to send. That sounds like
+    over-engineering until you have watched an auctioneer set a squad cap of 11
+    on a page whose JavaScript was rebuilt an hour ago, against a uvicorn
+    process started before the message type existed: the browser sends
+    `set_rules`, the old server rejects it as unknown, and the only evidence is
+    a toast that scrolls past. The frontend is re-read from `dist/` on every
+    request and the Python is not, so the two halves drift apart routinely in
+    this project's workflow, and nothing on screen said so.
+
+    Read off the discriminated union rather than hand-listed, so a message type
+    added later cannot forget to appear here.
     """
-
-    model_config = Strict
-    message: ClientMessage
+    union = get_args(get_args(ClientMessage)[0])
+    out: list[str] = []
+    for model in union:
+        annotation = model.model_fields["type"].annotation
+        literals = get_args(annotation)
+        if literals:
+            out.append(str(literals[0]))
+    return sorted(out)
 
 
 # --------------------------------------------------------------------- #
 # Server -> client
+#
+# Declarative. Nothing below is constructed: auction/room.py and auction/ws.py
+# build these frames as plain dicts, and this section is the server-side
+# specification of what those dicts contain. Comments in room.py and
+# scout/schemas/queries.py cite these classes by name as the contract.
+#
+# The client -> server section above is the opposite -- every model there is live
+# code, assembled into the ClientMessage discriminated union that ws.py parses
+# with TypeAdapter.
 # --------------------------------------------------------------------- #
 
 
@@ -373,6 +431,9 @@ class RoomState(BaseModel):
     # Unix timestamp the waiting-room countdown expires. None outside `waiting`.
     countdown_ends_at: float | None = None
     connected: int = 0
+    # Whether the auctioneer's chair is currently occupied. Lets the seat picker
+    # show it as taken rather than offering a login the room would refuse.
+    auctioneer_present: bool = False
 
 
 class ErrorMessage(BaseModel):

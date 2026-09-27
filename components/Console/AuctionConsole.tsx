@@ -40,7 +40,28 @@ import { pressable, viewVariants } from "../../console/motion";
 
 import "../../console/console.css";
 
+import StadiumBackdrop from "../Sections/StadiumBackdrop";
+
 type View = "pool" | "teams" | "results" | "scout" | "block";
+
+/**
+ * Whether the tab bar advertises Scout.
+ *
+ * `false` on every surface that has one — here, on the Data Interface and on the
+ * auctioneer's split screen — so SCOUT is not something a user navigates to.
+ * Nothing else changes: the pane below is still mounted and still kept alive
+ * between tabs, `askScout` and `searchScout` still call `setView("scout")` and
+ * still open it, and `ScoutView`, `useScout` and every /scout route on the
+ * backend are exactly as they were.
+ *
+ * A flag rather than deleted JSX so this is a one-word revert, and so the next
+ * person reading the tab bar can see the absence is a decision.
+ *
+ * Results is deliberately NOT gated here. It is hidden only on the Data
+ * Interface, which participants open; this console is an operator's surface and
+ * keeps it.
+ */
+const SHOW_SCOUT_TAB: boolean = false;
 
 interface Toast {
   id: number;
@@ -57,7 +78,27 @@ const INITIAL_FILTERS: PoolFilters = {
   minRating: 8,
 };
 
+/**
+ * The night theme, applied once around every screen this route can show.
+ *
+ * Same shape as the wrapper on /auction and for the same reason: the component
+ * below returns from more than one place, so wrapping it is the only way to
+ * cover them all without an edit per return that a later one would miss.
+ *
+ * Nothing inside changes — no props, no logic, no markup. `.console-dark`
+ * redefines console.css's palette tokens for this subtree, and the backdrop is
+ * a fixed layer behind it.
+ */
 export default function AuctionConsole() {
+  return (
+    <div className="console-dark">
+      <StadiumBackdrop variant="console" />
+      <AuctionConsoleInner />
+    </div>
+  );
+}
+
+function AuctionConsoleInner() {
   const engine = useAuctionEngine();
   const scout = useScout();
 
@@ -261,9 +302,11 @@ export default function AuctionConsole() {
           <Tab view="results" active={view} onSelect={setView} count={engine.counts.sold}>
             Results
           </Tab>
-          <Tab view="scout" active={view} onSelect={setView}>
-            Scout
-          </Tab>
+          {SHOW_SCOUT_TAB && (
+            <Tab view="scout" active={view} onSelect={setView}>
+              Scout
+            </Tab>
+          )}
           <Tab view="block" active={view} onSelect={setView}>
             Block
           </Tab>
@@ -343,6 +386,18 @@ export default function AuctionConsole() {
                   onSort={toggleSort}
                   onOpenCard={setCardPlayer}
                   onNotice={notify}
+                  /*
+                    The offline console is the operator's own tool: one person,
+                    one browser, no server and no seats. Whoever opens it is
+                    running the auction, so they get the full sheet.
+
+                    Stated explicitly rather than left to the prop's default.
+                    The default exists to keep call sites working during a
+                    migration, and relying on it here would leave the most
+                    privileged view in the app asserting nothing about why it
+                    is privileged.
+                  */
+                  viewerRole="auctioneer"
                 />
               )}
               {view === "teams" && <TeamsView engine={engine} onNotice={notify} />}

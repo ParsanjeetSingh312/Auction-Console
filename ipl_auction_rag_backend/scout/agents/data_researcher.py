@@ -41,7 +41,7 @@ from scout.schemas.player import (
     ResearchBatch,
     SourceRef,
 )
-from scout.tools.playwright_scraper import Refusal, ScrapeOutcome, enabled_sources, load_sources
+from scout.tools.playwright_scraper import ScrapeOutcome, enabled_sources, load_sources
 from scout.tools.rag_pipeline import record, resolve_player
 
 logger = logging.getLogger(__name__)
@@ -236,7 +236,7 @@ async def research(
     because a node that can only run inside a graph can only be debugged inside
     a graph.
     """
-    from db.sqlite_manager import SQLiteManager
+    from db import get_player_db
     from scout.tools.playwright_scraper import scrape_source
 
     settings = get_settings()
@@ -252,7 +252,7 @@ async def research(
         return ResearchBatch(notes=notes, started_at=started,
                              finished_at=datetime.now(timezone.utc))
 
-    pool = SQLiteManager().get_all_players(limit=1000, offset=0)
+    pool = get_player_db().get_all_players(limit=1000, offset=0)
     outcomes: list[ScrapeOutcome] = []
     for source in sources:
         outcomes.extend(await scrape_source(str(source["id"]), config))

@@ -7,7 +7,9 @@ import logging
 import re
 from typing import Any
 
-from db.sqlite_manager import SQLiteManager, validate_select_only
+from config.settings import get_settings
+from db import get_player_db
+from db.sqlite_manager import validate_select_only
 from rag import llm_provider
 
 logger = logging.getLogger(__name__)
@@ -60,10 +62,24 @@ def generate_sql(query: str) -> str | None:
         logger.info("No LLM configured for text-to-SQL; caller will use the deterministic parser")
         return None
 
-    sqlite_mgr = SQLiteManager()
-    schema = sqlite_mgr.get_table_schema()
-    
-    system_prompt = f"""You are an expert SQL query generator for a SQLite database containing IPL cricket player statistics.
+    player_db = get_player_db()
+    schema = player_db.get_table_schema()
+
+    # Name the dialect the model is actually writing against.
+    #
+    # This used to say "SQLite" unconditionally, which was correct while SQLite
+    # was the only backend and becomes a real fault once the players table can
+    # live in Supabase: told SQLite, the model is free to reach for functions
+    # Postgres does not have. It is not a hypothetical -- `strftime`,
+    # `julianday`, `IFNULL` and `||` string concatenation are all things an LLM
+    # reaches for naturally in SQLite and all of them either fail or mean
+    # something different on Postgres.
+    #
+    # get_table_schema() already returns whichever DDL matches the live backend,
+    # so this makes the prose agree with the schema it sits above.
+    dialect = "PostgreSQL" if get_settings().use_postgres else "SQLite"
+
+    system_prompt = f"""You are an expert SQL query generator for a {dialect} database containing IPL cricket player statistics.
 
 Here is the database schema:
 {schema}
@@ -87,7 +103,7 @@ Because of this split, ALWAYS add `IS NOT NULL` guards on the metrics you
 filter or sort by, so NULL rows from the other role group cannot leak in.
 
 IMPORTANT RULES:
-1. Generate ONLY valid SQLite SELECT queries.
+1. Generate ONLY valid {dialect} SELECT queries.
 2. Use the exact column names from the schema.
 3. The 'role' column values are: 'Batter', 'Bowler', 'All-Rounder', 'Wicket Keeper'
 4. The 'cap_status' column values are: 'CAPPED', 'UNCAPPED'
@@ -151,8 +167,8 @@ def execute_sql_query(query: str) -> dict[str, Any]:
         }
     
     try:
-        sqlite_mgr = SQLiteManager()
-        results = sqlite_mgr.execute_query(sql)
+        player_db = get_player_db()
+        results = player_db.execute_query(sql)
         return {
             "sql": sql,
             "results": results,

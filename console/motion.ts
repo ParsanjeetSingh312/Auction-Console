@@ -36,10 +36,19 @@ export const SPRING: Transition = {
  */
 export const viewVariants: Variants = {
   initial: { opacity: 0, y: 10 },
+  /*
+    No `when: "beforeChildren"`. It was inert while the views had no variant
+    children of their own; now that the pool's panels and the franchise grid are
+    part of the tree it would hold every one of them back until this fade
+    finished, and then stagger them on top — a tab switch that leaves the main
+    area blank for a third of a second before anything starts arriving. Children
+    now animate alongside the container, which is both faster and reads as one
+    movement rather than two.
+  */
   animate: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.28, ease: EASE, when: "beforeChildren", staggerChildren: 0.035 },
+    transition: { duration: 0.28, ease: EASE, staggerChildren: 0.035 },
   },
   exit: { opacity: 0, y: -6, transition: { duration: 0.16, ease: EASE } },
 };

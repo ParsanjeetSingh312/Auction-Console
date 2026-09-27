@@ -1,0 +1,72 @@
+# ==============================================================================
+# .dockerignore — what never enters the Docker build context.
+#
+# This file is not an optimisation, it is a requirement. `docker build` uploads
+# the entire context to the daemon before reading the first line of the
+# Dockerfile, and this repository keeps a Python virtualenv next to the frontend:
+# .venv alone is ~2.5 GB across tens of thousands of files (torch), and
+# node_modules is another large tree. Without the exclusions below, every build
+# spends minutes shipping files that are then thrown away, and on Render that
+# time is billed and counted against the build timeout.
+#
+# The Dockerfile deliberately uses `COPY . .` for the frontend rather than an
+# explicit list of directories. The previous explicit list had gone stale --
+# hooks/, pages/, utils/ and public/ were all imported by the app and none were
+# copied, so the build failed on a missing module. A denylist here cannot rot the
+# same way: a new source directory is included automatically.
+# ==============================================================================
+
+# --- Dependencies, both rebuilt inside the image --------------------------
+.venv/
+venv/
+node_modules/
+
+# --- Build output --------------------------------------------------------
+# dist/ is rebuilt by the frontend stage. Copying the host's build in would
+# silently ship whatever was last built on Windows.
+dist/
+tsconfig.tsbuildinfo
+
+# --- Version control and tooling -----------------------------------------
+.git/
+.gitignore
+.gitattributes
+.claude/
+.vscode/
+.idea/
+
+# --- Caches --------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- SECRETS -------------------------------------------------------------
+# .env must never enter an image. It holds live API keys and the auctioneer
+# password, and anything copied in is recoverable from the image layers by
+# anyone who can pull it. Render supplies these as real environment variables,
+# which pydantic-settings reads in preference to a file anyway.
+#
+# .env.example is kept: it is documentation and contains no values.
+.env
+.env.*
+!.env.example
+
+# --- Derived state, not image content ------------------------------------
+# The player database, the Chroma index and the SCOUT checkpoint are rebuilt by
+# POST /api/v1/ingest and live on the Render persistent disk at runtime.
+ipl_auction_rag_backend/data/database/
+ipl_auction_rag_backend/data/raw/
+
+# --- Not needed at runtime ------------------------------------------------
+# The old standalone prototype, superseded by the React console in components/.
+auction-console.html
+*.md
+!README.md
+
+# --- Editor / OS ----------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.log

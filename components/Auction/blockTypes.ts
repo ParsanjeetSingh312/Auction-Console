@@ -25,7 +25,7 @@ export interface Lot {
 
 export interface TickerEntry {
   id: number;
-  kind: "bid" | "sold" | "unsold" | "lot" | "note";
+  kind: "bid" | "sold" | "unsold" | "lot" | "note" | "timeout" | "withdraw";
   text: string;
   /** ₹ lakh, or null for entries that carry no figure. */
   amount: number | null;

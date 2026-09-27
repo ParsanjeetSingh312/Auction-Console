@@ -48,6 +48,10 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from config.settings import get_settings
+
+from auction.schemas import supported_message_types
+
 logger = logging.getLogger("auction.room")
 
 
@@ -427,12 +431,42 @@ class AuctionRoom:
             raise RoomError(f"Only a franchise can {action}.", about=action)
         return seat
 
+    def _check_auctioneer_password(self, password: str | None) -> None:
+        """
+        The one seat that must be earned, not merely claimed.
+
+        Every other seat is first-come, which is right for a franchise and wrong
+        for the person who can start the auction, put players up and bring the
+        hammer down. Because identity here is just the socket you hold, without
+        this gate anyone who can reach the room could take control of it -- the
+        access-control finding this password answers.
+
+        The secret lives in `settings.AUCTIONEER_PASSWORD`, read from the
+        server's environment. It is never sent to a client and never logged. An
+        unset password LOCKS the chair rather than opening it: refusing every
+        login until one is configured is the safe direction, and the message says
+        what to do about it. The comparison is constant-time so a wrong guess
+        leaks nothing through how long the rejection took.
+        """
+        import secrets
+
+        required = get_settings().AUCTIONEER_PASSWORD
+        if not required:
+            raise RoomError(
+                "Auctioneer login is not configured. Set AUCTIONEER_PASSWORD in "
+                "the backend .env and restart the server.",
+                about="auth",
+            )
+        if not secrets.compare_digest(password or "", required):
+            raise RoomError("Incorrect auctioneer password.", about="auth")
+
     async def join(
         self,
         client_id: str,
         role: str,
         team_id: int | None,
         display_name: str | None,
+        password: str | None = None,
     ) -> Seat:
         """
         Claim a seat, if it is free.
@@ -445,6 +479,10 @@ class AuctionRoom:
         """
         async with self._lock:
             if role == "auctioneer":
+                # Earn the chair before anything else about the claim is
+                # considered. A wrong or missing password is refused here, before
+                # occupancy is even checked.
+                self._check_auctioneer_password(password)
                 taken = any(
                     s.role == "auctioneer" and s.client_id != client_id
                     for s in self.seats.values()
@@ -887,6 +925,87 @@ class AuctionRoom:
             self._note("Room reset — pool, purses and lifelines restored")
             self.version += 1
 
+    async def set_rules(
+        self,
+        client_id: str,
+        purse: int,
+        max_squad: int,
+        min_squad: int,
+        max_overseas: int,
+    ) -> None:
+        """
+        Change the auction's parameters from the Auction Setup panel.
+
+        Merged over the existing rules rather than replacing them: the panel
+        edits four fields and the rules dict holds eight, so a replace would
+        silently reset the clock durations and the lifeline count to whatever
+        the client happened to know about.
+
+        **Refused when it would invalidate a squad that already exists.**
+        Lowering the squad cap to 11 while a franchise holds fourteen players
+        does not un-buy three of them -- it produces a roster the room's own
+        `blocked_reason` calls illegal and no control can fix. Saying so is more
+        use than silently allowing a state the auction cannot leave; the
+        auctioneer can reset and then set the rules, which is the order the
+        setup panel already offers.
+
+        Everything derived from the rules -- `max_bid`, the reserve held back
+        for the minimum squad, every `squad n/max` on the leaderboard -- is
+        recomputed from this dict on the next broadcast, so no other state needs
+        touching.
+        """
+        self._require_auctioneer(client_id, "change the auction rules")
+
+        if min_squad > max_squad:
+            raise RoomError(
+                f"The minimum squad ({min_squad}) cannot exceed the maximum "
+                f"({max_squad}).",
+                about="rules",
+            )
+        if max_overseas > max_squad:
+            raise RoomError(
+                f"Overseas places ({max_overseas}) cannot exceed the squad size "
+                f"({max_squad}).",
+                about="rules",
+            )
+
+        async with self._lock:
+            for team in self.teams:
+                summary = self.summary_for(team["id"])
+                if summary["size"] > max_squad:
+                    raise RoomError(
+                        f"{team['code']} already holds {summary['size']} players; "
+                        f"a cap of {max_squad} would make that squad illegal. "
+                        f"Reset the auction first.",
+                        about="rules",
+                    )
+                if summary["overseas"] > max_overseas:
+                    raise RoomError(
+                        f"{team['code']} already holds {summary['overseas']} "
+                        f"overseas players; a cap of {max_overseas} would make "
+                        f"that squad illegal. Reset the auction first.",
+                        about="rules",
+                    )
+                if summary["spent"] > purse:
+                    raise RoomError(
+                        f"{team['code']} has already committed "
+                        f"{money(summary['spent'])}, which is more than a purse "
+                        f"of {money(purse)}. Reset the auction first.",
+                        about="rules",
+                    )
+
+            self.rules.update(
+                purse=purse,
+                max_squad=max_squad,
+                min_squad=min_squad,
+                max_overseas=max_overseas,
+            )
+            self._note(
+                f"Rules set — {money(purse)} purse, squad {min_squad}-{max_squad}, "
+                f"{max_overseas} overseas"
+            )
+            self.version += 1
+
     # ---------------------------------------------------------------- #
     # Bidding
     # ---------------------------------------------------------------- #
@@ -1218,6 +1337,10 @@ class AuctionRoom:
         return {
             "type": "state",
             "version": self.version,
+            # What this server build understands. A client can compare it with
+            # what it intends to send and say so plainly, instead of firing a
+            # message at a process that predates it and showing nothing.
+            "supports": supported_message_types(),
             "phase": self.phase,
             "rules": dict(self.rules),
             "teams": teams,
@@ -1227,6 +1350,12 @@ class AuctionRoom:
             "counts": self.counts(),
             "countdown_ends_at": self.countdown_ends_at,
             "connected": len(self.seats),
+            # Whether the chair is occupied, so a seat picker can show it as taken
+            # -- the same way a franchise tile greys out -- instead of offering a
+            # login the room would only refuse.
+            "auctioneer_present": any(
+                s.role == "auctioneer" for s in self.seats.values()
+            ),
         }
 
     # ---------------------------------------------------------------- #

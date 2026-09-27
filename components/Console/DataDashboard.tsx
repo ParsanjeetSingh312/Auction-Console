@@ -43,6 +43,7 @@ import ReloadPoolButton from "../ReloadPoolButton";
 import CommandSearch from "./CommandSearch";
 import LedgerPanel from "./LedgerPanel";
 import PoolTable from "./PoolTable";
+import type { PoolLayout } from "./PoolTable";
 import ResultsView from "./ResultsView";
 import ScoutView from "./ScoutView";
 import TeamBudgetGrid from "./TeamBudgetGrid";
@@ -53,6 +54,25 @@ import "../../console/console.css";
 
 /** No "block" — that is the whole point of this route. */
 type View = "pool" | "teams" | "results" | "scout";
+
+/**
+ * Which tabs the Data Interface offers.
+ *
+ * Both views below are still built, still mounted and still reachable — Scout
+ * from the command bar's "Ask Scout" and from a player card, Results from
+ * `view === "results"` — and `readOnlyEngine`, `ScoutView` and `ResultsView`
+ * are untouched. What changes is only whether the tab bar advertises them.
+ *
+ * Flags rather than deleted JSX so this is a one-word revert, and so the next
+ * person reading the tab bar can see that the absence is a decision.
+ *
+ * Results is hidden *here only*: it stays on the auctioneer's surface, where
+ * the person running the sale is the one entitled to see what things went for.
+ * The Data Interface is handed to participants, and a read-only route that
+ * lists every price is a scouting advantage, not an analytics view.
+ */
+const SHOW_RESULTS_TAB: boolean = false;
+const SHOW_SCOUT_TAB: boolean = false;
 
 interface Toast {
   id: number;
@@ -70,7 +90,16 @@ const INITIAL_FILTERS: PoolFilters = {
 };
 
 export default function DataDashboard() {
-  const live = useAuctionEngine();
+  /*
+    A private auction, deliberately.
+
+    `persist: false` means this engine neither reads nor writes the saved
+    auction, so the header's AVAILABLE / SOLD / UNSOLD / SPENT always describe
+    the pool as registered rather than whatever auction happens to be sitting in
+    localStorage from /console. The Data Interface is a scouting view of the
+    pool; a sale made in another room is not its business to report.
+  */
+  const live = useAuctionEngine({ persist: false });
   const scout = useScout();
 
   /*
@@ -81,6 +110,21 @@ export default function DataDashboard() {
   const engine = useMemo(() => readOnlyEngine(live), [live]);
 
   const [view, setView] = useState<View>("pool");
+
+  /*
+    The pool opens on the box grid, not the sheet.
+
+    This is the Data Interface's own default and deliberately not PoolTable's:
+    /console still opens on the sheet, because it is the auctioneer's working
+    surface and sorting eleven columns is the job it exists for. /data is the
+    read-only scouting view, where the reference layout — four role columns of
+    player boxes — is what it should show first.
+
+    The sheet is one click away in the filter rail, and switching does not
+    change which players are on screen: both views render the same filtered,
+    sorted result.
+  */
+  const [layout, setLayout] = useState<PoolLayout>("grid");
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<PoolFilters>(INITIAL_FILTERS);
   const [sortKey, setSortKey] = useState<SortKey>("sno");
@@ -109,7 +153,7 @@ export default function DataDashboard() {
   );
 
   useEffect(() => {
-    document.title = "AUCTIQ · Data Interface";
+    document.title = "AUCTONIQ · Data Interface";
   }, []);
 
   /* Same deferral as the console: the roster first, the health pill behind it. */
@@ -180,7 +224,7 @@ export default function DataDashboard() {
             <div className="eyebrow">
               {engine.isLoadingRoster
                 ? "Loading the pool…"
-                : `AUCTIQ · ${engine.players.length} players · read-only analytics`}
+                : `AUCTONIQ · ${engine.players.length} players · read-only analytics`}
             </div>
           </div>
         </motion.div>
@@ -211,12 +255,16 @@ export default function DataDashboard() {
           <Tab view="teams" active={view} onSelect={setView} count={engine.teams.length}>
             Teams
           </Tab>
-          <Tab view="results" active={view} onSelect={setView} count={engine.counts.sold}>
-            Results
-          </Tab>
-          <Tab view="scout" active={view} onSelect={setView}>
-            Scout
-          </Tab>
+          {SHOW_RESULTS_TAB && (
+            <Tab view="results" active={view} onSelect={setView} count={engine.counts.sold}>
+              Results
+            </Tab>
+          )}
+          {SHOW_SCOUT_TAB && (
+            <Tab view="scout" active={view} onSelect={setView}>
+              Scout
+            </Tab>
+          )}
 
           <span className="spacer" />
 
@@ -249,7 +297,7 @@ export default function DataDashboard() {
             Live bidding →
           </Link>
           <Link to="/" className="util" style={{ textDecoration: "none" }}>
-            ← AUCTIQ
+            ← AUCTONIQ
           </Link>
         </motion.nav>
       </motion.header>
@@ -275,11 +323,30 @@ export default function DataDashboard() {
                   query={query}
                   filters={filters}
                   onFiltersChange={setFilters}
+                  layout={layout}
+                  onLayoutChange={setLayout}
                   sortKey={sortKey}
                   sortDir={sortDir}
                   onSort={toggleSort}
                   onOpenCard={setCardPlayer}
                   onNotice={notify}
+                  /*
+                    The Data Interface is the participant's view of the pool.
+
+                    A fixed role rather than one read from a seat, because this
+                    route has no socket and therefore no seat to read — it runs
+                    on `readOnlyEngine` over the REST roster alone. Anyone can
+                    open /data, including someone about to bid against nine
+                    others, so it is given the narrower of the two views: the
+                    sheet up to Rating, with no status, no prices and no
+                    controls.
+
+                    Note this is the *presentation* half of the guarantee. The
+                    engine being sealed is what makes the route read-only; this
+                    is what makes it discreet. Neither substitutes for the
+                    other.
+                  */
+                  viewerRole="participant"
                 />
               )}
               {view === "teams" && <TeamsView engine={engine} onNotice={notify} />}

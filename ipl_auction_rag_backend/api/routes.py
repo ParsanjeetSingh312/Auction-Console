@@ -5,7 +5,7 @@ FastAPI router exposing the RAG search engine API endpoints.
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.schemas import (
     ChatRequest,
@@ -19,7 +19,8 @@ from api.schemas import (
     SearchResponse,
     SourceDocument,
 )
-from db.sqlite_manager import SQLiteManager
+from db import get_player_db
+from api.auth import require_admin
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,9 @@ async def search(request: QueryRequest) -> SearchResponse:
         )
     except Exception as e:
         logger.error("Search failed: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Search failed. See the server logs for details."
+        )
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -87,7 +90,9 @@ async def chat(request: ChatRequest) -> ChatResponse:
         )
     except Exception as e:
         logger.error("Chat failed: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Chat failed. See the server logs for details."
+        )
 
 
 @router.get("/players", response_model=PlayerListResponse)
@@ -102,7 +107,7 @@ async def list_players(
     Retrieve the master player table with optional filters and pagination.
     """
     try:
-        sqlite_mgr = SQLiteManager()
+        player_db = get_player_db()
         
         # Build dynamic query with filters
         conditions = []
@@ -123,13 +128,13 @@ async def list_players(
         
         # Get total count
         count_sql = f"SELECT COUNT(*) as cnt FROM players {where_sql}"
-        count_result = sqlite_mgr.execute_query(count_sql, tuple(params))
+        count_result = player_db.execute_query(count_sql, tuple(params))
         total = count_result[0]["cnt"] if count_result else 0
         
         # Get paginated results
         query_sql = f"SELECT * FROM players {where_sql} ORDER BY id LIMIT ? OFFSET ?"
         params.extend([limit, offset])
-        players = sqlite_mgr.execute_query(query_sql, tuple(params))
+        players = player_db.execute_query(query_sql, tuple(params))
         
         return PlayerListResponse(
             total=total,
@@ -139,10 +144,16 @@ async def list_players(
         )
     except Exception as e:
         logger.error("Player listing failed: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to list players: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Failed to list players. See the server logs."
+        )
 
 
-@router.post("/ingest", response_model=IngestResponse)
+@router.post(
+    "/ingest",
+    response_model=IngestResponse,
+    dependencies=[Depends(require_admin)],
+)
 async def ingest(request: IngestRequest | None = None) -> IngestResponse:
     """
     Trigger re-parsing of the Excel dataset and reload into
@@ -188,11 +199,11 @@ async def ingest(request: IngestRequest | None = None) -> IngestResponse:
         # every client showed the new one. Re-reading here closes that window.
         try:
             from auction.room import room as auction_room
-            from db.sqlite_manager import SQLiteManager
+            from db import get_player_db
 
             if auction_room.phase in ("lobby", "finished"):
                 auction_room.load_players(
-                    SQLiteManager().get_all_players(limit=1000, offset=0)
+                    get_player_db().get_all_players(limit=1000, offset=0)
                 )
                 logger.info("Auction room pool refreshed after ingestion")
             else:
@@ -215,7 +226,28 @@ async def ingest(request: IngestRequest | None = None) -> IngestResponse:
         )
     except Exception as e:
         logger.error("Ingestion failed: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Ingestion failed. See the server logs for details."
+        )
+
+
+@router.get("/ping", include_in_schema=True)
+async def ping() -> dict[str, str]:
+    """
+    The cheapest possible proof that this process is alive.
+
+    Exists because /health is NOT cheap: it runs check_environment(), which
+    opens SQLite, counts players, inspects the Chroma directory and validates
+    every setting. That is the right amount of work for an operator asking
+    "what is broken", and far too much to repeat every five minutes forever.
+
+    This touches nothing. No database, no filesystem, no settings read. It
+    answers from memory so that the keep-alive loop in api/main.py -- which is
+    what stops Render idling the container -- costs essentially nothing, and so
+    that a platform health check can distinguish "the process is up" from "every
+    capability is configured".
+    """
+    return {"status": "alive"}
 
 
 @router.get("/health", response_model=HealthResponse)

@@ -183,6 +183,11 @@ class ScoutOutput(BaseModel):
     research: ResearchBatch | None = None
 
     engine_used: Engine | None = None
+    #: The live web context the researcher gathered for this turn, when it
+    #: gathered any. Returned rather than kept internal because "the advisor
+    #: had fresh information" and "the advisor had none" produce
+    #: indistinguishable answers otherwise.
+    research_context: str | None = None
     notes: list[str] = Field(default_factory=list)
     refresh_cycles: int = Field(default=0, ge=0, le=5)
     elapsed_seconds: float = Field(default=0.0, ge=0)
@@ -215,6 +220,17 @@ class ScoutState(TypedDict, total=False):
 
     # --- researcher ---
     research: ResearchBatch | None
+
+    #: What the researcher learned from the live web this turn, as prose the
+    #: advisor can read. Distinct from `research` above, which is the heavy
+    #: ingest: a ResearchBatch is rows written to the pool, this is a paragraph
+    #: about form, injuries and availability that exists only for this turn.
+    #:
+    #: A plain string rather than a model because it has exactly one consumer
+    #: and one producer, and because it is pasted verbatim into a prompt --
+    #: giving it structure would mean flattening that structure again one
+    #: function later.
+    research_context: str | None
 
     # --- advisor ---
     retrieved: list[RetrievedRef]

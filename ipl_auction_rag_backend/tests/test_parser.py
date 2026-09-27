@@ -240,3 +240,50 @@ class TestPlayerSummary:
             "cap_status": "CAPPED", "overseas": 0, "country": "India",
         })
         assert summary.startswith("Virat Kohli is a capped Indian Batter from India.")
+
+
+class TestJerseyNumbers:
+    """
+    A jersey number is the largest element on a player card, which changes what
+    a wrong one costs. A missing stat reads as missing; a wrong number at hero
+    size reads as a confident claim. So the rule is: a verified number or
+    nothing, and nothing must stay nothing all the way to the API.
+    """
+
+    def test_the_verified_numbers_reach_the_pool(self):
+        from db.sqlite_manager import SQLiteManager
+
+        rows = SQLiteManager().execute_query(
+            "SELECT player_name, jersey_number FROM players "
+            "WHERE jersey_number IS NOT NULL"
+        )
+        got = {r["player_name"]: r["jersey_number"] for r in rows}
+        for name, number in {
+            "Virat Kohli": 18, "Shubman Gill": 77, "Rohit Sharma": 45,
+            "MS Dhoni": 7, "Jasprit Bumrah": 93,
+        }.items():
+            assert got.get(name) == number, f"{name} should wear #{number}, got {got.get(name)}"
+
+    def test_an_unverified_number_is_null_and_not_zero(self):
+        """
+        Zero is a number, and a card would render it. NULL is the only value
+        that lets the card fall back to the role badge.
+        """
+        from db.sqlite_manager import SQLiteManager
+
+        zeros = SQLiteManager().execute_query(
+            "SELECT COUNT(*) AS n FROM players WHERE jersey_number = 0"
+        )
+        assert zeros[0]["n"] == 0, "an unverified jersey number was stored as 0 rather than NULL"
+
+    def test_the_metadata_file_never_invents_a_number(self):
+        """Every number in the source file is a real squad number, 1-99."""
+        import json
+        from pathlib import Path
+
+        path = Path(__file__).resolve().parent.parent / "data" / "pool_metadata.json"
+        players = json.loads(path.read_text(encoding="utf-8"))["players"]
+        for player in players:
+            number = player.get("jersey_number")
+            if number is not None:
+                assert 1 <= number <= 99, f"{player['name']} has an impossible number: {number}"

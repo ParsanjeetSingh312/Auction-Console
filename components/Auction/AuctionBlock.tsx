@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { LotClock } from "../../hooks/useAuctionSocket";
 import BlockView from "./BlockView";
 import { incrementFor, type Lot, type TickerEntry } from "./blockTypes";
 
@@ -65,6 +66,17 @@ const TEAMS = ["MUM", "CHE", "BLR", "KOL", "DEL", "PBK", "RAJ", "HYD"] as const;
  * the lot closes when nobody answers. Every lot therefore ends, which is what
  * makes the sold state and the vault drain reachable in a demo.
  */
+/**
+ * The closing window: how long the room waits for an answer before the hammer.
+ *
+ * One constant, read by both the mock that ends a lot and the clock the dial
+ * counts down. Two numbers here would mean a countdown that reaches zero while
+ * bidding continues, or a sale while seconds still show.
+ */
+const CLOSING_MS = 7000;
+/** The pause on a fresh lot, before bidding is treated as open. */
+const OPENING_MS = 4000;
+
 export function createMockSocket(myTeam: string): AuctionSocket & { stop: () => void } {
   const listeners: Record<string, Handler<never>[]> = {};
   const fire = <T,>(event: string, payload: T) => {
@@ -83,6 +95,18 @@ export function createMockSocket(myTeam: string): AuctionSocket & { stop: () => 
   let bid = 0;
   let leader = "";
   let timer: number | undefined;
+  /**
+   * The hammer timer, kept separate from the rival timer.
+   *
+   * A lot ends because nobody answered inside the closing window, not because
+   * a rival ran out of money. Modelling those as one timer is what made this
+   * mock sell the instant rivals stopped: there was no window to watch, so the
+   * countdown dial had nothing to count and the five-second alarm could never
+   * fire. A bid from any station cancels this; silence lets it through.
+   */
+  let hammer: number | undefined;
+  /** Every franchise that has bid on the current lot, in order of first bid. */
+  let contenders: string[] = [];
   let stopped = false;
 
   /** The most a rival will pay for this lot — what gives every auction an end. */
@@ -93,12 +117,31 @@ export function createMockSocket(myTeam: string): AuctionSocket & { stop: () => 
     timer = window.setTimeout(tick, delay);
   }
 
+  /** Restart the closing window. Called on every bid, from any station. */
+  function armHammer() {
+    window.clearTimeout(hammer);
+    hammer = window.setTimeout(() => {
+      if (stopped) return;
+      window.clearTimeout(timer);
+      if (leader) {
+        fire("broadcast_lot_sold", {
+          playerId: pool[lotIndex].id,
+          team: leader,
+          amount: bid,
+        });
+      }
+      window.setTimeout(openLot, 3000);
+    }, CLOSING_MS);
+  }
+
   function openLot() {
     if (stopped) return;
     lotIndex = (lotIndex + 1) % pool.length;
     const lot = pool[lotIndex];
     bid = lot.base;
     leader = "";
+    contenders = [];
+    window.clearTimeout(hammer);
     // Rivals chase to somewhere between 1.6x and 3.4x the reserve.
     ceiling = Math.round(lot.base * (1.6 + Math.random() * 1.8));
     fire("broadcast_new_lot", lot);
@@ -110,23 +153,22 @@ export function createMockSocket(myTeam: string): AuctionSocket & { stop: () => 
 
     const next = leader ? bid + incrementFor(bid) : bid;
 
-    // Nobody counters: the lot sells and the next opens.
-    if (next > ceiling) {
-      if (leader) {
-        fire("broadcast_lot_sold", { playerId: pool[lotIndex].id, team: leader, amount: bid });
-      }
-      window.setTimeout(openLot, 2600);
-      return;
-    }
+    // Nobody counters. Say nothing and let the hammer timer run out, which is
+    // what puts a visible countdown on screen before the sale.
+    if (next > ceiling) return;
 
     // A rival bids — never this station, whose bids come from the button.
     const rivals = TEAMS.filter((t) => t !== myTeam && t !== leader);
     const team = rivals[Math.floor(Math.random() * rivals.length)];
     bid = next;
     leader = team;
-    fire("broadcast_new_bid", { amount: bid, team, at: Date.now() });
+    if (!contenders.includes(team)) contenders = [...contenders, team];
+    fire("broadcast_new_bid", { amount: bid, team, at: Date.now(), contenders });
 
-    schedule(1800 + Math.random() * 2600);
+    armHammer();
+    // Always shorter than the closing window, or every lot would end on the
+    // clock and the rivals would never actually compete for anything.
+    schedule(1500 + Math.random() * 3200);
   }
 
   const socket: AuctionSocket & { stop: () => void } = {
@@ -144,12 +186,15 @@ export function createMockSocket(myTeam: string): AuctionSocket & { stop: () => 
       if (stopped) return;
       bid = payload.amount;
       leader = payload.team;
-      fire("broadcast_new_bid", { amount: bid, team: leader, at: Date.now() });
+      if (!contenders.includes(leader)) contenders = [...contenders, leader];
+      fire("broadcast_new_bid", { amount: bid, team: leader, at: Date.now(), contenders });
+      armHammer();
       schedule(1500 + Math.random() * 2200);
     },
     stop() {
       stopped = true;
       window.clearTimeout(timer);
+      window.clearTimeout(hammer);
     },
   };
 
@@ -182,6 +227,8 @@ export default function AuctionBlock({
   const [leadingTeam, setLeadingTeam] = useState("");
   const [purseLeft, setPurseLeft] = useState(purse);
   const [ticker, setTicker] = useState<TickerEntry[]>([]);
+  const [clock, setClock] = useState<LotClock | null>(null);
+  const [contenders, setContenders] = useState<string[]>([]);
 
   // `purse` only seeds state, so a later prop change would otherwise be
   // ignored — which would make the query-string demo lie about its budget.
@@ -213,12 +260,28 @@ export default function AuctionBlock({
       setLot(next);
       setCurrentBid(next.base);
       setLeadingTeam("");
+      setContenders([]);
+      setClock({
+        kind: "opening",
+        endsIn: OPENING_MS / 1000,
+        total: OPENING_MS / 1000,
+        key: `lot:${next.id}`,
+      });
       pushTicker({ kind: "lot", text: `${next.name} on the block`, amount: next.base, mine: false });
     };
 
-    const onBid = (event: BidEvent) => {
+    const onBid = (event: BidEvent & { contenders?: string[] }) => {
       setCurrentBid(event.amount);
       setLeadingTeam(event.team);
+      if (event.contenders) setContenders(event.contenders);
+      // A new key restarts the dial; `TimerDisplay` counts down locally from
+      // `endsIn`, so it only re-reads when one of these two changes.
+      setClock({
+        kind: "closing",
+        endsIn: CLOSING_MS / 1000,
+        total: CLOSING_MS / 1000,
+        key: `bid:${event.amount}:${event.team}:${event.at}`,
+      });
       pushTicker({
         kind: "bid",
         text: `${event.team} bids`,
@@ -236,6 +299,8 @@ export default function AuctionBlock({
       });
       // Only our own purchases move our purse.
       if (event.team === myTeam) setPurseLeft((left) => Math.max(0, left - event.amount));
+      // The lot is over; nothing is closing any more.
+      setClock(null);
     };
 
     active.on("broadcast_new_lot", onLot);
@@ -256,6 +321,19 @@ export default function AuctionBlock({
     [myTeam],
   );
 
+  /*
+    Jumpbid goes through the same path as a standard raise.
+
+    The room does not have a second kind of bid — a jump is a bid with an
+    amount chosen rather than stepped, which is exactly what `emit` already
+    takes. Supplying this is also what makes the control appear at all, and
+    what lets the coin cascade ever show more than one coin.
+  */
+  const handleJumpBid = useCallback(
+    (amount: number) => socketRef.current?.emit("place_bid", { team: myTeam, amount }),
+    [myTeam],
+  );
+
   return (
     <BlockView
       lot={lot}
@@ -266,6 +344,9 @@ export default function AuctionBlock({
       purseLeft={purseLeft}
       ticker={ticker}
       onBid={handleBid}
+      onJumpBid={handleJumpBid}
+      clock={clock}
+      contenders={contenders}
       corner={corner}
     />
   );

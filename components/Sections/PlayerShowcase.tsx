@@ -44,9 +44,23 @@ import PlayerCard from "../UI/PlayerCard";
 import { parallaxDepth } from "../../utils/animations";
 import { SHOWCASE_PLAYERS, type ShowcasePlayer } from "../../utils/players";
 
-/** Scroll progress at which the deck starts breaking, and finishes landing. */
-const SCATTER_START = 0.14;
-const SCATTER_END = 0.88;
+/**
+ * Scroll progress at which the deck starts breaking, and finishes landing.
+ *
+ * **Deliberately a short window inside a long section.** These were 0.14 and
+ * 0.88, which spread the separation across 74% of a 300vh section -- roughly
+ * two full screens of scrolling for the cards to come apart. That reads as the
+ * deck slowly unfolding rather than breaking, and it never lines up with the
+ * delivery happening behind it: `CricketBall` runs its whole approach between
+ * BEATS.trophyEnd and BEATS.pitchEnd, a far tighter stretch of the page.
+ *
+ * Compressed to a single viewport of scroll, the cards separate at once as the
+ * ball comes in, then hold scattered for the rest of the section. The hold at
+ * either end is what keeps the sticky stage from feeling like it is still
+ * moving when it has finished.
+ */
+const SCATTER_START = 0.2;
+const SCATTER_END = 0.44;
 
 const PARALLAX_X = 2.4;
 const PARALLAX_Y = 2.0;

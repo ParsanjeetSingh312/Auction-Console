@@ -34,7 +34,13 @@ CREATE TABLE IF NOT EXISTS players (
     overseas INTEGER NOT NULL DEFAULT 0,
     base_price REAL,
     rating REAL,
-    
+
+    -- Squad number. Nullable, and null means "not verified" rather than
+    -- "has none" -- it is the largest element on a player card, so an
+    -- unverified number is left blank and the card shows the role instead.
+    -- Source: data/pool_metadata.json, joined on name during ingestion.
+    jersey_number INTEGER,
+
     -- Match Stats
     matches INTEGER,
     total_runs INTEGER,
@@ -230,3 +236,42 @@ class SQLiteManager:
             "SELECT * FROM players LIMIT ? OFFSET ?",
             (limit, offset)
         )
+
+    def update_player_column(
+        self,
+        player_id: int,
+        column: str,
+        value: Any,
+        *,
+        fill_only: bool = False,
+    ) -> int:
+        """
+        Set one column on one player. Returns the number of rows changed.
+
+        `fill_only=True` adds `AND "<column>" IS NULL`, so the write fills a gap
+        and never overwrites an existing value -- the rule SCOUT's valuation
+        columns follow.
+
+        Exists so that scout/tools/rag_pipeline.py can write enriched research
+        back into the players table WITHOUT holding a raw sqlite3 connection of
+        its own. That mattered the moment the players table could live in
+        Supabase while SCOUT's ledger stayed local: a write issued on the ledger
+        connection would land in a file nothing reads any more.
+
+        `execute_query` deliberately cannot do this -- validate_select_only
+        rejects UPDATE -- so writes get their own narrow, explicit method rather
+        than a loophole in the read path.
+
+        The column name is interpolated, not bound, because SQL does not permit a
+        parameter in that position. Callers pass names from a frozenset built out
+        of pydantic model fields; the isidentifier() check here is defence in
+        depth for the same reason the SELECT validator exists.
+        """
+        if not column.isidentifier():
+            raise ValueError(f"Not a valid column name: {column!r}")
+
+        clause = f' AND "{column}" IS NULL' if fill_only else ""
+        sql = f'UPDATE players SET "{column}" = ? WHERE id = ?{clause}'
+        with self._get_connection() as conn:
+            cursor = conn.execute(sql, (value, player_id))
+            return cursor.rowcount

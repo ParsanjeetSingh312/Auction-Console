@@ -1,0 +1,74 @@
+# ==============================================================================
+# docker-compose.yml — build and run the production image locally.
+#
+#     docker compose up --build
+#     -> http://localhost:8001
+#
+# This exists to catch a broken image on your machine instead of fifteen minutes
+# into a Render deploy. It builds the SAME Dockerfile Render builds, with the
+# same context, so a green run here means the deploy will get that far too.
+#
+# It is NOT how you develop. `.\start.ps1` is faster for that: it rebuilds the
+# frontend and restarts uvicorn in seconds, where this re-runs pip and npm.
+# Reach for compose when you have changed the Dockerfile, added a dependency, or
+# want to confirm Playwright's Chromium actually launches.
+# ==============================================================================
+
+services:
+  auctoniq:
+    build:
+      # The repository root, matching what Render passes as dockerContext. The
+      # Dockerfile copies both the frontend sources and the backend package, so
+      # a narrower context cannot work.
+      context: .
+      dockerfile: ipl_auction_rag_backend/docker/Dockerfile.backend
+
+    # 8001 to match what start.ps1 uses, so the address in your browser is the
+    # same either way. The container reads $PORT and falls back to 8001.
+    ports:
+      - "8001:8001"
+
+    # Your local .env, exactly as uvicorn reads it outside Docker. Note that the
+    # image itself contains NO .env -- .dockerignore excludes it, because a
+    # secret copied into an image is recoverable from its layers by anyone who
+    # can pull it. On Render these come from the dashboard instead.
+    env_file:
+      - ipl_auction_rag_backend/.env
+
+    environment:
+      # Keep the internal keep-alive loop off locally. On Render it is off too,
+      # because UptimeRobot owns that job -- see KEEP_ALIVE_ENABLED in
+      # config/settings.py.
+      KEEP_ALIVE_ENABLED: "false"
+
+    volumes:
+      # The model cache, mounted from your machine. WITHOUT THIS the container
+      # downloads ~2.4 GB of Hugging Face weights on every `up`, which turns a
+      # quick check into a ten-minute one. This is the local stand-in for
+      # Render's persistent disk, and it is the single most useful line here.
+      #
+      # `~` rather than ${USERPROFILE:-${HOME}}: Compose expands the tilde itself
+      # on every platform, whereas the variable form made Compose warn that HOME
+      # was not set -- HOME is a Unix convention and PowerShell does not define
+      # it, so the fallback was being evaluated even though USERPROFILE was fine.
+      - ~/.cache/huggingface:/root/.cache/huggingface
+
+      # The player database, Chroma index and SCOUT checkpoint. A named volume
+      # rather than a bind mount: these are written by Linux processes inside the
+      # container and there is no reason to hand them to Windows, but they should
+      # survive `docker compose down` so ingestion is not repeated every time.
+      - auctoniq-data:/app/data
+
+    # The image's CMD already binds $PORT on 0.0.0.0 with proxy headers, so there
+    # is deliberately no `command:` override here. Setting one would duplicate
+    # the binding logic that api/main.py owns.
+
+    # NOT `unless-stopped`. This file is a verification tool, not a deployment:
+    # a restart policy would bring the container back every time Docker Desktop
+    # starts, silently taking port 8001 -- and the next `.\start.ps1` would fail
+    # with "Port 8001 is already being used" pointing at a container nobody
+    # remembered was there. Render manages restarts itself and ignores this.
+    restart: "no"
+
+volumes:
+  auctoniq-data:
