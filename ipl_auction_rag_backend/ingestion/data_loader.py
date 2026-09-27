@@ -8,9 +8,7 @@ import logging
 import math
 from typing import Any
 
-import pandas as pd
-
-from db.sqlite_manager import SQLiteManager
+from db import get_player_db
 from db.chroma_manager import ChromaManager
 from ingestion.excel_parser import parse_excel
 
@@ -182,10 +180,10 @@ def run_ingestion(
     logger.info("Parsed %d players from Excel", len(df))
     
     # Step 2: Load into SQLite
-    sqlite_mgr = SQLiteManager()
+    player_db = get_player_db()
     if reset:
-        sqlite_mgr.drop_tables()
-    sqlite_mgr.create_tables()
+        player_db.drop_tables()
+    player_db.create_tables()
     
     # Select only columns that match the SQLite schema
     db_columns = [
@@ -202,7 +200,7 @@ def run_ingestion(
     # Replace NaN with None for SQLite
     db_df = db_df.where(db_df.notna(), None)
     
-    players_loaded = sqlite_mgr.insert_players(db_df)
+    players_loaded = player_db.insert_players(db_df)
     logger.info("Loaded %d players into SQLite", players_loaded)
     
     # Step 3: Generate text summaries and load into ChromaDB

@@ -55,6 +55,25 @@ import "../../console/console.css";
 /** No "block" — that is the whole point of this route. */
 type View = "pool" | "teams" | "results" | "scout";
 
+/**
+ * Which tabs the Data Interface offers.
+ *
+ * Both views below are still built, still mounted and still reachable — Scout
+ * from the command bar's "Ask Scout" and from a player card, Results from
+ * `view === "results"` — and `readOnlyEngine`, `ScoutView` and `ResultsView`
+ * are untouched. What changes is only whether the tab bar advertises them.
+ *
+ * Flags rather than deleted JSX so this is a one-word revert, and so the next
+ * person reading the tab bar can see that the absence is a decision.
+ *
+ * Results is hidden *here only*: it stays on the auctioneer's surface, where
+ * the person running the sale is the one entitled to see what things went for.
+ * The Data Interface is handed to participants, and a read-only route that
+ * lists every price is a scouting advantage, not an analytics view.
+ */
+const SHOW_RESULTS_TAB: boolean = false;
+const SHOW_SCOUT_TAB: boolean = false;
+
 interface Toast {
   id: number;
   message: string;
@@ -134,7 +153,7 @@ export default function DataDashboard() {
   );
 
   useEffect(() => {
-    document.title = "AUCTIQ · Data Interface";
+    document.title = "AUCTONIQ · Data Interface";
   }, []);
 
   /* Same deferral as the console: the roster first, the health pill behind it. */
@@ -205,7 +224,7 @@ export default function DataDashboard() {
             <div className="eyebrow">
               {engine.isLoadingRoster
                 ? "Loading the pool…"
-                : `AUCTIQ · ${engine.players.length} players · read-only analytics`}
+                : `AUCTONIQ · ${engine.players.length} players · read-only analytics`}
             </div>
           </div>
         </motion.div>
@@ -236,12 +255,16 @@ export default function DataDashboard() {
           <Tab view="teams" active={view} onSelect={setView} count={engine.teams.length}>
             Teams
           </Tab>
-          <Tab view="results" active={view} onSelect={setView} count={engine.counts.sold}>
-            Results
-          </Tab>
-          <Tab view="scout" active={view} onSelect={setView}>
-            Scout
-          </Tab>
+          {SHOW_RESULTS_TAB && (
+            <Tab view="results" active={view} onSelect={setView} count={engine.counts.sold}>
+              Results
+            </Tab>
+          )}
+          {SHOW_SCOUT_TAB && (
+            <Tab view="scout" active={view} onSelect={setView}>
+              Scout
+            </Tab>
+          )}
 
           <span className="spacer" />
 
@@ -274,7 +297,7 @@ export default function DataDashboard() {
             Live bidding →
           </Link>
           <Link to="/" className="util" style={{ textDecoration: "none" }}>
-            ← AUCTIQ
+            ← AUCTONIQ
           </Link>
         </motion.nav>
       </motion.header>

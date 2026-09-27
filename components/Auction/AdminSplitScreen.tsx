@@ -35,7 +35,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { money } from "../../console/format";
 import { EASE, pressable, viewVariants } from "../../console/motion";
 import type { AuctionEngine } from "../../console/useAuctionEngine";
-import type { ConsolePlayer, PoolFilters, SortKey } from "../../console/types";
+import type { ConsolePlayer, PoolFilters, Rules, SortKey } from "../../console/types";
 import type { ScoutState } from "../../console/useScout";
 import type { AuctionSocket } from "../../hooks/useAuctionSocket";
 import { useViewerRole } from "../../hooks/useViewerRole";
@@ -52,12 +52,13 @@ import BiddingHistoryGrid from "../Console/BiddingHistoryGrid";
 import TeamLeaderboard from "../Console/TeamLeaderboard";
 import PoolTable from "../Console/PoolTable";
 import { SetupDialog } from "../Console/PlayerCard";
+import ResultsView from "../Console/ResultsView";
 import ScoutView from "../Console/ScoutView";
 import TeamBudgetGrid from "../Console/TeamBudgetGrid";
 import TeamsView from "../Console/TeamsView";
 
 /** Left-pane tools. The right pane never changes — that is the point. */
-type Tool = "teams" | "pool" | "scout" | "stats";
+type Tool = "teams" | "pool" | "results" | "scout" | "stats";
 
 /**
  * Tab labels. Split out because "stats" needs two words and the others do not,
@@ -66,9 +67,26 @@ type Tool = "teams" | "pool" | "scout" | "stats";
 const TOOL_LABEL: Record<Tool, string> = {
   teams: "Teams",
   pool: "Pool",
+  results: "Results",
   scout: "Scout",
   stats: "Leaderboard & Stats",
 };
+
+/**
+ * Which of those tools the tab bar offers — deliberately not every `Tool`.
+ *
+ * `scout` is absent, and that absence is the point: the pane below is still
+ * mounted, still kept alive between tab changes, and still opened by `askScout`
+ * when the auctioneer sends a question from the block panel or the command bar.
+ * Only the tab is gone. `setTool("scout")` therefore still type-checks and
+ * still works, and `ScoutView`, `useScout` and the /scout backend are untouched.
+ *
+ * `results` is new here. It is the same `ResultsView` the console and the Data
+ * Interface render, on this screen's live engine — so the auctioneer can read
+ * what things went for without leaving the room, which is the one seat entitled
+ * to see it.
+ */
+const VISIBLE_TOOLS: Tool[] = ["teams", "pool", "results", "stats"];
 
 /** Fraction of the width given to the left pane. */
 const PRESETS = { tools: 0.7, even: 0.5, block: 0.25 } as const;
@@ -219,6 +237,85 @@ export default function AdminSplitScreen({
   */
   const [showSetup, setShowSetup] = useState(false);
 
+  /**
+   * Rules the auctioneer asked for, until the room confirms them.
+   *
+   * The Auction Setup panel sends over the socket and the room answers with a
+   * broadcast, so "saved" is not something this component can know at the
+   * moment of clicking Save. Holding the request here and watching
+   * `engine.rules` for it turns the confirmation into a reading of what the
+   * room actually did rather than an assumption about it.
+   *
+   * A ref rather than state: nothing renders from it, and putting it in state
+   * would re-render the whole split screen twice per save for no visible
+   * change.
+   */
+  const pendingRules = useRef<Rules | null>(null);
+
+  /**
+   * Set when the room is served by a backend that cannot accept a rules change.
+   *
+   * `supports` is the list of message types the server build understands. A
+   * server old enough to predate the list does not send the field at all, which
+   * is the same answer. Either way the figures in the Auction Setup panel would
+   * be sent and rejected, and the auctioneer would see a control that does
+   * nothing — so the panel says so before they type into it.
+   *
+   * Only meaningful with a socket: on the offline console there is no room to
+   * be out of date with.
+   */
+  const supports = socket?.state?.supports;
+  const staleServer =
+    socket && supports && !supports.includes("set_rules")
+      ? "This room is served by an older backend build that does not accept a " +
+        "rules change, so saving here will be refused. Restart the server " +
+        "(stop uvicorn and run .\\start.ps1) and reload this page."
+      : null;
+
+  /*
+    Confirm a rules change only once the room has made it.
+
+    If the server refuses -- a squad already larger than the new cap, a stale
+    backend that does not know the `set_rules` message at all -- this never
+    fires and the error toast is the only thing the auctioneer sees, which is
+    the correct outcome. Silence here means it did not happen.
+  */
+  useEffect(() => {
+    const wanted = pendingRules.current;
+    if (!wanted) return;
+    const live = engine.rules;
+    if (
+      live.purse === wanted.purse &&
+      live.maxSquad === wanted.maxSquad &&
+      live.minSquad === wanted.minSquad &&
+      live.maxOverseas === wanted.maxOverseas
+    ) {
+      pendingRules.current = null;
+      window.clearTimeout(rulesTimer.current);
+      onNotice("Auction rules updated");
+    }
+  }, [engine.rules, onNotice]);
+
+  /**
+   * Fires if a rules change is still unconfirmed a few seconds after asking.
+   *
+   * The capability list above catches a server that says it cannot do this.
+   * This catches everything else: a socket that dropped between the click and
+   * the send, a refusal whose error frame went missing, a server old enough to
+   * predate the capability list entirely. The room answers a rules change in
+   * milliseconds on a local socket, so four seconds of silence is not latency.
+   *
+   * Without it the failure is silent by construction — the confirmation above
+   * simply never arrives, and "no toast" is indistinguishable from "did not
+   * notice the toast".
+   */
+  const rulesTimer = useRef<number | undefined>(undefined);
+
+  useEffect(
+    () => () => window.clearTimeout(rulesTimer.current),
+    [],
+  );
+
   const activePreset: Preset | null = useMemo(() => {
     const match = (Object.keys(PRESETS) as Preset[]).find(
       (key) => Math.abs(PRESETS[key] - split) < 0.02,
@@ -282,7 +379,7 @@ export default function AdminSplitScreen({
               AUCTIONEER
             </div>
             <div className="mt-0.5 font-ui text-[9.5px] uppercase leading-none tracking-[0.14em] text-slate-faint">
-              AUCTIQ control
+              AUCTONIQ control
             </div>
           </div>
         </div>
@@ -380,7 +477,7 @@ export default function AdminSplitScreen({
             to="/"
             className="rounded-lg border border-line px-3 py-1.5 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-body transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
           >
-            ← AUCTIQ
+            ← AUCTONIQ
           </Link>
         </div>
       </header>
@@ -404,7 +501,7 @@ export default function AdminSplitScreen({
             className="flex items-center gap-1 border-b border-line bg-surface-card/70 px-3 py-1.5"
             role="tablist"
           >
-            {(["teams", "pool", "scout", "stats"] as Tool[]).map((key) => (
+            {VISIBLE_TOOLS.map((key) => (
               <motion.button
                 key={key}
                 whileHover={reduced ? undefined : { y: -1 }}
@@ -475,6 +572,7 @@ export default function AdminSplitScreen({
                     viewerRole={viewerRole}
                   />
                 )}
+                {tool === "results" && <ResultsView engine={engine} onNotice={onNotice} />}
               </motion.div>
             )}
 
@@ -568,10 +666,37 @@ export default function AdminSplitScreen({
         {showSetup && (
           <SetupDialog
             rules={engine.rules}
+            warning={staleServer}
             onSave={(next) => {
               engine.setRules(next);
               setShowSetup(false);
-              onNotice("Auction rules updated");
+              /*
+                No success toast here, deliberately.
+
+                Every intent on the socket engine is fire-and-forget: `setRules`
+                returns the moment the frame is written, long before the room has
+                decided anything. Announcing "Auction rules updated" at this point
+                is a guess, and it was a wrong guess for the whole of the period
+                when `setRules` was an empty function — the panel cheerfully
+                confirmed a change that had gone nowhere, which is exactly how the
+                bug stayed invisible.
+
+                The confirmation is raised by the effect above instead, when the
+                room's own rules actually change. A refusal arrives as an error
+                frame and raises its own toast, so the two outcomes are now
+                distinguishable from the outside.
+              */
+              pendingRules.current = next;
+              window.clearTimeout(rulesTimer.current);
+              rulesTimer.current = window.setTimeout(() => {
+                if (!pendingRules.current) return;
+                pendingRules.current = null;
+                onNotice(
+                  "The room did not apply the new rules. If the server was " +
+                    "started before this change, restart it with .\\start.ps1.",
+                  "err",
+                );
+              }, 4000);
             }}
             onReset={() => {
               engine.resetAuction();

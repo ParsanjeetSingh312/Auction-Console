@@ -34,12 +34,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sqlite3
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
 from config.settings import get_settings
+# Module level is safe here: db/__init__.py imports only config.settings, so
+# there is no cycle back into scout. The function-local import further down is
+# there for scout.tools.rag_pipeline, which genuinely is circular, and `db` was
+# only sharing that line.
+from db import get_player_db
 from scout.graph.state import RetrievedRef
 from scout.schemas.queries import Constraints
 
@@ -176,15 +181,95 @@ def _describe(row: dict[str, Any]) -> str:
     return ". ".join([bits[0], ", ".join(bits[1:])]) + "."
 
 
+#: A person's name as it appears in prose: two or three capitalised words.
+#: Deliberately crude -- everything it produces is checked against the pool by
+#: `resolve_player`, so a false positive like "Death Overs" costs one failed
+#: lookup and nothing else. Being strict here would cost real players instead.
+_NAME_IN_PROSE = re.compile(r"\b[A-Z][a-z]{1,15}(?: [A-Z][a-z]{1,15}){1,2}\b")
+
+
+def refs_for_mentioned(text: str, *, limit: int = 8) -> tuple[list[RetrievedRef], list[str]]:
+    """
+    The pool rows for the players a piece of research talks about.
+
+    **This is the bridge, and without it the live research is decoration.**
+    Measured 2026-09-25: a search for a death-overs finisher returned Hardik
+    Pandya, Rinku Singh, David Miller and Wanindu Hasaranga; retrieval, working
+    from the parsed constraints, returned the five highest-rated batters in the
+    pool -- Iyer, Suryakumar, Kohli, Head, Gill. No overlap at all. The advisor
+    was handed both and told to prefer the research, and the only honest thing
+    it could do was what it did: report that the research named none of its
+    candidates and recommend nobody on that basis.
+
+    All four of those researched players ARE in the pool. They were simply
+    never retrieved, because nothing connected a name in a news story to a row
+    in the spreadsheet. `resolve_player` is that connection and already exists
+    -- it is what the Cricsheet ingest uses to turn "V Kohli" on a scorecard
+    into player 12 -- so this reuses it rather than matching names again.
+
+    Marked `from_research=True`, which is not cosmetic: the advisor's context
+    block renders that as a `[research]` tag, so the model can see which rows
+    arrived because something was written about them this week.
+    """
+    from scout.tools.rag_pipeline import resolve_player
+
+    if not text:
+        return [], []
+
+    pool = get_player_db().get_all_players(limit=1000, offset=0)
+    by_id = {int(p["id"]): p for p in pool}
+
+    refs: list[RetrievedRef] = []
+    found: list[str] = []
+    seen: set[int] = set()
+
+    for candidate in _NAME_IN_PROSE.findall(text):
+        if len(refs) >= limit:
+            break
+        match = resolve_player(candidate, pool)
+        if match.player_id is None or match.player_id in seen:
+            continue
+        row = by_id.get(match.player_id)
+        if row is None:
+            continue
+        seen.add(match.player_id)
+        found.append(row["player_name"])
+        refs.append(
+            RetrievedRef(
+                player_id=match.player_id,
+                player_name=row["player_name"],
+                text=_describe(row),
+                # An exact name resolution, not a similarity. Same reasoning as
+                # the constraint path: inventing a score for a lookup is worse
+                # than admitting there isn't one.
+                score=None,
+                scored_by="keyword",
+                from_research=True,
+            )
+        )
+
+    notes = (
+        [f"Live research names {len(found)} player(s) in the pool: {', '.join(found)}."]
+        if found
+        else []
+    )
+    return refs, notes
+
+
 def by_constraints(c: Constraints) -> tuple[list[RetrievedRef], str, int]:
     """Players matching the structured constraints, best first."""
     sql, params = constraints_to_sql(c)
-    conn = sqlite3.connect(f"file:{get_settings().SQLITE_DB_PATH}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    try:
-        rows = [dict(r) for r in conn.execute(sql, params)]
-    finally:
-        conn.close()
+    # Through the factory rather than straight at the SQLite file. This query
+    # reads the players table, so it has to follow that table wherever it lives
+    # -- opened directly it would keep answering from a stale local file while
+    # every other read came from Supabase, and the advisor would shortlist
+    # players at prices the auction was no longer using.
+    #
+    # The `?` placeholders in constraints_to_sql need no change: PostgresManager
+    # translates them. The read-only intent that `mode=ro` used to express is now
+    # enforced by validate_select_only inside execute_query, which rejects
+    # anything that is not a single SELECT.
+    rows = get_player_db().execute_query(sql, tuple(params))
 
     refs = [
         RetrievedRef(
@@ -297,13 +382,24 @@ def search_available() -> bool:
 
 
 async def web_search(query: str, *, max_results: int | None = None,
-                     timeout: float = 15.0) -> tuple[list[RetrievedRef], list[str]]:
+                     timeout: float = 15.0, topic: str | None = None,
+                     days: int | None = None,
+                     include_domains: list[str] | None = None,
+                     ) -> tuple[list[RetrievedRef], list[str]]:
     """
     Ask a search API, and say plainly when we cannot.
 
     Returns refs and notes rather than raising: an unavailable search is a
     degraded answer, not a failed request, and the note is what tells a user why
     an injury from yesterday is missing.
+
+    `topic` and `days` are Tavily's own recency controls and are omitted from
+    the request unless asked for, so the default behaviour is unchanged.
+    Measured 2026-09-25 on "death-overs finisher": the general topic returns
+    leaderboards and per-team rankings, while `topic="news"` with a 60-day
+    window returns the things a spreadsheet cannot know -- a confirmed
+    hamstring, a player back from injury. Neither subsumes the other, which is
+    why `live_context` asks for both.
     """
     import httpx
 
@@ -322,7 +418,10 @@ async def web_search(query: str, *, max_results: int | None = None,
                 # either generation without pinning this file to one of them.
                 headers={"Authorization": f"Bearer {key}"},
                 json={"api_key": key, "query": query, "max_results": limit,
-                      "search_depth": "basic"},
+                      "search_depth": "basic",
+                      **({"topic": topic} if topic else {}),
+                      **({"days": days} if days else {}),
+                      **({"include_domains": include_domains} if include_domains else {})},
             )
     except Exception as exc:  # noqa: BLE001
         return [], [f"Web search failed ({type(exc).__name__}); answered without it."]

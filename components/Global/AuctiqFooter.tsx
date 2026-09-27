@@ -33,11 +33,11 @@ export default function AuctiqFooter() {
           <p className="font-tech text-[12px] text-auctiq-dim">
             powered by{" "}
             <span className="font-auctiq tracking-[0.12em] text-neon-cyan">
-              AUCTIQ
+              AUCTONIQ
             </span>
           </p>
           <p className="mt-1 max-w-[46ch] font-tech text-[10px] leading-relaxed text-auctiq-dim/60">
-            © 2026 AUCTIQ. An independent project — not affiliated with the BCCI
+            © 2026 AUCTONIQ. An independent project — not affiliated with the BCCI
             or the Indian Premier League.
           </p>
         </div>

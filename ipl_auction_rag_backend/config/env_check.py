@@ -341,6 +341,59 @@ def _count_players(db_path: Path) -> Finding | None:
     return Finding("SQLITE_DB_PATH", Severity.OK, f"{count} players")
 
 
+#: The label for the players-table finding when Supabase holds it. Deliberately
+#: not "SQLITE_DB_PATH": the operator reading this report needs to know WHICH
+#: database was inspected, and that setting is not the one being reported on.
+_PLAYERS_DB = "PLAYERS_DB"
+
+
+def _check_postgres_players(settings) -> Finding:
+    """
+    Count the players table in Supabase, and report it like any other store.
+
+    The Postgres counterpart of `_count_players`. It exists because that function
+    opens a local SQLite file, which is the wrong question entirely once
+    DATABASE_URL is set -- the file may not exist, and its absence says nothing
+    about whether the application can read players.
+
+    DEGRADED rather than BLOCKING when the connection fails, matching
+    db.get_player_db(): an unreachable Supabase falls back to local SQLite rather
+    than taking the service down, so an unusable Postgres costs freshness, not
+    the auction. An empty table IS blocking, exactly as it is for SQLite -- there
+    is nothing to auction either way.
+
+    Imports psycopg lazily and catches everything: a broken database must not
+    take down the health check that exists to report broken things.
+    """
+    try:
+        from db.postgres_manager import PostgresManager
+
+        count = PostgresManager().get_player_count()
+    except Exception as exc:  # noqa: BLE001 - the report is the whole point
+        return Finding(
+            _PLAYERS_DB,
+            Severity.DEGRADED,
+            f"{settings.safe_database_target} unreachable: {exc}",
+            "Check DATABASE_URL and that the Supabase project is not paused. "
+            "Players are being served from local SQLite instead.",
+        )
+
+    if count == 0:
+        return Finding(
+            _PLAYERS_DB,
+            Severity.BLOCKING,
+            f"{settings.safe_database_target} - players table is empty",
+            "Run ingestion: POST /api/v1/ingest.",
+        )
+
+    _COUNTS["players"] = count
+    return Finding(
+        _PLAYERS_DB,
+        Severity.OK,
+        f"{count} players in {settings.safe_database_target}",
+    )
+
+
 def _count_vectors(chroma_dir: Path) -> Finding | None:
     """Count embeddings without loading Chroma, which would load a model."""
     import sqlite3
@@ -845,15 +898,30 @@ def check_environment(settings: Settings | None = None) -> EnvReport:
             report.findings.append(Finding(name, Severity.OK, value))
 
     # --- Data stores ------------------------------------------------------
-    sqlite_finding = _check_path(
-        "SQLITE_DB_PATH",
-        settings.SQLITE_DB_PATH,
-        kind="file",
-        severity_if_absent=Severity.BLOCKING,
-        remedy="Run ingestion: POST /api/v1/ingest, or "
-        "`python -m ingestion.data_loader`.",
-        extra=_count_players,
-    )
+    #
+    # The player table is checked against whichever backend actually holds it.
+    # Opening SQLite unconditionally was correct while SQLite was the only
+    # option, and became actively misleading once the table could live in
+    # Supabase: a container with a working Postgres connection and 284 players
+    # reported "BLOCKING: file not found at data/database/ipl_auction.db" on
+    # every boot, and /health answered "degraded" with a null player count,
+    # while every query it was warning about worked perfectly.
+    #
+    # On an ephemeral host that is not a cosmetic problem -- the local SQLite
+    # file does not exist at all there, so a correct deployment looked like a
+    # broken one on every single deploy.
+    if settings.use_postgres:
+        sqlite_finding = _check_postgres_players(settings)
+    else:
+        sqlite_finding = _check_path(
+            "SQLITE_DB_PATH",
+            settings.SQLITE_DB_PATH,
+            kind="file",
+            severity_if_absent=Severity.BLOCKING,
+            remedy="Run ingestion: POST /api/v1/ingest, or "
+            "`python -m ingestion.data_loader`.",
+            extra=_count_players,
+        )
     report.findings.append(sqlite_finding)
     report.sqlite_ready = sqlite_finding.severity is Severity.OK
 
@@ -899,6 +967,37 @@ def check_environment(settings: Settings | None = None) -> EnvReport:
                 f"{settings.API_PORT} is not a valid port",
                 "Use 1-65535.",
             )
+        )
+
+    # --- players database -------------------------------------------------
+    # DEGRADED, never BLOCKING, and that is a deliberate choice rather than an
+    # oversight. db.get_player_db() falls back to local SQLite when Supabase is
+    # configured but unreachable, so a broken DATABASE_URL costs freshness, not
+    # the service -- and during a live auction serving base prices from a
+    # possibly stale local file beats failing every request and stranding ten
+    # franchises mid-lot.
+    #
+    # The point of reporting it here is that the fallback must not be SILENT.
+    # Without this line, a rotated password or a paused Supabase project looks
+    # exactly like a working deployment until someone notices the player data is
+    # a week old.
+    db_problem = settings.database_url_problem
+    if db_problem:
+        report.findings.append(
+            Finding(
+                "DATABASE_URL",
+                Severity.DEGRADED,
+                db_problem,
+                "Supabase -> Connect -> Session pooler, and paste that string.",
+            )
+        )
+    elif settings.use_postgres:
+        report.findings.append(
+            Finding("DATABASE_URL", Severity.OK, settings.safe_database_target)
+        )
+    else:
+        report.findings.append(
+            Finding("DATABASE_URL", Severity.OK, "unset - players read from local SQLite")
         )
 
     # --- CORS -------------------------------------------------------------

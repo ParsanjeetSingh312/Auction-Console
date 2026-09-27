@@ -93,6 +93,19 @@ export interface PostAuctionReportProps {
    * off this screen were resetting the whole auction or leaving the site.
    */
   onEnterControlRoom?: () => void;
+  /**
+   * Auctioneer only: offer each franchise's PDF report for download.
+   *
+   * The report screen itself is shown to everyone — a franchise and a
+   * spectator both get to read how the auction finished. The documents are not
+   * theirs to pull: the auctioneer generates them and sends them on, which is
+   * how the person running the room stays the one who decides what leaves it.
+   *
+   * This hides the control. It is not access control — the endpoint answers
+   * any GET, because a seat lives on the websocket and a REST download has no
+   * seat to check. Anyone who knows the URL can still fetch one.
+   */
+  canDownloadReports?: boolean;
 }
 
 export default function PostAuctionReport({
@@ -100,6 +113,7 @@ export default function PostAuctionReport({
   onLeave,
   onReset,
   onEnterControlRoom,
+  canDownloadReports = false,
 }: PostAuctionReportProps) {
   const reduced = useReducedMotion();
   const [fetched, setFetched] = useState<AuctionReport | null>(null);
@@ -134,7 +148,20 @@ export default function PostAuctionReport({
   }, [report]);
 
   useEffect(() => {
-    document.title = "AUCTIQ · Auction report";
+    /*
+      Restored on the way out, not just set on the way in.
+
+      This screen is not a route — it is a phase. A reset drops the room back to
+      `lobby` and unmounts the report under the same URL, and without the
+      cleanup the tab kept reading "Auction report" over a live control panel
+      until the page was reloaded. `LiveAuction` sets its own title once on
+      mount and never re-runs, so there was nothing else to put it back.
+    */
+    const previous = document.title;
+    document.title = "AUCTONIQ · Auction report";
+    return () => {
+      document.title = previous;
+    };
   }, []);
 
   const data = report ?? fetched;
@@ -198,6 +225,7 @@ export default function PostAuctionReport({
                 )
               }
               reduced={!!reduced}
+              canDownload={canDownloadReports}
             />
           ))}
         </div>
@@ -223,7 +251,7 @@ function Shell({
         <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <span className="font-ui text-[9.5px] font-semibold uppercase tracking-[0.16em] text-slate-faint">
-              AUCTIQ · IPL 2026
+              AUCTONIQ · IPL 2026
             </span>
             <h1 className="mt-1 font-head text-[30px] font-bold leading-tight text-slate-ink">
               Auction report
@@ -281,7 +309,7 @@ function Shell({
               to="/"
               className="rounded-lg border border-line bg-surface-card px-3.5 py-2 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-body transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
             >
-              AUCTIQ
+              AUCTONIQ
             </Link>
           </div>
         </header>
@@ -310,12 +338,14 @@ function FranchiseCard({
   open,
   onToggle,
   reduced,
+  canDownload,
 }: {
   franchise: ReportFranchise;
   rank: number;
   open: boolean;
   onToggle: () => void;
   reduced: boolean;
+  canDownload: boolean;
 }) {
   const { team } = franchise;
   const usedPct = franchise.purse > 0 ? (franchise.spent / franchise.purse) * 100 : 0;
@@ -355,11 +385,35 @@ function FranchiseCard({
         <Stat label="Spent" value={money(franchise.spent)} />
         <Stat label="Left" value={money(franchise.left)} />
 
+        {/*
+          This franchise's report, as a PDF.
+
+          An anchor rather than a fetch-and-blob: the endpoint already answers
+          with `Content-Disposition: attachment`, so the browser names and saves
+          the file itself, and a link survives a right-click "save as" and a
+          middle-click in a way a button handler does not.
+
+          One document per franchise, generated when asked for rather than
+          written out when the auction closes — ten unrequested PDFs is ten
+          files to clean up, and the room is the only input, so the report is
+          never stale.
+        */}
+        {canDownload && (
+          <a
+            href={apiUrl(`/api/v1/auction/report/${franchise.team.id}/pdf`)}
+            download
+            title={`Download ${team.name}'s auction report as a PDF`}
+            className="ml-auto rounded-md border border-line px-2.5 py-1 font-ui text-[9.5px] font-semibold uppercase tracking-[0.1em] text-slate-muted no-underline transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
+          >
+            PDF report
+          </a>
+        )}
+
         <button
           type="button"
           onClick={onToggle}
           aria-expanded={open}
-          className="ml-auto rounded-md border border-line px-2.5 py-1 font-ui text-[9.5px] font-semibold uppercase tracking-[0.1em] text-slate-muted transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
+          className={`${canDownload ? "" : "ml-auto "}rounded-md border border-line px-2.5 py-1 font-ui text-[9.5px] font-semibold uppercase tracking-[0.1em] text-slate-muted transition-colors hover:border-slate-faint/60 hover:text-slate-ink`}
         >
           {open ? "Hide XI" : "Playing XI"}
         </button>

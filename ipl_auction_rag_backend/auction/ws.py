@@ -29,15 +29,19 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Response, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
+from auction.report_card import build_team_card
+from auction.report_pdf import render_team_pdf
 from auction.room import RoomError, room
 from auction.schemas import ClientMessage
+from db import get_player_db
 
 logger = logging.getLogger("auction.ws")
 
@@ -50,6 +54,12 @@ MAX_FRAME_BYTES = 8 * 1024
 # Sustained rate and burst allowance, per connection.
 RATE = 20.0  # messages per second
 BURST = 40.0
+
+# Ceiling on simultaneous connections. Ten franchises, an auctioneer and a
+# generous gallery of spectators fit well within this; a flood that opens
+# thousands of sockets to exhaust the process is refused at the door, which the
+# per-connection rate limiter above cannot do on its own.
+MAX_CONNECTIONS = 200
 
 _message_adapter: TypeAdapter[Any] = TypeAdapter(ClientMessage)
 
@@ -85,7 +95,14 @@ class ConnectionManager:
     def __init__(self) -> None:
         self._sockets: dict[str, WebSocket] = {}
 
-    async def connect(self, websocket: WebSocket) -> str:
+    async def connect(self, websocket: WebSocket) -> str | None:
+        # Refuse a new connection past the ceiling, before the handshake
+        # completes. 1013 is "try again later", so a legitimate client knows to
+        # retry rather than reading it as a protocol error. None tells the caller
+        # the socket was closed and it should stop.
+        if len(self._sockets) >= MAX_CONNECTIONS:
+            await websocket.close(code=1013)
+            return None
         await websocket.accept()
         client_id = uuid.uuid4().hex
         self._sockets[client_id] = websocket
@@ -134,6 +151,8 @@ async def _broadcast_state() -> None:
 @router.websocket("/ws")
 async def auction_socket(websocket: WebSocket) -> None:
     client_id = await manager.connect(websocket)
+    if client_id is None:
+        return  # at capacity; connect() already closed the socket
     limiter = RateLimiter()
 
     # A connection with no seat yet still gets the state, so a spectator's UI
@@ -230,7 +249,11 @@ async def _dispatch(client_id: str, message: Any) -> None:
 
     if kind == "join":
         seat = await room.join(
-            client_id, message.role, message.team_id, message.display_name
+            client_id,
+            message.role,
+            message.team_id,
+            message.display_name,
+            message.password,
         )
         team = room.team_by_id(seat.team_id)
         await manager.send(
@@ -275,6 +298,15 @@ async def _dispatch(client_id: str, message: Any) -> None:
 
     elif kind == "reset":
         await room.reset(client_id)
+
+    elif kind == "set_rules":
+        await room.set_rules(
+            client_id,
+            message.purse,
+            message.max_squad,
+            message.min_squad,
+            message.max_overseas,
+        )
 
     elif kind == "finish":
         await room.finish(client_id)
@@ -346,3 +378,70 @@ async def get_report() -> dict[str, Any]:
     "who still has no keeper?" without counting by hand.
     """
     return room.report()
+
+
+@router.get("/report/{team_id}/pdf")
+async def get_team_pdf(team_id: int) -> Response:
+    """
+    One franchise's closing report, as a PDF.
+
+    Per franchise rather than one document for the room, and the document holds
+    that franchise's figures alone — no standings and no rival squads. A report
+    handed to one team that reads out another team's auction is a scouting
+    advantage, which is the same reason `/data` shows participants the narrow
+    sheet.
+
+    Generated on request rather than written to disk when the auction closes.
+    Ten PDFs nobody asked for is ten files to clean up, and the room's state is
+    the only input — so the document can be produced at any time and will always
+    describe the auction as it stands.
+
+    The full player statistics are read from SQLite here rather than held on the
+    room: `Room.load_players` keeps eight fields per player and the report needs
+    the batting and bowling columns, so the join happens at report time.
+    """
+    team = room.team_by_id(team_id)
+    if team is None:
+        raise HTTPException(status_code=404, detail=f"No franchise with id {team_id}.")
+
+    try:
+        rows = {
+            int(row["id"]): row
+            for row in get_player_db().get_all_players(limit=10_000, offset=0)
+            if row.get("id") is not None
+        }
+    except Exception:
+        # A missing statistics table costs the standout-figure column and the
+        # stat-derived weak points, not the report. Everything else is built
+        # from the room, which is in memory and always available.
+        logger.warning("Could not read player statistics for the PDF", exc_info=True)
+        rows = {}
+
+    try:
+        card = build_team_card(room, team_id, rows)
+        pdf = render_team_pdf(card)
+    except Exception:
+        logger.exception("Failed to render the report for team %s", team_id)
+        raise HTTPException(
+            status_code=500,
+            detail="Could not generate the report. See the server logs.",
+        ) from None
+
+    stamp = time.strftime("%Y-%m-%d", time.localtime())
+    # The franchise's full name as well as its code: ten files called
+    # AUCTONIQ-MUM-... in one downloads folder are ten files you have to open to
+    # tell apart, and the code alone is not what anyone outside the room calls
+    # the team. Non-filename characters are replaced rather than stripped, so a
+    # name like "Royal Challengers Bengaluru" survives as a readable slug.
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", str(team["name"])).strip("-") or "Franchise"
+    filename = f"AUCTONIQ-{slug}-{team['code']}-auction-report-{stamp}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            # The room changes; a cached report would describe an auction that
+            # has moved on.
+            "Cache-Control": "no-store",
+        },
+    )

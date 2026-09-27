@@ -279,7 +279,28 @@ export function useSocketEngine(
       canUndo: socket.seat?.role === "auctioneer",
 
       // The room owns the rules and does not take instruction on them.
-      setRules: () => {},
+      /**
+       * The Auction Setup panel, pointed at the room.
+       *
+       * This was an empty function, and it made the panel quietly dishonest in
+       * exactly the way `resetAuction` below used to be: an auctioneer set a
+       * squad cap of 11 and an overseas cap of 4, was told "Auction rules
+       * updated", and the leaderboard went on saying 25 and 8 for the rest of
+       * the auction. The dialog was writing to a local engine the live room
+       * never reads, and there was no message type to carry the figures.
+       *
+       * Sent, never applied locally, like every other intent here — the room
+       * validates against the squads that already exist and answers with an
+       * `error` frame if the new caps would make one illegal.
+       */
+      setRules: (next) => {
+        socket.setRules({
+          purse: next.purse,
+          maxSquad: next.maxSquad,
+          minSquad: next.minSquad,
+          maxOverseas: next.maxOverseas,
+        });
+      },
 
       /**
        * The legacy console's reset, pointed at the room.

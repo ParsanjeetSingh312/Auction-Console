@@ -293,12 +293,21 @@ async def advise(
     timeout: float = 30.0,
     use_reranker: bool = False,
     use_web: bool | None = None,
+    research_context: str | None = None,
 ) -> AdvisorRecommendation:
     """
     One question, one recommendation. Callable outside the graph.
 
     `use_web` defaults to "only when local research is stale", so a question
     asked twice in a minute does not pay for two searches.
+
+    `research_context` is what the Data Researcher found on the live web for
+    this turn, already summarised. When it is present this function does not
+    search again whatever `use_web` would have decided -- the researcher node
+    has just made that call on this same question, and paying Tavily twice for
+    one question buys nothing but latency. Passing `use_web=True` explicitly
+    still forces a second search, because a caller outside the graph has no
+    researcher in front of it.
     """
     from rag import llm_provider
 
@@ -309,13 +318,33 @@ async def advise(
         query.question, query.constraints, use_reranker=use_reranker, use_web=False
     )
     if use_web is None:
-        use_web = retrieval.is_stale
+        # The researcher already searched for this turn, so its context stands
+        # in for the staleness check that would otherwise trigger one here.
+        use_web = retrieval.is_stale and not research_context
     if use_web:
         from scout.tools.search_engine import web_search
 
         web_refs, web_notes = await web_search(query.question)
         retrieval.refs.extend(web_refs)
         notes.extend(web_notes)
+    # Pull in the pool rows for whoever the research actually named, ahead of
+    # the constraint matches. Without this the advisor reads about one set of
+    # players and is offered a different set to choose from -- see
+    # `refs_for_mentioned` for the measurement.
+    if research_context:
+        from scout.tools.search_engine import refs_for_mentioned
+
+        named_refs, named_notes = await asyncio.to_thread(
+            refs_for_mentioned, research_context
+        )
+        known = {r.player_id for r in retrieval.refs if r.player_id is not None}
+        fresh = [r for r in named_refs if r.player_id not in known]
+        # Prepended, not appended. `_context_block` truncates at twelve rows,
+        # and the players the news is discussing are the ones that must survive
+        # that cut.
+        retrieval.refs = fresh + retrieval.refs
+        notes.extend(named_notes)
+
     notes.extend(retrieval.notes)
 
     if not retrieval.refs:
@@ -326,14 +355,64 @@ async def advise(
             max_bid_lakh=query.team.max_bid_lakh if query.team else None,
         )
 
+    # Ahead of the candidates on purpose. A model reading a long prompt
+    # weights the top of it most heavily, and this is the only part that
+    # can contradict the pool -- a player the spreadsheet rates highly who
+    # was ruled out yesterday is exactly the case the live pass exists to
+    # catch.
+    # **This block tells the model what to DO with the research, not just that
+    # it exists.** The first version handed over the text with "prefer it on
+    # form, fitness and availability" and changed nothing: on 2026-09-25 the
+    # live research named Hardik Pandya, Rinku Singh and David Miller as
+    # finishers and the advisor returned Travis Head, Suryakumar Yadav and
+    # Shreyas Iyer, having read both.
+    #
+    # It was not ignoring the block so much as having no legal way to act on
+    # it. The candidate list below says "recommend only from these", and the
+    # schema requires a `player_id` that only a pool row has, so a name that
+    # appears in the news and not in the pool cannot be returned at all --
+    # correctly. The instruction therefore has to describe the moves that ARE
+    # available: reorder the pool candidates, and write what the research says
+    # into the rationale and the risks.
+    live_block = (
+        "LIVE RESEARCH -- gathered from the web for this question, minutes "
+        "ago. The CANDIDATES below come from a spreadsheet that cannot know "
+        "any of it.\n"
+        f"{research_context}\n\n"
+        "USE IT AS FOLLOWS. Prefer candidates the live research speaks well "
+        "of, and rank them higher. Put anything it says about a candidate -- "
+        "form, a score, a role -- into that candidate's `evidence` or "
+        "`rationale`, and say it came from live research. Put any injury, "
+        "doubt or unavailability into their `risks`, and drop or demote a "
+        "candidate the research says is unavailable. Where the research and "
+        "the spreadsheet disagree about current form, the research is newer "
+        "and wins.\n"
+        "Do NOT recommend a player who is not in CANDIDATES, however well the "
+        "research speaks of them -- they are not in this auction pool.\n"
+        "If the research does not mention any candidate, that is normal and "
+        "not a problem: recommend from CANDIDATES on their own merits exactly "
+        "as you would without it. NEVER return an empty shortlist because the "
+        "research did not match.\n\n"
+        if research_context
+        else ""
+    )
+
     prompt = (
-        f"{_context_block(retrieval.refs, query.team)}\n\n"
+        f"{live_block}{_context_block(retrieval.refs, query.team)}\n\n"
         f"QUESTION: {query.question}\n\n"
         f"Reply with JSON matching this schema:\n"
         f"{json.dumps(AdvisorRecommendation.model_json_schema())}"
     )
 
-    prefer: Engine | None = "hermes" if llm_provider.hermes_configured() else None
+    # Gated, not automatic. Hermes being reachable says nothing about whether
+    # it is the right engine for THIS agent: the advisor has to return JSON
+    # satisfying AdvisorRecommendation, and the endpoint configured for the
+    # researcher is a local hermes3:8b. See SCOUT_ADVISOR_USES_HERMES.
+    prefer: Engine | None = (
+        "hermes"
+        if settings.SCOUT_ADVISOR_USES_HERMES and llm_provider.hermes_configured()
+        else None
+    )
     try:
         # `complete` is synchronous -- it posts with sync httpx and, on the
         # Groq and Anthropic rungs, through SDKs that block. Called directly
@@ -464,7 +543,9 @@ async def cricket_advisor_node(state: ScoutState) -> dict:
     )
 
     recommendation = await advise(
-        query, timeout=min(budget if budget != float("inf") else 30.0, 30.0)
+        query,
+        timeout=min(budget if budget != float("inf") else 30.0, 30.0),
+        research_context=state.get("research_context"),
     )
 
     notes = list(recommendation.notes)

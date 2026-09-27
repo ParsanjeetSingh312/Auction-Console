@@ -205,7 +205,7 @@ function RouteFallback() {
     <div className="grid min-h-screen place-items-center bg-surface bg-dots">
       <div className="text-center">
         <div className="font-head text-[22px] font-extrabold tracking-[0.18em] text-slate-ink">
-          AUCTIQ
+          AUCTONIQ
         </div>
         <div className="mt-1 font-ui text-[10px] uppercase tracking-[0.2em] text-slate-faint">
           loading
@@ -239,7 +239,7 @@ function NotFound() {
           to="/"
           className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface-card px-3.5 py-2 font-ui text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-body transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
         >
-          ← Back to AUCTIQ
+          ← Back to AUCTONIQ
         </Link>
       </div>
     </div>

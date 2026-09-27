@@ -68,7 +68,7 @@ export function SocialGlyph({ name, url, path }: Social) {
       href={url}
       target="_blank"
       rel="noreferrer noopener"
-      aria-label={`AUCTIQ on ${name}`}
+      aria-label={`AUCTONIQ on ${name}`}
       className="grid h-9 w-9 place-items-center text-auctiq-dim transition-colors duration-200 hover:text-auctiq-text"
     >
       {icon}

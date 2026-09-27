@@ -109,7 +109,7 @@ export default function WelcomeHero({ status, onRecheck }: WelcomeHeroProps) {
             <AuctiqMark className="h-7 w-7" />
           )}
           <span className="font-head text-[15px] font-extrabold tracking-[0.16em] text-slate-ink">
-            AUCTIQ
+            AUCTONIQ
           </span>
         </div>
 
@@ -133,7 +133,7 @@ export default function WelcomeHero({ status, onRecheck }: WelcomeHeroProps) {
           variants={rise}
           className="mt-5 text-center font-head text-[40px] font-extrabold leading-none tracking-[0.14em] text-slate-ink sm:text-[56px]"
         >
-          AUCTIQ
+          AUCTONIQ
         </motion.h1>
 
         <motion.p

@@ -1,60 +1,151 @@
-# Build context is the REPOSITORY ROOT, not this directory — the image needs
-# both the frontend sources and the backend package:
+# ==============================================================================
+# Dockerfile.backend — AUCTONIQ as one container.
 #
-#     docker build -f ipl_auction_rag_backend/docker/Dockerfile.backend -t ipl-auction .
-#     docker run -p 8001:8001 --env-file ipl_auction_rag_backend/.env ipl-auction
+# Build context is the REPOSITORY ROOT, not this directory: the image needs the
+# frontend sources and the backend package.
 #
-# One container serves everything on port 8001: the console at /, the API at
-# /api/v1/*, the schema at /docs.
+#     docker build -f ipl_auction_rag_backend/docker/Dockerfile.backend -t auctoniq .
+#     docker run -p 8001:8001 --env-file ipl_auction_rag_backend/.env auctoniq
+#
+# or just `docker compose up --build` from the root, which passes both for you.
+#
+# One container serves everything on one port: the console at /, the API at
+# /api/v1/*, the auction WebSocket at /api/v1/auction/ws, the schema at /docs.
+#
+# ------------------------------------------------------------------------------
+# WHY DOCKER ON RENDER RATHER THAN THE NATIVE PYTHON RUNTIME
+#
+# Playwright. SCOUT's scraper drives a real Chromium, and Chromium needs a set of
+# system libraries (libnss3, libatk, libgbm and friends) installed with apt.
+# Render's native Python runtime gives you no apt and no root, so the browser
+# either cannot be installed or cannot start. Here it is installed at build time,
+# with its dependencies, and baked into the image.
+#
+# THE IMAGE LAYOUT IS LOAD-BEARING
+#
+# The application derives three paths by walking up from its own __file__, so the
+# layout is not a matter of taste:
+#
+#   /app                     the backend package (WORKDIR)
+#   /dist                    the built console      <- api/main.py resolves
+#                                                      ../../dist from /app/api
+#   /IPL AUCTION DATA.xlsx   the source spreadsheet <- config/settings.py
+#                                                      resolves ../../.. from
+#                                                      /app/config
+#
+# Move any of them and the console 503s or ingestion cannot find its input.
+# ==============================================================================
 
-# --- Stage 1: build the console -------------------------------------------
-# The backend serves dist/, so without this stage the image would answer the
-# API correctly and return 503 for every page request.
-FROM node:20-slim AS frontend
+
+# --- Stage 1: build the console -----------------------------------------------
+# Without this stage the image answers the API correctly and returns 503 for
+# every page request, because uvicorn serves /dist and there would be no /dist.
+#
+# Node 24 to match the version this project is built with locally (24.18.0); a
+# different major is the usual source of "it built on my machine".
+FROM node:24-slim AS frontend
 
 WORKDIR /build
+
+# Manifests first, as their own layer. They change far less often than source,
+# so `npm ci` -- the slow step -- stays cached across ordinary code edits.
 COPY package.json package-lock.json ./
 RUN npm ci
 
-COPY tsconfig.json tsconfig.node.json vite.config.ts postcss.config.js tailwind.config.js ./
-COPY index.html main.tsx App.tsx styles.css ./
-COPY components ./components
-COPY console ./console
+# Then everything else in one COPY.
+#
+# This used to be an explicit list of directories, and the list had gone stale:
+# hooks/, pages/, utils/ and public/ are all imported by the app and none were
+# copied, so this stage failed on a missing module. `COPY . .` plus
+# .dockerignore cannot rot that way -- a new source directory is picked up
+# automatically, and .dockerignore is what keeps .venv, node_modules, .git and
+# dist/ out of the context.
+COPY . .
+
 RUN npm run build
 
 
-# --- Stage 2: the service --------------------------------------------------
-FROM python:3.11-slim
+# --- Stage 2: the service -----------------------------------------------------
+# 3.12 to match the interpreter the backend is developed and tested against
+# (3.12.5 locally). Not 3.11: pins in requirements.txt were resolved for 3.12.
+FROM python:3.12-slim
 
 WORKDIR /app
 
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# build-essential is kept even though most pins ship manylinux wheels. A source
+# build that fails here costs a fifteen-minute round trip on Render to discover,
+# and ~200 MB is not material against an image this size.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+# --- torch, CPU-only, installed BEFORE requirements.txt ----------------------
+# This is the single biggest decision in the file. `pip install torch` from PyPI
+# pulls the CUDA build and its bundled NVIDIA libraries -- well over 2 GB of
+# CUDA runtime that a Render instance has no GPU to use. The CPU wheel is a
+# fraction of the size.
+#
+# It goes first so that when sentence-transformers asks for torch below, pip sees
+# the requirement already satisfied and does not fetch the CUDA build over the
+# top of it. Everything in this project is explicitly CPU-only -- the settings
+# comments say so, and the reranker is profiled at 13.7s per query on CPU.
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch
+
 COPY ipl_auction_rag_backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# --- Playwright's Chromium ---------------------------------------------------
+# The whole reason this image exists. `--with-deps` runs the apt install of
+# Chromium's system libraries, which is the part Render's native runtime cannot
+# do.
+#
+# PLAYWRIGHT_BROWSERS_PATH is set BEFORE the install so the browser lands at a
+# fixed, known location inside the image. That matters on Render: the persistent
+# disk mounts over /var/cache at runtime, so a browser installed under the
+# default cache path there would be shadowed and disappear. /opt is untouched by
+# the mount, and baking it into the image means it needs no disk and no runtime
+# download at all.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+RUN python -m playwright install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- Application code --------------------------------------------------------
+# Last, because it changes on every commit and everything above it is expensive.
 COPY ipl_auction_rag_backend/ ./
 
-# api/main.py resolves the frontend as ../../dist relative to itself, so the
-# built console lands one level above the package — matching the layout the
-# repository has when run from source.
+# The built console, at the path api/main.py computes.
 COPY --from=frontend /build/dist /dist
 
+# The ingestion source. JSON array form because the filename contains spaces --
+# the shell form would read it as two arguments and fail.
+COPY ["IPL AUCTION DATA.xlsx", "/"]
+
+# Created so a first run reports an empty store rather than a missing one. On
+# Render, CHROMA_DB_PATH and SCOUT_CHECKPOINT_PATH are pointed at the persistent
+# disk instead, and start-up creates those too.
 RUN mkdir -p data/raw data/database/chroma_db
 
-# The embedding and reranker models are ~2.4 GB and are NOT baked into the
-# image. They download on first use, or mount a host cache to avoid that:
+# Where the Hugging Face cache goes by default. On Render this is overridden to
+# the persistent disk so the ~2.4 GB of weights survive a deploy; locally, mount
+# a volume to avoid re-downloading:
 #     -v ${HOME}/.cache/huggingface:/root/.cache/huggingface
 ENV HF_HOME=/root/.cache/huggingface
 
-# The vector store and player database are state, not image content. Mount them
-# or run POST /api/v1/ingest once against a fresh container.
-VOLUME ["/app/data"]
-
+# Documentation only. Render ignores EXPOSE and routes to $PORT.
 EXPOSE 8001
 
-# No --reload: it doubles memory for a 2.4 GB model process and has no place in
-# a container.
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8001"]
+# Exec form, so python is PID 1 and receives SIGTERM directly -- which is what
+# lets the lifespan shutdown run and close the SCOUT checkpointer and the
+# Postgres pool. A shell wrapper would swallow the signal and the container would
+# be killed after its grace period on every single deploy.
+#
+# `python api/main.py` rather than a uvicorn command line: the __main__ block in
+# that file already reads $PORT, binds 0.0.0.0 and enables proxy headers, so the
+# binding logic lives in one place instead of being duplicated here and drifting.
+# It is also deliberately one worker with no reload -- the auction room is
+# in-process state, so a second worker would be a second, separate auction.
+CMD ["python", "api/main.py"]

@@ -33,13 +33,15 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from config.settings import get_settings
 from scout.graph.state import ScoutInput, ScoutOutput
 from scout.schemas.queries import QUESTION_MAX_LENGTH, TeamContext
+
+from api.auth import require_admin
 
 logger = logging.getLogger(__name__)
 
@@ -279,7 +281,9 @@ async def advise(request: AdviseRequest) -> ScoutOutput:
         )
     except Exception as exc:  # noqa: BLE001
         logger.error("SCOUT advise failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"SCOUT failed: {exc}") from exc
+        raise HTTPException(
+            status_code=500, detail="SCOUT failed. See the server logs for details."
+        ) from exc
 
     return output.model_copy(update={"notes": team_notes + output.notes})
 
@@ -305,7 +309,7 @@ NODE_LABELS: dict[str, dict[str, str]] = {
     "researcher": {
         "title": "Data Researcher",
         "running": "Gathering IPL stats, economy rates and recent form",
-        "done": "Research indexed",
+        "done": "Research gathered",
     },
     "advisor": {
         "title": "Cricket Advisor",
@@ -424,7 +428,9 @@ async def advise_stream(request: AdviseRequest) -> StreamingResponse:
             # A stream cannot raise an HTTPException once the first byte is out,
             # so the failure is delivered as an event the client can render.
             logger.error("SCOUT stream failed: %s", exc, exc_info=True)
-            yield _sse({"type": "error", "detail": f"SCOUT failed: {exc}"})
+            yield _sse(
+                {"type": "error", "detail": "SCOUT failed. See the server logs."}
+            )
 
     return StreamingResponse(
         events(),
@@ -441,7 +447,11 @@ async def advise_stream(request: AdviseRequest) -> StreamingResponse:
     )
 
 
-@router.post("/research", response_model=ScoutOutput)
+@router.post(
+    "/research",
+    response_model=ScoutOutput,
+    dependencies=[Depends(require_admin)],
+)
 async def research(request: ResearchRequest | None = None) -> ScoutOutput:
     """
     Fetch and index the latest data.
@@ -460,7 +470,9 @@ async def research(request: ResearchRequest | None = None) -> ScoutOutput:
         )
     except Exception as exc:  # noqa: BLE001
         logger.error("SCOUT research failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Research failed: {exc}") from exc
+        raise HTTPException(
+            status_code=500, detail="Research failed. See the server logs for details."
+        ) from exc
 
     return ScoutOutput(
         intent="research",

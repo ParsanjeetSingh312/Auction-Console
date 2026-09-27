@@ -1,0 +1,290 @@
+# ==============================================================================
+# render.yaml — AUCTONIQ as Infrastructure-as-Code.
+#
+# One web service. Uvicorn serves the API, the auction WebSocket and the
+# compiled console from dist/, all on the port Render assigns -- the same
+# single-process shape the project already has locally, so nothing about the
+# architecture changes on the way to production.
+#
+# Apply it: Render Dashboard -> New -> Blueprint, point it at this repository.
+# Render reads this file from the repository ROOT and nowhere else.
+#
+# ------------------------------------------------------------------------------
+# THE ONE THING THAT SURPRISES EVERYONE
+#
+# The disk below is NOT mounted during the build. It exists only while the
+# service is running. So nothing in buildCommand can write to /var/cache, and
+# the ~2.5 GB of Hugging Face weights CANNOT be baked in at build time.
+#
+# That is fine, and in fact it is the design:
+#
+#   first boot          HF_HOME is an empty disk -> models download (~3-4 min)
+#   every boot after    models are already on the disk -> loaded from disk
+#
+# models/hf_runtime.py detects a complete cache and sets HF_HUB_OFFLINE=1, so
+# the second boot makes no network calls to huggingface.co at all. Deploys stop
+# depending on a CDN being up.
+#
+# The corollary: the FIRST deploy needs patience. Render's health check will be
+# hitting a process that is still downloading weights inside lifespan startup.
+# ==============================================================================
+
+services:
+  - type: web
+    name: auctoniq
+
+    # --- Docker, not the native Python runtime -------------------------------
+    # Chosen for one concrete reason: SCOUT's scraper drives a real Chromium, and
+    # Chromium needs system libraries installed with apt. Render's native runtime
+    # gives no apt and no root, so there the browser cannot be installed and
+    # scraping degrades to a Tavily search. In the image it is baked in at build
+    # time with `playwright install --with-deps chromium`.
+    #
+    # The build context is the repository ROOT, not the docker/ directory. The
+    # image needs the frontend sources -- it builds the console in its first
+    # stage -- and the backend package, and it places them at the paths the
+    # application derives from its own __file__: /app, /dist, and the spreadsheet
+    # at /.
+    #
+    # Trade-off accepted: builds are slower than the native runtime, because pip
+    # and npm both run from scratch on a dependency change. `docker compose up
+    # --build` reproduces this build locally, so a broken image is found on your
+    # machine rather than fifteen minutes into a deploy.
+    #
+    # Python and Node versions are pinned in the Dockerfile now (3.12-slim and
+    # node:24-slim), so the PYTHON_VERSION and NODE_VERSION variables the native
+    # runtime used are gone -- they would be ignored here and misleading to keep.
+    runtime: docker
+    dockerfilePath: ./ipl_auction_rag_backend/docker/Dockerfile.backend
+    dockerContext: .
+
+    region: singapore          # Closest Render region to an India-based audience.
+    branch: main               # Change if you deploy from feat/auctiq-landing.
+    autoDeploy: true
+
+    # --- Instance size -------------------------------------------------------
+    # `pro` (4 GB RAM). This is set from measurement, not from caution.
+    #
+    # api/main.py:_warm_models loads both Hugging Face models before the server
+    # accepts traffic. Measured on disk:
+    #
+    #     bge-reranker-large/model.safetensors    2136 MB   (the code default)
+    #     bge-reranker-base/model.safetensors     1061 MB   (what is pinned below)
+    #     bge-small-en-v1.5/model.safetensors      127 MB
+    #
+    # With the BASE reranker pinned in envVars, the weights come to ~1.2 GB, and
+    # on top of them sit torch's runtime, Python, FastAPI, chromadb and pandas --
+    # call it 2.0 GB resident before a single request is served.
+    #
+    # That is why this is `pro` (4 GB) and not `standard` (2 GB): 2.0 GB against
+    # a 2 GB ceiling has no room for request handling, and the failure mode is
+    # ugly -- an OOM kill during lifespan startup looks like a deploy that
+    # restarts forever with no useful error, because the process never lives long
+    # enough to log one. Free and starter (512 MB) are not close.
+    #
+    # If you want to try halving the bill: `standard` is not absurd with the base
+    # reranker, it is merely tight. Watch the first deploy's memory graph, and
+    # treat a restart loop during startup as the OOM it is rather than a code
+    # fault. Dropping the reranker warmup entirely is the other lever -- it costs
+    # RAG answer quality, not the auction.
+    plan: pro
+
+    # --- Build and start -----------------------------------------------------
+    # Both belong to the Dockerfile now, so there is no buildCommand and no
+    # startCommand here.
+    #
+    #   build  the image's two stages: node builds the console, then python
+    #          installs CPU-only torch, the requirements, and Chromium.
+    #   start  the image's CMD, `python api/main.py`, whose __main__ block reads
+    #          $PORT and binds 0.0.0.0 with proxy headers.
+    #
+    # start.sh is NOT used on Render any more -- the container has no repository
+    # layout for it to walk, and the CMD does the same binding. It is kept in the
+    # repo because it is still the correct way to run this on a plain Linux box
+    # or in WSL.
+
+    # --- Health --------------------------------------------------------------
+    # /api/v1/ping, not /api/v1/health, and the difference is cost.
+    #
+    # Render polls this path for the life of the service. /health runs
+    # check_environment() -- it opens SQLite, counts players, inspects the Chroma
+    # directory and validates every setting. That is the right answer for an
+    # operator asking "what is broken" and the wrong thing to repeat forever on a
+    # timer. It also gives Render no extra signal: it returns 200 even when
+    # degraded, so it can never fail a deploy that /ping would pass.
+    #
+    # /ping touches nothing and answers from memory, which is exactly what a
+    # liveness probe should be. Keep /health for humans and dashboards.
+    #
+    # Note the FIRST deploy will fail this check for several minutes while
+    # lifespan startup downloads ~2.5 GB of Hugging Face weights onto the empty
+    # disk. That is expected once, and only once -- every later boot loads them
+    # from the disk. If Render gives up before it finishes, redeploy; the partial
+    # cache persists, so each attempt starts closer.
+    healthCheckPath: /api/v1/ping
+
+    # --- Persistent disk -----------------------------------------------------
+    # Survives deploys and restarts. Everything below it is derived state that
+    # is expensive to rebuild and pointless to ship in the image.
+    #
+    # Note that mounting at /var/cache shadows the container's own /var/cache at
+    # runtime (apt's cache lives there). Harmless for this service -- nothing
+    # apt-gets after the build -- but /var/cache/auctoniq would avoid the overlap
+    # entirely if you would rather not rely on that.
+    #
+    # Sizing: bge-reranker-large (~1.3 GB) + bge-small (~130 MB) + the Chroma
+    # index + the SCOUT checkpoint database. 5 GB leaves real headroom. A disk
+    # also pins the service to a single instance and disables zero-downtime
+    # deploys -- both irrelevant here, since the auction room holds its state in
+    # one process's memory and could not be load-balanced anyway.
+    disk:
+      name: auctoniq-cache
+      mountPath: /var/cache
+      sizeGB: 5
+
+    envVars:
+      # --- Which reranker ---------------------------------------------------
+      # Pinned to match what you ACTUALLY run locally. Your .env sets
+      # RERANKER_MODEL_NAME=BAAI/bge-reranker-base, but .env is excluded from the
+      # image by .dockerignore (secrets must never be baked into layers), so
+      # without this line the container would fall back to the code default in
+      # config/settings.py -- bge-reranker-large.
+      #
+      # That silent difference would cost three things at once: 2136 MB of
+      # weights instead of 1061, double the first-deploy download onto an empty
+      # disk, and RAG ranking behaviour you have never tested.
+      #
+      # Any other setting you rely on from .env needs the same treatment: the
+      # dashboard is the only channel into the container.
+      - key: RERANKER_MODEL_NAME
+        value: BAAI/bge-reranker-base
+
+      # --- Model cache (the reason the disk exists) ------------------------
+      # huggingface_hub reads this into module constants at import time.
+      # models/hf_runtime.py derives the hub path from it as $HF_HOME/hub.
+      - key: HF_HOME
+        value: /var/cache/huggingface
+
+      # --- Supabase --------------------------------------------------------
+      # sync: false means "do not store a value in git -- prompt me in the
+      # Render dashboard". Correct for all three: the DATABASE_URL embeds the
+      # database password.
+      #
+      # DATABASE_URL must be the SESSION POOLER string, not the direct one.
+      # The direct connection (db.<ref>.supabase.co:5432) is IPv6-only and will
+      # hang. db/check_supabase.py already refuses the wrong one by name.
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+
+      # --- Derived state, also on the disk --------------------------------
+      # BEYOND the four env vars specified -- included because they are the
+      # same ephemeral-container problem as the model cache, and cheap to fix
+      # here. Without them, every single deploy re-embeds the whole player pool
+      # from scratch and discards every in-flight SCOUT graph.
+      #
+      # Strike these two if you would rather keep this file to the named set.
+      - key: CHROMA_DB_PATH
+        value: /var/cache/auctoniq/chroma_db
+      - key: SCOUT_CHECKPOINT_PATH
+        value: /var/cache/auctoniq/scout_checkpoints.db
+
+      # The local SQLite file, also on the disk. It is NOT redundant with
+      # Supabase: it still backs SCOUT's append-only research ledger
+      # (scout/tools/rag_pipeline.py), and it is what db.get_player_db() falls
+      # back to if Supabase is unreachable. Left at the image default it would
+      # live inside the container and be destroyed on every deploy, quietly
+      # discarding the ledger.
+      - key: SQLITE_DB_PATH
+        value: /var/cache/auctoniq/ipl_auction.db
+
+      # NOTE: no PLAYWRIGHT_BROWSERS_PATH here, deliberately. The Dockerfile sets
+      # it to /opt/ms-playwright and installs Chromium there at build time.
+      # Overriding it to a path under /var/cache would point the app at the
+      # persistent disk, where no browser was ever installed -- and because the
+      # disk mounts OVER /var/cache at runtime, anything the image had placed
+      # there would be hidden anyway. Leave this to the image.
+
+      # --- Keep-alive ------------------------------------------------------
+      # Off, because UptimeRobot polls /api/v1/ping from outside and that is the
+      # better mechanism: it still reports when the process is down, which a
+      # self-ping cannot, and it exercises DNS, TLS and Render's proxy rather
+      # than only the app. Two pingers on one endpoint is just twice the noise.
+      #
+      # On this paid plan the service never idles anyway, so nothing here is
+      # preventing a spin-down -- UptimeRobot's job is alerting.
+      - key: KEEP_ALIVE_ENABLED
+        value: "false"
+
+      # --- CORS ------------------------------------------------------------
+      # Left as a dashboard value rather than hardcoded, because the Render
+      # hostname is not known until the service is created. Since uvicorn serves
+      # the console itself, requests are same-origin and this list can stay
+      # nearly empty -- it matters only if you later host the frontend elsewhere.
+      # Phase 5 revisits this.
+      - key: CORS_ORIGINS
+        sync: false
+
+      # --- Auction room ----------------------------------------------------
+      # The auctioneer's password gates the admin split screen. Never in git.
+      - key: AUCTIONEER_PASSWORD
+        sync: false
+      - key: ADMIN_API_KEY
+        sync: false
+
+      # --- LLM providers ---------------------------------------------------
+      # Each one missing costs a capability, not the service: rag/llm_provider.py
+      # degrades to the deterministic local analyst and /api/v1/health reports
+      # answer_mode honestly. Set the ones you use and leave the rest blank.
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: HUGGINGFACE_API_KEY
+        sync: false
+
+# ==============================================================================
+# WHY start.ps1 IS NOT THE START COMMAND
+#
+# It is referenced in the master plan as `./start.ps1`, and it cannot be that
+# here. PowerShell is the obvious objection and the least important one -- pwsh
+# installs fine. The script still would not run, because four things in it are
+# Windows-and-local specific:
+#
+#   1. $python = .venv\Scripts\python.exe    There is no .venv in the image;
+#                                            packages are in site-packages.
+#   2. Get-NetTCPConnection                  A Windows-only cmdlet. On Linux
+#                                            pwsh the script exits 1.
+#   3. --port 8001                           Render assigns $PORT and routes to
+#                                            that alone. A hardcoded port is
+#                                            unreachable from outside.
+#   4. npm run build at START time           Belongs in the build. At start time
+#                                            it reruns on every restart and
+#                                            burns the health-check window.
+#
+# start.ps1 is untouched -- it is how this project runs on Windows, and nothing
+# about deployment changes that. start.sh remains in the repository as the
+# equivalent for a plain Linux box or WSL; the container does not use it, because
+# the image's CMD (`python api/main.py`) already binds $PORT on 0.0.0.0 and there
+# is no repository layout inside /app for start.sh to walk.
+#
+# ------------------------------------------------------------------------------
+# UPTIME MONITORING
+#
+# UptimeRobot polls https://<service>.onrender.com/api/v1/ping every 5 minutes.
+# That endpoint is deliberately the cheapest thing in the app -- it touches no
+# database, no filesystem and no settings, and answers from memory -- so it is
+# safe to hit forever. /api/v1/health is the richer view for a human, and is the
+# wrong thing to poll on a timer because it runs a full environment check.
+#
+# On this paid plan the service does not idle, so UptimeRobot is there to TELL
+# YOU when the site is down, not to keep it up. That is also why the in-process
+# keep-alive loop is disabled: a self-ping cannot report that the process died.
+# ==============================================================================

@@ -61,7 +61,7 @@ export default function WaitingRoom({
       <div className="w-full max-w-2xl">
         <header className="mb-7 text-center">
           <span className="font-ui text-[9.5px] font-semibold uppercase tracking-[0.16em] text-slate-faint">
-            AUCTIQ · waiting room
+            AUCTONIQ · waiting room
           </span>
           <h1 className="mt-1.5 font-head text-[30px] font-bold leading-tight text-slate-ink">
             {expired ? "Ready when you are" : "The auction is about to begin"}

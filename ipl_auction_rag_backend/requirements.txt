@@ -51,11 +51,23 @@ langgraph==1.2.11
 langgraph-checkpoint==4.2.0
 langgraph-prebuilt==1.1.0
 
+# The Data Researcher's Hermes sub-agent. `create_react_agent` needs a
+# BaseChatModel, and Hermes is reached over the OpenAI chat-completions
+# shape -- so ChatOpenAI pointed at HERMES_API_BASE_URL is the adapter.
+#
+# Note this is the ONLY place an OpenAI package is used. `rag/llm_provider`
+# deliberately talks to the same endpoint with bare httpx, because a
+# fifteen-line POST did not justify a dependency. A managed tool loop does:
+# the alternative is hand-rolling the search/read/answer cycle, and that
+# loop is the thing most likely to hang the researcher node.
+langchain-openai==1.6.6
+openai==3.19.2
+
 # Pinned explicitly rather than left to langchain's own resolution: the
 # Anthropic integration below requires >=1.6.3, and an unpinned core is free to
 # drift underneath langchain-community and langchain-huggingface, which are the
 # two packages the existing embedding loader actually imports.
-langchain-core==1.6.3
+langchain-core==1.6.5
 
 # --- Graph state persistence ---
 # SQLite rather than MemorySaver. The server runs under `uvicorn --reload`
@@ -103,3 +115,58 @@ tavily-python==0.8.3
 # --- Tests ---
 # The graph nodes are async; pytest on its own cannot await them.
 pytest-asyncio==1.4.0
+
+# --- Per-franchise PDF report ---
+# The auction's closing report is also written to a PDF, one per franchise.
+# reportlab renders it server-side: the analysis and the full player statistics
+# already live here, and generating in the browser would mean shipping both to
+# the client and maintaining a second layout.
+reportlab==5.0.1
+
+
+# ==============================================================================
+# Supabase / PostgreSQL
+#
+# Added by the Render deployment phase. Nothing above this line changed, and a
+# resolve of the line below moves none of the pins above it -- same discipline
+# as the SCOUT block, and verified the same way, with `pip install --dry-run`.
+#
+# This is additive in the strong sense: SQLite is NOT removed. It still backs
+# Chroma's store and SCOUT's langgraph checkpointer, neither of which Supabase
+# replaces, and it stays the local development database. Postgres is selected at
+# runtime by DATABASE_URL being set -- unset, the app behaves exactly as it does
+# today, and this dependency is never imported.
+# ==============================================================================
+
+# psycopg 3. Not psycopg2, and not asyncpg. Both extras are required rather
+# than convenient:
+#
+#   [binary]  Ships libpq compiled into the wheel. This is the difference
+#             between deploying and not deploying: Render's native Python
+#             runtime gives no apt, so there is no libpq-dev on the box to
+#             build against. Plain `psycopg` falls back to a source build and
+#             fails the build step. (The same is true of psycopg2 without the
+#             -binary package, which is the usual version of this mistake.)
+#
+#   [pool]    SQLiteManager._get_connection opens and closes a connection on
+#             every single call. Against a local file that is free. Against
+#             Supabase each one is a TCP handshake plus a TLS handshake across
+#             the network, and this process runs the auction's seven-second bid
+#             timers on the same event loop -- so per-call connections turn
+#             every query into tens of milliseconds the clock does not have.
+#             psycopg_pool keeps a small set open and hands them out.
+#
+# psycopg 3 serves the sync and the async API from one package, so this pin does
+# not commit us on whether PostgresManager blocks or awaits -- that choice is
+# made in the manager, not here.
+#
+# Note: db/check_supabase.py's install hint still names 3.2.3, from when that
+# script was written. It is only printed when psycopg is missing entirely, but
+# it now disagrees with this pin and should be corrected.
+psycopg[binary,pool]==3.3.6
+
+# NOT added, deliberately: the `pgvector` package. The embeddings stay in
+# Chroma, on the Render persistent disk, because that disk is already paid for
+# and already survives deploys -- which is the whole benefit pgvector would
+# buy here. Moving them would mean a new table, an ingestion rewrite and
+# replacing rag/retriever.py. Add `pgvector==0.4.1` here if that changes.

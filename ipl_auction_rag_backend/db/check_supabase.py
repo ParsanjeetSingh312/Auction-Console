@@ -23,7 +23,13 @@ from pathlib import Path
 
 EXPECTED_COLUMNS = {
     "id", "player_name", "country", "role", "cap_status", "overseas",
-    "base_price", "rating", "matches", "total_runs",
+    "base_price", "rating",
+    # Added after this script was written. 001_players.sql has carried it since
+    # the beginning (both in the CREATE TABLE and as an ADD COLUMN IF NOT EXISTS
+    # for tables made before it), so without it here a correct schema was
+    # reported as having an "unexpected extra column".
+    "jersey_number",
+    "matches", "total_runs",
     "bat_avg", "bat_sr", "boundary_pct_spin", "boundary_pct_fast",
     "sr_vs_spin", "sr_vs_fast",
     "wickets", "runs_conceded", "economy",
@@ -66,14 +72,28 @@ def main() -> None:
         _fail("The password placeholder is still in the URL.",
               "Replace it with the database password you set when creating "
               "the project.")
-    print(f"  OK    DATABASE_URL looks like a pooler string")
+    if ":6543" in url:
+        # Caught here because the alternative is discovering it in production:
+        # the transaction pooler gives a different backend per transaction, so
+        # psycopg's server-side prepared statements (used automatically once a
+        # query repeats five times) break. Early queries pass, later identical
+        # ones fail, and it looks like an intermittent database fault.
+        _fail("That is the TRANSACTION pooler (port 6543), which does not "
+              "support prepared statements.",
+              "Use the Session pooler instead -- same host, port 5432. "
+              "psycopg would otherwise succeed a few times and then start "
+              "failing on the same query.")
+    print(f"  OK    DATABASE_URL looks like a session pooler string")
 
     # --- 2. The connection -----------------------------------------------
     try:
         import psycopg
     except ImportError:
+        # Keep this version in step with requirements.txt. It used to say 3.2.3,
+        # from before that pin existed, so following the hint installed a
+        # different version from the one the app is built against.
         _fail("psycopg is not installed.",
-              'pip install "psycopg[binary,pool]==3.2.3"')
+              'pip install "psycopg[binary,pool]==3.3.6"')
 
     try:
         conn = psycopg.connect(url, connect_timeout=10)

@@ -29,7 +29,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from db.sqlite_manager import SQLiteManager
+from db import get_player_db
 
 logger = logging.getLogger(__name__)
 
@@ -387,7 +387,7 @@ def build_sql(query: str, known_names: list[str] | None = None) -> dict[str, Any
     params.append(parsed.limit)
 
     try:
-        rows = SQLiteManager().execute_query(sql, tuple(params))
+        rows = get_player_db().execute_query(sql, tuple(params))
     except Exception as exc:  # noqa: BLE001 — surfaced to the caller, not raised
         logger.error("Deterministic SQL failed: %s", exc, exc_info=True)
         return {"sql": sql, "results": [], "error": str(exc), "parsed": parsed}
@@ -450,7 +450,7 @@ def keyword_search(query: str, top_k: int = 8) -> list[dict[str, Any]]:
         return []
 
     try:
-        rows = SQLiteManager().execute_query(
+        rows = get_player_db().execute_query(
             "SELECT id, player_name, role, country, cap_status, overseas, "
             "matches, total_runs, bat_avg, bat_sr, wickets, economy "
             "FROM players"
@@ -502,7 +502,7 @@ def percentile_within_role(column: str, value: float, role: str) -> int | None:
     if column not in ALLOWED_COLUMNS:
         return None
     try:
-        rows = SQLiteManager().execute_query(
+        rows = get_player_db().execute_query(
             f"SELECT {column} AS v FROM players WHERE role = ? AND {column} IS NOT NULL",
             (role,),
         )
@@ -689,7 +689,7 @@ def _standing(row: dict[str, Any], parsed: ParsedQuery | None) -> str:
 def known_player_names() -> list[str]:
     """Every name in the pool, for detecting mentions in a question."""
     try:
-        rows = SQLiteManager().execute_query("SELECT player_name FROM players")
+        rows = get_player_db().execute_query("SELECT player_name FROM players")
     except Exception:  # noqa: BLE001
         return []
     return [r["player_name"] for r in rows]

@@ -23,7 +23,16 @@ import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 
 export interface AuctiqLogoProps {
-  /** Where the mark navigates. Defaults to the landing itself. */
+  /**
+   * Where the mark navigates. Defaults to the landing.
+   *
+   * `/` rather than `/auctiq`: both resolve to the same page, but `/auctiq`
+   * does it by redirect, so it appears in the address bar on the way through.
+   * The old name should not surface anywhere a visitor can read it, and a
+   * default that puts it there is a trap for the next call site that omits
+   * this prop. The `/auctiq` route itself stays in App.tsx — it is what keeps
+   * an existing bookmark working.
+   */
   to?: string;
   /** Hides the wordmark, leaving the mark alone — for narrow overlays. */
   markOnly?: boolean;
@@ -42,7 +51,7 @@ export interface AuctiqLogoProps {
 }
 
 export default function AuctiqLogo({
-  to = "/auctiq",
+  to = "/",
   markOnly = false,
   inline = false,
   className = "",
@@ -59,7 +68,7 @@ export default function AuctiqLogo({
     >
       <Link
         to={to}
-        aria-label="AUCTIQ — home"
+        aria-label="AUCTONIQ — home"
         className="pointer-events-auto group flex min-h-[44px] items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.04] py-2 pl-2 pr-3.5 shadow-glass backdrop-blur-xl transition-colors duration-200 hover:border-auctiq-gold/40 sm:pr-4"
       >
         <span className="relative grid h-7 w-7 shrink-0 place-items-center">
@@ -85,7 +94,7 @@ export default function AuctiqLogo({
         {!markOnly && (
           <span className="flex flex-col leading-none">
             <span className="font-auctiq text-[15px] tracking-[0.16em] text-auctiq-text">
-              AUCTIQ
+              AUCTONIQ
             </span>
             {/*
               The tagline is hidden below `sm` rather than shrunk. At 9px it

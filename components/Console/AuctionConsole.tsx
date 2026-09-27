@@ -44,6 +44,25 @@ import StadiumBackdrop from "../Sections/StadiumBackdrop";
 
 type View = "pool" | "teams" | "results" | "scout" | "block";
 
+/**
+ * Whether the tab bar advertises Scout.
+ *
+ * `false` on every surface that has one — here, on the Data Interface and on the
+ * auctioneer's split screen — so SCOUT is not something a user navigates to.
+ * Nothing else changes: the pane below is still mounted and still kept alive
+ * between tabs, `askScout` and `searchScout` still call `setView("scout")` and
+ * still open it, and `ScoutView`, `useScout` and every /scout route on the
+ * backend are exactly as they were.
+ *
+ * A flag rather than deleted JSX so this is a one-word revert, and so the next
+ * person reading the tab bar can see the absence is a decision.
+ *
+ * Results is deliberately NOT gated here. It is hidden only on the Data
+ * Interface, which participants open; this console is an operator's surface and
+ * keeps it.
+ */
+const SHOW_SCOUT_TAB: boolean = false;
+
 interface Toast {
   id: number;
   message: string;
@@ -283,9 +302,11 @@ function AuctionConsoleInner() {
           <Tab view="results" active={view} onSelect={setView} count={engine.counts.sold}>
             Results
           </Tab>
-          <Tab view="scout" active={view} onSelect={setView}>
-            Scout
-          </Tab>
+          {SHOW_SCOUT_TAB && (
+            <Tab view="scout" active={view} onSelect={setView}>
+              Scout
+            </Tab>
+          )}
           <Tab view="block" active={view} onSelect={setView}>
             Block
           </Tab>

@@ -128,6 +128,21 @@ export interface LogItem {
 export interface RoomState {
   version: number;
   phase: Phase;
+  /**
+   * Message types this server build accepts.
+   *
+   * Optional because a server older than this field simply will not send it —
+   * which is itself the answer: absent means "old enough to predate the
+   * capability list", and every check below treats that as unsupported.
+   *
+   * It exists because the two halves of this app reach the user by different
+   * routes. `dist/` is re-read from disk on every request, so a rebuilt
+   * frontend arrives on a refresh; Python is loaded once at process start, so a
+   * backend change arrives only on a restart. A browser running today's bundle
+   * against yesterday's uvicorn sends messages that server has never heard of,
+   * and the only symptom is a control that appears to do nothing.
+   */
+  supports?: string[];
   rules: {
     purse: number;
     max_squad: number;
@@ -146,6 +161,12 @@ export interface RoomState {
   unsold?: number[];
   countdown_ends_at: number | null;
   connected: number;
+  /**
+   * Whether the auctioneer's chair is occupied. Optional so an older frame that
+   * predates the field reads as "unknown" (falsy) rather than throwing; the seat
+   * picker treats it as "the chair is taken, show it as such".
+   */
+  auctioneer_present?: boolean;
 }
 
 export type SocketStatus = "connecting" | "open" | "reconnecting" | "closed";
@@ -155,6 +176,12 @@ export interface SeatRequest {
   role: "auctioneer" | "franchise";
   teamId?: number;
   displayName?: string;
+  /**
+   * The auctioneer password. Sent only for an auctioneer claim and held here so
+   * a reconnect can re-claim the chair without prompting again. Never rendered,
+   * only forwarded to the room, which verifies it server-side.
+   */
+  password?: string;
 }
 
 /* ------------------------------------------------------------------ *
@@ -205,6 +232,19 @@ export interface AuctionSocket {
   finish: () => void;
   /** Auctioneer: wipe the auction back to an empty lobby, keeping seats. */
   resetRoom: () => void;
+  /**
+   * Auctioneer: change purse and squad limits from the Auction Setup panel.
+   *
+   * Figures in the room's own units — purse in lakh, the rest as counts. The
+   * room refuses anything that would make an existing squad illegal, and the
+   * refusal arrives as an `error` frame like every other one.
+   */
+  setRules: (rules: {
+    purse: number;
+    maxSquad: number;
+    minSquad: number;
+    maxOverseas: number;
+  }) => void;
   /**
    * Franchise: step out of the contest for the lot on the block.
    *
@@ -286,6 +326,7 @@ export function useAuctionSocket(): AuctionSocket {
               role: request.role,
               team_id: request.teamId ?? null,
               display_name: request.displayName ?? null,
+              password: request.password ?? null,
             }),
           );
         }
@@ -387,6 +428,7 @@ export function useAuctionSocket(): AuctionSocket {
         role: request.role,
         team_id: request.teamId ?? null,
         display_name: request.displayName ?? null,
+        password: request.password ?? null,
       });
     },
     [send],
@@ -416,6 +458,21 @@ export function useAuctionSocket(): AuctionSocket {
       undo: () => send({ type: "undo" }),
       finish: () => send({ type: "finish" }),
       resetRoom: () => send({ type: "reset" }),
+      setRules: (rules: {
+        purse: number;
+        maxSquad: number;
+        minSquad: number;
+        maxOverseas: number;
+      }) =>
+        send({
+          type: "set_rules",
+          // snake_case on the wire: the schema is the server's and the server
+          // does not bend its naming to the client's.
+          purse: rules.purse,
+          max_squad: rules.maxSquad,
+          min_squad: rules.minSquad,
+          max_overseas: rules.maxOverseas,
+        }),
       withdraw: () => send({ type: "withdraw" }),
       callTimeout: () => send({ type: "timeout" }),
     }),

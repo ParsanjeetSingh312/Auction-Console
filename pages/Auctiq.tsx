@@ -59,7 +59,7 @@ export default function Auctiq() {
   useJourneyProgress(page, journeyOn);
 
   useEffect(() => {
-    document.title = "AUCTIQ · IPL 2026 Mega Auction";
+    document.title = "AUCTONIQ · IPL 2026 Mega Auction";
   }, []);
 
   /*

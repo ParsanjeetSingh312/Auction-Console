@@ -75,7 +75,7 @@ export default function BroadcastHero() {
           rather than a line of them.
         */}
         <h1 className="font-auctiq text-[clamp(2.75rem,7.5vw,6rem)] uppercase leading-none tracking-[0.06em] text-neon-orange text-glow-orange">
-          AUCTIQ
+          AUCTONIQ
         </h1>
 
         {/*

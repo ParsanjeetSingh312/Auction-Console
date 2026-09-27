@@ -20,6 +20,18 @@ __pycache__/
 .env.*
 !.env.example
 
+# Backup copies, which are the quiet way a secret reaches a public repo: the
+# .env rule above does not match a file called `settings.py.bak` or
+# `pool_metadata.json.bak-230617`, and a backup taken before editing a config
+# file tends to contain exactly the values the original was being edited to
+# protect. Ignore the shape, not the individual file.
+*.bak
+*.bak-*
+*.backup
+*.backup-*
+*.orig
+*~
+
 # Data stores. These are state, rebuilt by POST /api/v1/ingest — and the Chroma
 # directory accumulates an orphaned index folder per re-ingest.
 ipl_auction_rag_backend/data/database/*.db

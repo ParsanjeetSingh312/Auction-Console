@@ -49,6 +49,11 @@ from difflib import SequenceMatcher
 from typing import Any
 
 from config.settings import get_settings
+# The players table, wherever it lives. sqlite3 above is still imported and still
+# correct -- but only for the LEDGER, which is SCOUT's own append-only state and
+# stays local by design. The two are different databases now, and this import is
+# what keeps them from being confused for each other.
+from db import get_player_db
 from scout.schemas.player import (
     PlayerFact,
     PlayerMatch,
@@ -349,32 +354,47 @@ def embed_facts(facts: list[tuple[PlayerFact, PlayerMatch]]) -> int:
 
 
 def _apply_columns(
-    conn: sqlite3.Connection, player_id: int, stats: dict[str, Any], valuation: dict[str, Any]
+    player_id: int, stats: dict[str, Any], valuation: dict[str, Any]
 ) -> int:
     """
     Write to `players`. Stats overwrite; valuation fills only.
 
     Column names come from the schemas' own field sets and are checked against
-    WRITABLE_COLUMNS before they reach the SQL, so the interpolation below
-    cannot carry anything a caller chose.
+    WRITABLE_COLUMNS before they reach the SQL, so nothing a caller chose reaches
+    the statement. The manager re-checks with isidentifier() as well.
+
+    NO LONGER TAKES A CONNECTION, and that is the point. It used to be handed the
+    ledger's own sqlite3 connection, which was correct only while the players
+    table and the ledger were the same file. Once the players table can live in
+    Supabase, a write on the ledger connection lands in a local file nothing
+    reads -- the research would appear to succeed, the ledger would record it,
+    and the value would never show up in the console.
+
+    The cost is that the ledger insert and the players write are no longer in one
+    transaction. That is forced rather than chosen: the two can now be in
+    different database servers, and no single transaction spans them. It is also
+    why `replay_research()` exists -- the ledger is the durable record, and
+    replaying it re-applies anything a crash left unwritten.
     """
     written = 0
+    player_db = get_player_db()
 
     for column, value in stats.items():
         if column not in _STAT_COLUMNS:
             continue
-        conn.execute(f'UPDATE players SET "{column}" = ? WHERE id = ?', (value, player_id))
+        player_db.update_player_column(player_id, column, value)
+        # Counted as attempted, not as rows changed -- preserving the original
+        # behaviour, which did not inspect rowcount for stat columns.
         written += 1
 
     for column, value in valuation.items():
         if column not in _VALUATION_COLUMNS:
             continue
-        # Fill, never overwrite -- the WHERE clause is the rule.
-        cursor = conn.execute(
-            f'UPDATE players SET "{column}" = ? WHERE id = ? AND "{column}" IS NULL',
-            (value, player_id),
+        # Fill, never overwrite -- the rule is now the manager's fill_only flag,
+        # which appends the same `AND "<column>" IS NULL` this used to spell out.
+        written += player_db.update_player_column(
+            player_id, column, value, fill_only=True
         )
-        written += cursor.rowcount
 
     return written
 
@@ -440,7 +460,7 @@ def record(updates: list[PlayerUpdate], *, apply_to_players: bool = True) -> Ing
                     report.ledger_rows += 1
 
             if apply_to_players and (stats or valuation):
-                written = _apply_columns(conn, match.player_id, stats, valuation)
+                written = _apply_columns(match.player_id, stats, valuation)
                 if written:
                     report.columns_written += written
                     touched.add(match.player_id)
@@ -485,7 +505,7 @@ def replay_research() -> IngestReport:
                 continue
             stats = {column: row["value"]} if row["kind"] == "stat" else {}
             valuation = {column: row["value"]} if row["kind"] == "valuation" else {}
-            written = _apply_columns(conn, row["player_id"], stats, valuation)
+            written = _apply_columns(row["player_id"], stats, valuation)
             if written:
                 report.columns_written += written
                 touched.add(row["player_id"])
