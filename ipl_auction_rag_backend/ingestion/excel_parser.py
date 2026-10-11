@@ -264,8 +264,13 @@ def _load_known_pool_metadata() -> dict[str, dict]:
 
     import json
 
+    # Relative to the PACKAGE, not to a repository root. In a checkout the
+    # package is <repo>/ipl_auction_rag_backend, but in the container image it
+    # is /home/user/app -- a path built as <root>/ipl_auction_rag_backend/data
+    # does not exist there, and every container deploy ingested the whole pool
+    # with NULL base prices.
     root = Path(__file__).resolve().parent.parent.parent
-    json_path = root / "ipl_auction_rag_backend" / "data" / "pool_metadata.json"
+    json_path = Path(__file__).resolve().parent.parent / "data" / "pool_metadata.json"
 
     try:
         if json_path.exists():
