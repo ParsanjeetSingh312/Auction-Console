@@ -27,7 +27,6 @@ import { AnimatePresence, motion } from "framer-motion";
 
 import { money } from "../../console/format";
 import {
-  drawerVariants,
   figureVariants,
   shellItem,
   shellVariants,

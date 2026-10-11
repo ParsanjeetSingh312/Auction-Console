@@ -251,15 +251,35 @@ async def ping() -> dict[str, str]:
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health() -> HealthResponse:
+def health() -> HealthResponse:
     """
     Capability report: what the agent can do right now, and what is missing.
 
-    Counts come from the startup check, which reads both stores over plain
-    SQLite. It deliberately does not construct a ChromaManager: that would load
-    the embedding model, and because the route is synchronous it would hold the
-    event loop for the ~40 seconds that takes on a cold start - turning the
-    cheapest endpoint in the API into the most expensive one.
+    DELIBERATELY `def`, NOT `async def`, and that one keyword is load-bearing.
+
+    FastAPI runs an `async def` path operation directly on the event loop, and a
+    `def` one in a worker thread. Everything this function calls is BLOCKING:
+    check_environment() opens SQLite, stats the Chroma directory and -- since
+    DATABASE_URL arrived -- probes Postgres over a real socket. On the loop
+    thread, that blocks EVERY other request for as long as it takes.
+
+    This was not theoretical. With the Supabase project deleted, the Postgres
+    probe sat waiting out its timeout and measurement showed /api/v1/ping going
+    from 0.003s to 19.03s whenever a single /health was in flight -- the whole
+    application frozen, WebSocket frames included, which mid-lot means all ten
+    franchises stall at once. A browser hitting /health on page load (see
+    pages/Home.tsx) was enough to trigger it.
+
+    Returning to `async def` reintroduces that. If this ever needs to await
+    something, wrap the blocking work in `run_in_threadpool` rather than
+    flipping the keyword back.
+
+    Counts come from the startup check, which reads the player store directly.
+    It deliberately does not construct a ChromaManager: that would load the
+    embedding model and cost ~40 seconds on a cold start, turning the endpoint
+    an operator reaches for when things look wrong into the slowest one in the
+    API. Running in a worker thread makes that survivable rather than fatal, but
+    it is still the wrong amount of work to do per request.
     """
     from config.env_check import check_environment
     from rag.rag_chain import MODE_LLM, MODE_LOCAL, llm_available

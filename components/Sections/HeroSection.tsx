@@ -13,7 +13,6 @@
  * they have been read.
  */
 import { Suspense, lazy } from "react";
-import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { AuctiqMark } from "../Global/AuctiqLogo";

@@ -346,6 +346,44 @@ def _count_players(db_path: Path) -> Finding | None:
 #: database was inspected, and that setting is not the one being reported on.
 _PLAYERS_DB = "PLAYERS_DB"
 
+#: Seconds to wait for a TCP connection when PROBING Postgres from the health
+#: report, as opposed to opening the application's pool.
+#:
+#: Short on purpose. This is a health check, and a health check that takes
+#: longer than the monitor's own timeout reports nothing at all -- the monitor
+#: records a timeout, the operator sees "down" rather than "database
+#: unreachable, serving from SQLite", and the one piece of information the
+#: endpoint existed to deliver is the piece that gets lost.
+_PROBE_CONNECT_TIMEOUT = 3
+
+
+def _probe_player_count(settings) -> int:
+    """
+    Count players over a single short-lived connection, bypassing the pool.
+
+    WHY NOT JUST USE THE POOL. db.postgres_manager opens it with
+    `pool.open(wait=True, timeout=20.0)`, which is right for the application --
+    a bad DATABASE_URL should surface once, loudly, with every retry spent -- and
+    exactly wrong for a health check. When the Supabase project was deleted, the
+    pool spent the full 20 seconds retrying on EVERY /health call.
+
+    So this deliberately does not touch `_get_pool`. It opens one connection with
+    a short timeout, asks its question, and closes. The cost is one extra
+    connection on the path where the pool is closed anyway; the benefit is that
+    an unreachable database is reported in roughly the time it takes to be
+    refused, instead of in twenty seconds.
+    """
+    import psycopg
+
+    with psycopg.connect(
+        settings.DATABASE_URL.strip(),
+        connect_timeout=_PROBE_CONNECT_TIMEOUT,
+    ) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM players")
+            row = cur.fetchone()
+            return int(row[0]) if row else 0
+
 
 def _check_postgres_players(settings) -> Finding:
     """
@@ -365,17 +403,71 @@ def _check_postgres_players(settings) -> Finding:
     Imports psycopg lazily and catches everything: a broken database must not
     take down the health check that exists to report broken things.
     """
-    try:
-        from db.postgres_manager import PostgresManager
-
-        count = PostgresManager().get_player_count()
-    except Exception as exc:  # noqa: BLE001 - the report is the whole point
+    problem = settings.database_url_problem
+    if problem:
         return Finding(
             _PLAYERS_DB,
             Severity.DEGRADED,
-            f"{settings.safe_database_target} unreachable: {exc}",
-            "Check DATABASE_URL and that the Supabase project is not paused. "
+            f"DATABASE_URL {problem}",
             "Players are being served from local SQLite instead.",
+        )
+
+    try:
+        from db.postgres_manager import PostgresManager, pool_is_open
+
+        # Two paths on purpose.
+        #
+        # Pool already open: the application is talking to Postgres happily, so
+        # reuse it. Asking for a second connection here would be waste, and on a
+        # small Supabase plan connection count is a real budget.
+        #
+        # Pool closed: do NOT open it from here. `_get_pool` waits 20 seconds
+        # before giving up, and a health check that inherits that becomes the
+        # slowest endpoint in the API at exactly the moment someone is using it
+        # to find out what is wrong. Probe directly with a short timeout instead
+        # and leave the pool to open on the first real query.
+        if pool_is_open():
+            count = PostgresManager().get_player_count()
+        else:
+            count = _probe_player_count(settings)
+    except Exception as exc:  # noqa: BLE001 - the report is the whole point
+        # Postgres is unreachable -- so report what is ACTUALLY being served.
+        #
+        # db.get_player_db() has already fallen back to local SQLite by the time
+        # anyone reads this, so leaving the count unset makes the report say
+        # "no players" while the auction is running happily on 284 of them. A
+        # health endpoint that understates the system during a partial outage is
+        # worse than no health endpoint: it turns a degraded-but-working service
+        # into one an operator believes is dead, mid-auction.
+        #
+        # This mirrors the fallback in db/__init__.py deliberately. If that
+        # fallback is ever removed, this branch should go with it.
+        _count_players(Path(settings.SQLITE_DB_PATH))
+        served = _COUNTS["players"]
+
+        # psycopg stacks every failed host attempt into one multi-line blob.
+        # The first line carries the cause; the rest is repetition, and it ends
+        # up verbatim in /health's config_warnings.
+        reason = str(exc).strip().splitlines()[0][:160]
+
+        if served:
+            return Finding(
+                _PLAYERS_DB,
+                Severity.DEGRADED,
+                f"{settings.safe_database_target} unreachable "
+                f"({reason}) - serving {served} players from local SQLite",
+                "Check DATABASE_URL, and that the Supabase project still exists "
+                "and is not paused. The auction is running on local data, which "
+                "may be stale.",
+            )
+
+        return Finding(
+            _PLAYERS_DB,
+            Severity.BLOCKING,
+            f"{settings.safe_database_target} unreachable ({reason}) "
+            "and local SQLite has no usable players either",
+            "Restore DATABASE_URL, or run ingestion to populate local SQLite: "
+            "`python -m ingestion.data_loader`.",
         )
 
     if count == 0:
