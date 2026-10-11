@@ -1,0 +1,61 @@
+# Deploying AUCTONIQ to Railway
+
+Railway builds the repository-root `Dockerfile` automatically. The image is the
+same one Render and Hugging Face Spaces use; the Railway-specific parts are:
+
+- `deploy/docker-entrypoint.sh` makes Railway's root-owned volume writable by the
+  app's UID 1000, and points the model cache, Chroma index, SQLite file and SCOUT
+  checkpoints at the volume unless you set those paths yourself.
+- `api/main.py` reads `RAILWAY_PUBLIC_DOMAIN` (alongside Render's
+  `RENDER_EXTERNAL_URL`) for its CORS origin and the optional keep-alive.
+
+There is deliberately no `railway.json`: Railway deprecated Config as Code
+(files stop being read on 2026-12-01). The few settings below go in the
+dashboard instead.
+
+## 1. Create the service
+
+New Project → Deploy from GitHub repo → this repository, branch `main`.
+Railway detects the `Dockerfile`. The first build takes roughly 10–15 minutes
+(torch, Chromium).
+
+## 2. Attach a volume
+
+Service → right-click / **+ New** → **Volume**, mount path **`/data`**, 5 GB.
+Nothing else is needed; the entrypoint redirects all state there.
+
+## 3. Variables (Service → Variables)
+
+| Variable | Value |
+| --- | --- |
+| `RERANKER_MODEL_NAME` | `BAAI/bge-reranker-base` (the code default is the 2 GB `large`) |
+| `AUCTIONEER_PASSWORD` | your choice: blank keeps the auctioneer chair locked |
+| `ADMIN_API_KEY` | a long random string: blank leaves `/ingest` open to anyone |
+| `DATABASE_URL` | Supabase **session pooler** string, if you use Supabase. Omit to use SQLite on the volume |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | if you use Supabase |
+| `GROQ_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `HUGGINGFACE_API_KEY` | whichever you use |
+| `RAILWAY_HEALTHCHECK_TIMEOUT_SEC` | `900` (first boot downloads the models before it answers) |
+
+Do **not** set `PORT` (Railway sets it), `PLAYWRIGHT_BROWSERS_PATH`, or `HF_HOME`.
+
+## 4. Settings (Service → Settings)
+
+- **Networking → Generate Domain.** If it asks for a port, use the one in the
+  deploy logs line `Starting uvicorn directly on 0.0.0.0:<port>`.
+- **Deploy → Healthcheck Path:** `/api/v1/ping`.
+- **Deploy → Replicas:** 1. The auction room is in-process state; a second
+  replica would be a second, separate auction.
+- **Resources:** at least 4 GB memory. Startup is ~2 GB resident.
+
+## 5. First deploy, then load the player pool
+
+The first boot downloads ~1.2 GB of models onto the volume (a few minutes).
+Later boots load them from disk. Once the deploy is healthy, build the player
+pool and search index once:
+
+```bash
+curl -X POST https://YOUR-DOMAIN.up.railway.app/api/v1/ingest -H "X-Admin-Key: YOUR_ADMIN_API_KEY"
+```
+
+The auction room picks the pool up immediately; no restart needed. Check
+everything at `https://YOUR-DOMAIN.up.railway.app/api/v1/health`.

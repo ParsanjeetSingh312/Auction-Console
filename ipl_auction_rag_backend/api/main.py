@@ -42,6 +42,25 @@ logging.basicConfig(
 logger = logging.getLogger("rag.main")
 
 
+def _platform_public_url() -> str:
+    """
+    This service's own public origin, as the hosting platform reports it.
+
+    Render injects RENDER_EXTERNAL_URL as a full origin. Railway injects
+    RAILWAY_PUBLIC_DOMAIN as a bare hostname -- no scheme -- and only once a
+    public domain has been generated for the service. Railway terminates TLS at
+    its edge, so the origin a browser sees is always https. Empty on a laptop or
+    a VPS, where neither variable exists.
+    """
+    render = os.getenv("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
+    if render:
+        return render
+    railway = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip().strip("/")
+    if railway:
+        return f"https://{railway}"
+    return ""
+
+
 async def _warm_models() -> None:
     """
     Load the Hugging Face models into RAM before the first request needs them.
@@ -143,11 +162,11 @@ async def _keep_alive() -> None:
         )
         return
 
-    base = (settings.KEEP_ALIVE_URL or os.getenv("RENDER_EXTERNAL_URL", "")).strip()
+    base = (settings.KEEP_ALIVE_URL or _platform_public_url()).strip()
     if not base:
         logger.warning(
             "Keep-alive: enabled but no target - set KEEP_ALIVE_URL, or run "
-            "somewhere that provides RENDER_EXTERNAL_URL"
+            "somewhere that provides RENDER_EXTERNAL_URL or RAILWAY_PUBLIC_DOMAIN"
         )
         return
 
@@ -317,7 +336,7 @@ app = FastAPI(
 settings = get_settings()
 origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
 
-# Add this service's own public origin on Render, if the platform told us what it
+# Add this service's own public origin on Render or Railway, if the platform told us what it
 # is. Strictly this is belt and braces: uvicorn serves the console from the same
 # origin as the API, so the browser treats those calls as same-origin and never
 # consults CORS at all. It matters for the cases that are not same-origin -- a
@@ -331,10 +350,10 @@ origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
 # here, and this service now has an auctioneer password and an admin key behind
 # it. The CORS spec forbids the combination and browsers reject it, so it does not
 # even work -- it just fails in a way that looks like a different bug.
-render_origin = os.getenv("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
-if render_origin and render_origin not in origins:
-    origins.append(render_origin)
-    logger.info("CORS: added the Render origin %s", render_origin)
+platform_origin = _platform_public_url()
+if platform_origin and platform_origin not in origins:
+    origins.append(platform_origin)
+    logger.info("CORS: added the platform origin %s", platform_origin)
 
 app.add_middleware(
     CORSMiddleware,

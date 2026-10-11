@@ -7,6 +7,7 @@
 #
 #     docker compose up --build          local
 #     git push hf main                   Hugging Face Spaces
+#     git push (Railway watches main)    Railway, configured by railway.json
 #
 # ------------------------------------------------------------------------------
 # WHY IT RUNS AS A NON-ROOT USER
@@ -142,6 +143,17 @@ COPY --chown=user ["IPL AUCTION DATA.xlsx", "/home/user/"]
 RUN mkdir -p $HOME/app/data/raw $HOME/app/data/database/chroma_db \
     && mkdir -p $HOME/.cache/huggingface
 
+# The entrypoint. Copied as root-owned and read-only to `user`: it is the one
+# piece of the image that runs with root privileges (briefly, before it drops
+# to `user`), so the unprivileged application must not be able to rewrite it.
+#
+# The `command -v setpriv` check fails the BUILD if a future base image drops
+# util-linux, instead of every container failing at start with a bare
+# "setpriv: not found".
+USER root
+COPY deploy/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh && command -v setpriv
+
 # Documentation only. The real port comes from $PORT at runtime; Hugging Face
 # Spaces routes to whatever `app_port` in README.md names.
 EXPOSE 8001
@@ -157,4 +169,11 @@ EXPOSE 8001
 #
 # Deliberately one worker and no reload: the auction room is in-process state,
 # so a second worker would be a second, entirely separate auction.
+#
+# The container STARTS as root (the `USER root` above) and the entrypoint drops
+# to `user` before this command runs -- see deploy/docker-entrypoint.sh for why
+# Railway's root-owned volumes require that. Where the platform forces UID 1000
+# (Hugging Face Spaces, `docker run --user 1000:1000`) the entrypoint simply
+# execs this as-is.
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["python", "api/main.py"]
