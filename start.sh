@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # start.sh
-# The Linux counterpart to start.ps1 -- this is what Render runs.
+# The Linux counterpart to start.ps1 -- the launcher for every non-Windows
+# deployment. systemd runs it on the VPS (see deploy/auctoniq.service, which
+# sets HOST=127.0.0.1 and PORT=8000); it is also the entry point for a plain
+# Linux box or WSL, and for a container platform that wants a shell launcher
+# rather than the Dockerfile's `python api/main.py`.
 #
 # start.ps1 stays exactly as it is. It is how the project runs on Windows, and
 # nothing here changes or replaces it. This is a translation for a different OS
@@ -39,12 +43,41 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND="$ROOT/ipl_auction_rag_backend"
 PORT="${PORT:-8001}"
 
+# Which interface to bind. The default is the one a container platform needs;
+# a reverse-proxy deployment overrides it to loopback.
+#
+#   0.0.0.0     Render, Docker, Hugging Face Spaces. The platform routes to the
+#               container's external interface, so binding loopback there makes
+#               the service healthy from inside and unreachable from outside.
+#
+#   127.0.0.1   Behind Nginx on a VPS, set by auctoniq.service. This is a
+#               SECURITY boundary, not a preference: on a public VM, bound to
+#               0.0.0.0 the app answers on :8000 directly, which skips TLS,
+#               skips Nginx's rate limiting and leaves the cloud firewall as the
+#               only thing in front of it. One mistaken ingress rule and the
+#               auctioneer password is crossing the internet in clear text.
+HOST="${HOST:-0.0.0.0}"
+
 step() { printf '\n==> %s\n' "$1"; }
 
 # --- which python ------------------------------------------------------------
-# python3 first: on a bare Ubuntu image `python` may not exist at all. Render's
-# Python runtime provides both, so this is insurance for local Linux use.
-if command -v python3 >/dev/null 2>&1; then
+# The repository's own virtualenv wins when it exists.
+#
+# This is how the VPS deployment gets its dependencies, and it is deliberately
+# NOT `source .venv/bin/activate`. Activation is a convenience for interactive
+# shells: it edits PATH and PS1 in a shell you are sitting in. systemd runs
+# ExecStart with no shell at all, so there is nothing to activate into -- but
+# naming the interpreter inside the venv has exactly the effect that matters,
+# because a Python interpreter resolves its own site-packages from its location.
+# One line, no shell required, and it behaves identically when you run this
+# script by hand.
+#
+# Falls through to a system interpreter when there is no venv, which is the
+# case inside the Docker image: pip installs into the image's own site-packages
+# there and a virtualenv would be pure overhead.
+if [ -x "$ROOT/.venv/bin/python" ]; then
+    PYTHON="$ROOT/.venv/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
     PYTHON=python3
 elif command -v python >/dev/null 2>&1; then
     PYTHON=python
@@ -104,7 +137,7 @@ fi
 # both, and it is the path that is correct locally.
 cd "$BACKEND"
 
-step "Starting AUCTONIQ on 0.0.0.0:$PORT"
+step "Starting AUCTONIQ on $HOST:$PORT"
 
 # `exec` matters, and not only for tidiness. It replaces this shell with uvicorn
 # so that the process Render signals IS uvicorn. Without it, SIGTERM on deploy
@@ -114,20 +147,28 @@ step "Starting AUCTONIQ on 0.0.0.0:$PORT"
 # a NON-daemon thread, so the process can then hang instead of exiting, and
 # Render waits out its timeout before killing it on every single deploy.
 #
-# --host 0.0.0.0
-#     Render routes to the container's external interface. Bound to 127.0.0.1
-#     the service is up, healthy from inside, and unreachable from the internet.
+# --host "$HOST"
+#     See the HOST assignment at the top of this file. 0.0.0.0 for a container
+#     platform that routes to the external interface; 127.0.0.1 behind Nginx,
+#     where binding anything wider publishes an untrusted port.
 #
 # --forwarded-allow-ips '*'
-#     Render terminates TLS and proxies to this container, so every request
-#     arrives over plain HTTP carrying X-Forwarded-Proto: https. uvicorn ignores
-#     those headers unless the immediate peer is in this list, and the peer here
-#     is Render's proxy, not 127.0.0.1 -- so without it the app believes it is
-#     serving HTTP and any absolute URL or redirect it builds comes out as
-#     http://, which a browser on an https page then refuses as mixed content.
-#     '*' is safe in this topology because nothing but Render's proxy can reach
-#     the container. Note also that auction/ws.py's RateLimiter is per
-#     connection, not per IP, so no access control depends on this.
+#     Whatever terminates TLS -- Render's proxy, or Nginx on the VPS -- proxies
+#     to this process over plain HTTP carrying X-Forwarded-Proto: https. uvicorn
+#     ignores those headers unless the immediate peer is in this list, so
+#     without it the app believes it is serving HTTP and any absolute URL or
+#     redirect it builds comes out as http://, which a browser on an https page
+#     then refuses as mixed content.
+#
+#     '*' is safe in BOTH topologies, for the same underlying reason: nothing
+#     can reach this process except the proxy in front of it. On Render that is
+#     the platform's network; on the VPS it is because HOST=127.0.0.1 means the
+#     only possible peer is a process on the same machine. If you ever widen
+#     HOST on a public box, this becomes a real header-spoofing surface and must
+#     be narrowed to the proxy's address.
+#
+#     Note also that auction/ws.py's RateLimiter is per connection, not per IP,
+#     so no access control depends on this.
 #
 # NO --reload
 #     Same reason start.ps1 defaults it off: a reload drops every open
@@ -142,7 +183,7 @@ step "Starting AUCTONIQ on 0.0.0.0:$PORT"
 #     whichever worker accepted their socket, each seeing only half the bids,
 #     with two different players on the block. Scale this service UP, never OUT.
 exec "$PYTHON" -m uvicorn api.main:app \
-    --host 0.0.0.0 \
+    --host "$HOST" \
     --port "$PORT" \
     --proxy-headers \
     --forwarded-allow-ips '*'

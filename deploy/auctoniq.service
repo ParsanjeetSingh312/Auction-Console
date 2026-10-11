@@ -1,0 +1,138 @@
+# auctoniq.service
+# systemd unit for AUCTONIQ on an Ubuntu VPS.
+#
+# INSTALL
+#     sudo cp deploy/auctoniq.service /etc/systemd/system/
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now auctoniq
+#
+# OPERATE
+#     systemctl status auctoniq
+#     journalctl -u auctoniq -f          follow the log
+#     sudo systemctl restart auctoniq    after a git pull
+#
+# This assumes the layout the runbook creates: the repository at
+# /opt/auctoniq, owned by a dedicated `auctoniq` user, with its virtualenv at
+# /opt/auctoniq/.venv. Change Environment=, User= and the paths together if you
+# put it somewhere else -- they are not independent.
+
+[Unit]
+Description=AUCTONIQ auction platform
+Documentation=https://github.com/ParsanjeetSingh312/Auction-Console
+
+# Ordering only, not a hard requirement. `network-online.target` waits for an
+# interface with a route, which matters because uvicorn binds at startup and a
+# bind to an address the kernel does not have yet fails outright.
+After=network-online.target
+Wants=network-online.target
+
+# Do not give up. The default (5 starts in 10s) trips during exactly the
+# situation where restarting is most useful: a database or network blip that
+# resolves in a minute. With no limit, a genuine crash loop is still obvious in
+# the journal, but systemd will not disable the unit overnight.
+#
+# This lives in [Unit], NOT [Service]. It moved in systemd 229, and left in
+# [Service] it is not merely ignored -- systemd logs "Unknown lvalue
+# 'StartLimitIntervalSec' in section 'Service'" and the rate limit silently
+# stays at its default.
+StartLimitIntervalSec=0
+
+
+[Service]
+Type=exec
+
+# A dedicated unprivileged user. NOT root, and not your login account: this
+# process parses untrusted input (every WebSocket frame, every SCOUT query) and
+# drives a real Chromium at scraped pages. The blast radius of a compromise
+# should be one directory, not the machine.
+#
+# Create it with:
+#     sudo useradd --system --home /opt/auctoniq --shell /usr/sbin/nologin auctoniq
+User=auctoniq
+Group=auctoniq
+
+WorkingDirectory=/opt/auctoniq
+
+# Loopback only -- Nginx is the single public entrance, and it terminates TLS.
+# See the HOST block in start.sh: bound to 0.0.0.0 on a public VM the app would
+# answer on :8000 directly, bypassing TLS and anything Nginx enforces.
+Environment=HOST=127.0.0.1
+Environment=PORT=8000
+
+# Unbuffered, so journalctl shows a line when it is logged rather than when the
+# buffer happens to flush. Without this a crash can lose the output that
+# explains it.
+Environment=PYTHONUNBUFFERED=1
+
+# Where Playwright's Chromium lives, matching what the runbook installs. It is
+# set here rather than left to default because the default is under the
+# INSTALLING user's home -- root's, if you installed with sudo -- which the
+# auctoniq user cannot read.
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+
+# The Hugging Face cache, named explicitly rather than left to default.
+#
+# It would default to $HOME/.cache/huggingface, and $HOME here is whatever
+# systemd derives for the auctoniq user -- which is correct only as long as the
+# useradd --home in the runbook stays in sync with it. Stating it removes that
+# coupling, and makes the ~1.2 GB of weights land somewhere ReadWritePaths
+# below actually covers. Get this wrong and the first model load fails with
+# EACCES, long after startup looked fine.
+Environment=HF_HOME=/opt/auctoniq/.cache/huggingface
+
+# Secrets come from a file systemd reads as root before dropping privileges, so
+# API keys never appear in this unit, in `systemctl show`, or in the process
+# environment of anything but this service.
+#
+#     sudo install -o auctoniq -g auctoniq -m 600 \
+#         ipl_auction_rag_backend/.env /opt/auctoniq/ipl_auction_rag_backend/.env
+#
+# The leading `-` means "start anyway if it is missing": the app degrades to no
+# LLM rather than refusing to boot, which is the same choice config/settings.py
+# makes everywhere else.
+EnvironmentFile=-/opt/auctoniq/ipl_auction_rag_backend/.env
+
+ExecStart=/opt/auctoniq/start.sh
+
+# SIGINT, not the default SIGTERM. uvicorn treats SIGINT as the graceful
+# shutdown signal: it stops accepting, lets in-flight requests finish and runs
+# the lifespan teardown -- which is what closes the SCOUT aiosqlite
+# checkpointer. That checkpointer runs on a NON-daemon thread, so skipping its
+# close can leave the process hanging until the timeout below kills it.
+KillSignal=SIGINT
+
+# Generous, because shutdown is not instant: open WebSockets are closed, the
+# checkpointer is flushed. Still bounded, so a wedged process cannot block a
+# deploy forever.
+TimeoutStopSec=30
+
+# Always, not on-failure. A clean exit is not expected here -- this process is
+# meant to run forever, so exit(0) is itself a reason to come back.
+Restart=always
+RestartSec=5
+
+# --- hardening ---------------------------------------------------------------
+# Cheap, and this service reaches the internet in both directions.
+NoNewPrivileges=true
+PrivateTmp=true
+
+# The filesystem is read-only except where this service genuinely writes.
+ProtectSystem=strict
+ProtectHome=true
+
+# SQLite, the Chroma index, the SCOUT checkpoint and the HF model cache all live
+# under the repository, so that one path is the only writable one it needs.
+ReadWritePaths=/opt/auctoniq
+
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+# Chromium needs user namespaces for its sandbox. RestrictNamespaces=true here
+# would break SCOUT's scraper with an error that looks nothing like its cause --
+# so this is deliberately absent rather than forgotten.
+
+
+[Install]
+WantedBy=multi-user.target

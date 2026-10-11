@@ -1,0 +1,73 @@
+# .gitattributes
+# Line endings, decided here rather than per-machine.
+#
+# WHY THIS FILE EXISTS. Without it, what lands in a working tree depends on each
+# clone's `core.autocrlf`, which is a per-developer setting nobody checks. This
+# repository is developed on Windows and deployed to Linux, which is exactly the
+# combination where that goes wrong -- and it goes wrong in a way that costs an
+# hour, because the error names neither the file nor the cause:
+#
+#     -bash: ./start.sh: /usr/bin/env: bad interpreter: No such file or directory
+#
+# That is a CRLF `start.sh`. The kernel reads the shebang line including the
+# trailing \r, looks for an interpreter literally named "bash\r", and reports it
+# missing -- without ever mentioning carriage returns. systemd fails the same
+# way, with `Failed to execute command: No such file or directory` for an
+# ExecStart that is plainly right there.
+#
+# Nothing is wrong today: `git show :start.sh | file -` confirms the index holds
+# LF. But that is a consequence of this machine's core.autocrlf=true, not a
+# property of the repository, and it would not survive one clone configured
+# differently or one file committed through a tool that does not normalise.
+
+# Default: normalise text to LF inside the repository, and check it out in the
+# platform's native form. This is the right default for source that no OS cares
+# about the endings of -- .py, .ts, .tsx, .css, .md, .json.
+* text=auto
+
+# --- must be LF in the WORKING TREE, on every platform -----------------------
+# These are read by a Linux kernel or by systemd, both of which treat \r as part
+# of the token rather than as whitespace. `eol=lf` overrides core.autocrlf, so
+# they stay correct even on a Windows checkout.
+*.sh         text eol=lf
+*.service    text eol=lf
+*.socket     text eol=lf
+*.timer      text eol=lf
+Dockerfile   text eol=lf
+*.dockerfile text eol=lf
+.dockerignore text eol=lf
+
+# nginx configuration. nginx itself tolerates CRLF, but the files are edited on
+# the server as often as in the repository and mixed endings in one file are
+# worse than either convention.
+*.conf       text eol=lf
+
+# --- must be CRLF, for the opposite reason -----------------------------------
+# PowerShell handles LF fine when running a script, but Windows tooling that
+# opens these for editing does not all agree, and start.ps1 is the entry point a
+# Windows developer actually touches. Keep it native.
+*.ps1        text eol=crlf
+*.bat        text eol=crlf
+*.cmd        text eol=crlf
+
+# --- never touch -------------------------------------------------------------
+# Marked explicitly so no heuristic ever decides one of these is text and
+# "normalises" bytes in the middle of it. The spreadsheet is a tracked INPUT to
+# ingestion, not a build artifact -- corrupting it would silently change the
+# player pool.
+*.xlsx  binary
+*.xls   binary
+*.db    binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.webp  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.glb   binary
+*.gltf  binary

@@ -51,3 +51,26 @@ Thumbs.db
 *.swp
 .idea/
 .vscode/
+
+# --- private keys, wherever they land ----------------------------------------
+# Added 2026-10-10 after `ssh-keygen` run from the repository root wrote a key
+# pair here: the private half sat unignored in the project folder, one `git add
+# .` away from being published. Nothing leaked, but only because it was caught
+# before the first commit.
+#
+# Filename patterns are a weak defence -- that key was called "Auction-Console",
+# which no pattern below would match. The real rule is that keys live in
+# ~/.ssh and never in a repository. These catch the common accidents.
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+*_rsa
+*_dsa
+*_ecdsa
+*_ed25519
+*.pem
+*.ppk
+*.p12
+*.pfx
+*.key
