@@ -55,7 +55,7 @@ services:
     # node:24-slim), so the PYTHON_VERSION and NODE_VERSION variables the native
     # runtime used are gone -- they would be ignored here and misleading to keep.
     runtime: docker
-    dockerfilePath: ./ipl_auction_rag_backend/docker/Dockerfile.backend
+    dockerfilePath: ./Dockerfile
     dockerContext: .
 
     region: singapore          # Closest Render region to an India-based audience.

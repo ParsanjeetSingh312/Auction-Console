@@ -21,7 +21,10 @@ services:
       # Dockerfile copies both the frontend sources and the backend package, so
       # a narrower context cannot work.
       context: .
-      dockerfile: ipl_auction_rag_backend/docker/Dockerfile.backend
+      # The root Dockerfile, which is where Hugging Face Spaces requires it and
+      # therefore the single one this project keeps. It runs as UID 1000, which
+      # Spaces mandates and which is harmless everywhere else.
+      dockerfile: Dockerfile
 
     # 8001 to match what start.ps1 uses, so the address in your browser is the
     # same either way. The container reads $PORT and falls back to 8001.
@@ -51,13 +54,13 @@ services:
       # on every platform, whereas the variable form made Compose warn that HOME
       # was not set -- HOME is a Unix convention and PowerShell does not define
       # it, so the fallback was being evaluated even though USERPROFILE was fine.
-      - ~/.cache/huggingface:/root/.cache/huggingface
+      - ~/.cache/huggingface:/home/user/.cache/huggingface
 
       # The player database, Chroma index and SCOUT checkpoint. A named volume
       # rather than a bind mount: these are written by Linux processes inside the
       # container and there is no reason to hand them to Windows, but they should
       # survive `docker compose down` so ingestion is not repeated every time.
-      - auctoniq-data:/app/data
+      - auctoniq-data:/home/user/app/data
 
     # The image's CMD already binds $PORT on 0.0.0.0 with proxy headers, so there
     # is deliberately no `command:` override here. Setting one would duplicate

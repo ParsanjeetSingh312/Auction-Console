@@ -1,3 +1,23 @@
+---
+title: AUCTONIQ
+emoji: 🏏
+colorFrom: yellow
+colorTo: indigo
+sdk: docker
+app_port: 8001
+pinned: false
+---
+
+<!--
+The YAML block above is read by Hugging Face Spaces and ignored everywhere else.
+`sdk: docker` tells it to build the Dockerfile at the repository root, and
+`app_port: 8001` matches the port the container listens on -- the CMD reads
+$PORT and falls back to 8001, so nothing else needs to agree with this number.
+
+It must remain the FIRST thing in this file. Spaces parses the frontmatter from
+the top of README.md and will not find it otherwise.
+-->
+
 # IPL Auction Console
 
 A unified auction dashboard: the `auction-console.html` prototype rebuilt in
