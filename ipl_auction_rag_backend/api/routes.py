@@ -2,6 +2,7 @@
 routes.py
 FastAPI router exposing the RAG search engine API endpoints.
 """
+import asyncio
 import logging
 from typing import Any
 
@@ -165,7 +166,14 @@ async def ingest(request: IngestRequest | None = None) -> IngestResponse:
         excel_path = request.excel_path if request else None
         reset = request.reset if request else True
         
-        result = run_ingestion(excel_path=excel_path, reset=reset)
+        # On a worker thread, not the event loop. Ingestion embeds every player
+        # on the CPU -- minutes on a throttled host -- and this process has one
+        # event loop serving everything: run inline, it froze /ping, the
+        # console and the auction WebSocket until it finished, and the host's
+        # proxy answered every request with a 502.
+        result = await asyncio.to_thread(
+            run_ingestion, excel_path=excel_path, reset=reset
+        )
 
         # Put SCOUT's research back.
         #
@@ -182,7 +190,7 @@ async def ingest(request: IngestRequest | None = None) -> IngestResponse:
         try:
             from scout.tools.rag_pipeline import replay_research
 
-            replay = replay_research()
+            replay = await asyncio.to_thread(replay_research)
             if replay.ledger_rows:
                 logger.info("SCOUT research replayed: %s", replay.summary())
             for note in replay.notes:
