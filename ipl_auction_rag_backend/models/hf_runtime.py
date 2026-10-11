@@ -153,8 +153,13 @@ def configure_from_settings(*, force: bool = False) -> str:
     from config.settings import get_settings
 
     settings = get_settings()
+    # A disabled reranker is never downloaded, so it must not count as "missing"
+    # -- otherwise the cache never looks complete and HF never goes offline.
+    models = (settings.EMBEDDING_MODEL_NAME,)
+    if settings.RERANKER_ENABLED:
+        models += (settings.RERANKER_MODEL_NAME,)
     return configure(
-        (settings.EMBEDDING_MODEL_NAME, settings.RERANKER_MODEL_NAME),
+        models,
         settings.HUGGINGFACE_API_KEY,
         force=force,
     )

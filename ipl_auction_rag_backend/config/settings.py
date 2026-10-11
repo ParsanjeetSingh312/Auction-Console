@@ -90,6 +90,11 @@ class Settings(BaseSettings):
     
     # --- Reranker Model (runs locally on CPU) ---
     RERANKER_MODEL_NAME: str = "BAAI/bge-reranker-large"
+    # False never downloads or loads the cross-encoder: retrieval returns the
+    # vector-search order instead. For hosts with too little memory for it --
+    # bge-reranker-base alone is ~1 GB of weights on top of torch -- such as
+    # Railway's trial plan. Costs ranking precision, not any feature.
+    RERANKER_ENABLED: bool = True
     
     # --- LLM provider ---
     # "auto" picks whichever key is present, preferring Gemini when both are.

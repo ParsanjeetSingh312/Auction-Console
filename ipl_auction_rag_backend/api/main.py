@@ -99,10 +99,13 @@ async def _warm_models() -> None:
         loader()
         logger.info("Warmed %s in %.1fs", label, time.perf_counter() - mark)
 
-    for label, path in (
-        ("embedding model", "models.embedding_loader:get_embedding_model"),
-        ("reranker model", "models.reranker_loader:get_reranker_model"),
-    ):
+    models = [("embedding model", "models.embedding_loader:get_embedding_model")]
+    if get_settings().RERANKER_ENABLED:
+        models.append(("reranker model", "models.reranker_loader:get_reranker_model"))
+    else:
+        logger.info("Reranker disabled (RERANKER_ENABLED=false); not loading it")
+
+    for label, path in models:
         module_name, attr = path.split(":")
         try:
             module = __import__(module_name, fromlist=[attr])

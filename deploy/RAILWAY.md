@@ -29,6 +29,7 @@ Nothing else is needed; the entrypoint redirects all state there.
 | Variable | Value |
 | --- | --- |
 | `RERANKER_MODEL_NAME` | `BAAI/bge-reranker-base` (the code default is the 2 GB `large`) |
+| `RERANKER_ENABLED` | `false` on the trial plan (~1 GB memory cap): skips the ~1 GB cross-encoder, results keep vector-search order. Remove it on Hobby or above |
 | `AUCTIONEER_PASSWORD` | your choice: blank keeps the auctioneer chair locked |
 | `ADMIN_API_KEY` | a long random string: blank leaves `/ingest` open to anyone |
 | `DATABASE_URL` | Supabase **session pooler** string, if you use Supabase. Omit to use SQLite on the volume |

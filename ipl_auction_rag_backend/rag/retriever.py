@@ -46,6 +46,7 @@ def retrieve(
         List of RetrievedDocument, sorted by relevance.
     """
     settings = get_settings()
+    use_reranker = use_reranker and settings.RERANKER_ENABLED
     vector_top_k = settings.VECTOR_SEARCH_TOP_K
     final_top_k = top_k or settings.RERANK_TOP_K
     

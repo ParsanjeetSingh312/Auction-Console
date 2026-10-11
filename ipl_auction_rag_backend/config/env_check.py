@@ -635,6 +635,12 @@ def _gb(value: float) -> str:
 def _check_reranker_footprint(settings: Settings) -> Finding:
     """Will the configured reranker fit in the memory this machine has spare?"""
     name = settings.RERANKER_MODEL_NAME
+    if not settings.RERANKER_ENABLED:
+        return Finding(
+            "RERANKER_MODEL_NAME",
+            Severity.OK,
+            "disabled (RERANKER_ENABLED=false) - results keep vector-search order",
+        )
     cache = _hf_cache_dir(name)
 
     if cache is None:

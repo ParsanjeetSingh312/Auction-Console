@@ -354,6 +354,11 @@ def rerank(query: str, refs: list[RetrievedRef], *, top_k: int = 5) -> list[Retr
     """
     if not refs:
         return refs
+    from config.settings import get_settings
+
+    if not get_settings().RERANKER_ENABLED:
+        # Already sorted by vector score in `semantic`; keep that order.
+        return refs[:top_k]
     # The existing loader, rather than a second CrossEncoder: it is lru_cached,
     # so the console's own reranking and SCOUT's share one 2.2 GB model in
     # memory instead of loading it twice.
