@@ -42,6 +42,9 @@
   font-family: "Chakra Petch", "Inter", system-ui, sans-serif;
   color: var(--mo-text);
   --oCenter: 0;
+  /* The stage fills the sheet and sits above the transcript, so it must let
+     the wheel through: only the parts you actually touch take pointer events. */
+  pointer-events: none;
 }
 
 .mo-bg {
@@ -98,6 +101,7 @@
   height: var(--h);
   border-radius: var(--r);
   transform: translate(-50%, -50%) scale(var(--cs, 1));
+  pointer-events: auto;
 }
 .mo-actor[data-shake] { animation: mo-shake 260ms ease-in-out; }
 
@@ -477,6 +481,7 @@
   gap: 8px;
   width: min(560px, calc(100% - 32px));
   transform: translateX(-50%);
+  pointer-events: auto;
   transition: opacity 200ms ease, transform 200ms ease;
 }
 .mo-root:not([data-phase="idle"]) .mo-suggest {
