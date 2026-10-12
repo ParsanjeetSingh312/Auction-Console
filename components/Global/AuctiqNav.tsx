@@ -42,7 +42,7 @@
  * `styles.css` in the same breath or the bar loses its styling silently, and it
  * would buy nothing a visitor can see.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
 
@@ -90,6 +90,7 @@ const DESTINATIONS: Destination[] = [
     label: "Live Bidding",
     hint: "Live Bidding — join the auction room",
   },
+  { to: "/about", label: "About", hint: "About — what AUCTONIQ is and how it works" },
   // Hidden from the bar, live everywhere else. See `Destination.hidden`.
   { to: "/console", label: "Console", hint: "Console — the offline auction console", hidden: true },
   { to: "/classic", label: "Classic", hint: "Classic — the original welcome screen", hidden: true },
@@ -100,8 +101,9 @@ const DESTINATIONS: Destination[] = [
  *
  * Out here rather than inline in the dialog so the markup below stays readable
  * as markup, and so changing a sentence does not mean editing inside JSX.
+ * Exported because the About page (pages/About.tsx) carries the same words.
  */
-const HOW_IT_WORKS: { step: string; title: string; body: string }[] = [
+export const HOW_IT_WORKS: { step: string; title: string; body: string }[] = [
   {
     step: "01",
     title: "Build the room",
@@ -119,7 +121,7 @@ const HOW_IT_WORKS: { step: string; title: string; body: string }[] = [
   },
 ];
 
-const PROBLEMS_SOLVED: { title: string; body: string }[] = [
+export const PROBLEMS_SOLVED: { title: string; body: string }[] = [
   {
     title: "No more spreadsheet errors",
     body: "A shared sheet has one person typing and everyone else trusting them. Here the room holds the state, so a mistyped bid is not a silent mistake that surfaces three lots later.",
@@ -140,6 +142,11 @@ const PROBLEMS_SOLVED: { title: string; body: string }[] = [
 
 /**
  * The About dialog.
+ *
+ * Superseded by the /about page and unmounted: the nav's About entry is a link
+ * now. Kept on disk rather than deleted, like `LiveBiddingCard`; restoring it
+ * is an `aboutOpen` state, a button in the bar and the render line at the
+ * bottom of `AuctiqNav`.
  *
  * Deliberately in this file rather than its own. It has exactly one trigger,
  * the button beside it, and splitting the two would mean shipping a nav with a
@@ -295,8 +302,6 @@ function AboutDialog({ onClose }: { onClose: () => void }) {
 
 export default function AuctiqNav() {
   const { pathname } = useLocation();
-  const [aboutOpen, setAboutOpen] = useState(false);
-  const aboutButton = useRef<HTMLButtonElement>(null);
 
   /*
     Filtered here, before anything is rendered, and this ordering is the bug it
@@ -306,14 +311,6 @@ export default function AuctiqNav() {
     as a hidden entry sorted first.
   */
   const visible = DESTINATIONS.filter((destination) => !destination.hidden);
-
-  const closeAbout = useCallback(() => {
-    setAboutOpen(false);
-    // Focus goes back where it came from. Without this a keyboard user closes
-    // the dialog and lands at the top of the document, several tab stops from
-    // the control they were just on.
-    aboutButton.current?.focus();
-  }, []);
 
   return (
     <header className="auctiq-drop-in fixed inset-x-0 top-0 z-40 bg-gradient-to-b from-auctiq-void/92 via-auctiq-void/55 to-transparent">
@@ -380,35 +377,6 @@ export default function AuctiqNav() {
               );
             })}
 
-            {/*
-              About is a button, not a Link, because it opens a dialog rather
-              than going anywhere. Rendering it as a Link with a fake `to` would
-              put a destination in the accessibility tree that does not exist,
-              and would break middle-click and "open in new tab" in a way a
-              visitor cannot predict.
-            */}
-            <li className="flex items-center">
-              {visible.length > 0 && (
-                <span aria-hidden className="px-1 text-white/20">
-                  |
-                </span>
-              )}
-              <button
-                ref={aboutButton}
-                type="button"
-                onClick={() => setAboutOpen(true)}
-                aria-haspopup="dialog"
-                aria-expanded={aboutOpen}
-                data-testid="nav-about"
-                className={`flex min-h-[44px] items-center whitespace-nowrap px-2.5 font-tech text-[12px] font-medium uppercase tracking-[0.12em] transition-colors duration-200 sm:px-3 ${
-                  aboutOpen
-                    ? "text-neon-cyan"
-                    : "text-auctiq-dim hover:text-auctiq-text"
-                }`}
-              >
-                About
-              </button>
-            </li>
           </ul>
         </nav>
 
@@ -426,18 +394,21 @@ export default function AuctiqNav() {
             "Join now" goes to the auction room, which is the only thing on this
             product a visitor can actually join. There is no sign-up flow behind
             it and it does not pretend there is.
+
+            On a dark plate rather than a bare outline. The bar's scrim is
+            transparent at its lower edge, and over the About page's floodlit
+            sky a cyan outline with no fill all but vanished. The plate carries
+            its own contrast, so the button reads the same over any page.
           */}
           <Link
             to="/auction/live"
             data-testid="nav-join-now"
-            className="ml-1 flex min-h-[38px] items-center whitespace-nowrap rounded-[6px] border border-neon-cyan/60 px-3.5 font-tech text-[11px] font-semibold uppercase tracking-[0.14em] text-neon-cyan transition-colors duration-200 hover:border-neon-cyan hover:bg-neon-cyan/10 sm:px-4"
+            className="ml-1 flex min-h-[38px] items-center whitespace-nowrap rounded-[6px] border border-neon-cyan bg-auctiq-void/85 px-3.5 font-tech text-[11px] font-semibold uppercase tracking-[0.14em] text-neon-cyan shadow-neon-cyan backdrop-blur-sm transition-colors duration-200 hover:bg-neon-cyan hover:text-auctiq-void sm:px-4"
           >
             Join now
           </Link>
         </div>
       </div>
-
-      {aboutOpen && <AboutDialog onClose={closeAbout} />}
     </header>
   );
 }

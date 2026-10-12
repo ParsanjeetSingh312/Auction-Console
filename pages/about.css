@@ -1,0 +1,128 @@
+/*
+ * about.css
+ * The About page, from the AUCTONIQ about prototype.
+ *
+ * Every rule is scoped to `.about-page`. The prototype's class names are
+ * generic (`.page-width`, `.eyebrow`, `.disclaimer`), and Vite keeps a lazy
+ * chunk's CSS in the document after the chunk loads -- unscoped, these would
+ * follow a visitor from /about back to the landing and restyle it.
+ *
+ * The palette and the type pairing are the prototype's own. They sit on the
+ * same navy ground as the landing, and the shared nav and footer carry the
+ * site's Chakra Petch either side of them.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap");
+
+.about-page {
+  --about-background: oklch(0.155 0.024 265);
+  --about-foreground: oklch(0.965 0.009 255);
+  --about-card: oklch(0.205 0.028 263);
+  --about-primary: oklch(0.705 0.164 248);
+  --about-secondary: oklch(0.25 0.045 257);
+  --about-muted: oklch(0.717 0.026 255);
+  --about-border: oklch(0.31 0.033 260);
+  --about-highlight: oklch(0.826 0.13 85);
+  --about-highlight-surface: oklch(0.25 0.027 82);
+  --about-hero-shade: linear-gradient(90deg, oklch(0.145 0.03 264 / 95%) 0%, oklch(0.145 0.03 264 / 75%) 36%, oklch(0.145 0.03 264 / 5%) 78%);
+  --about-font-sans: "Manrope", sans-serif;
+  --about-font-display: "Space Grotesk", sans-serif;
+
+  background: var(--about-background);
+  color: var(--about-foreground);
+}
+
+.about-page main {
+  font-family: var(--about-font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+.about-page main h1,
+.about-page main h2,
+.about-page main h3 { font-family: var(--about-font-display); letter-spacing: 0; }
+.about-page main ::selection { background: var(--about-primary); color: var(--about-background); }
+
+.about-page .page-width { width: min(1120px, calc(100% - 80px)); margin-inline: auto; }
+
+/* Hero. The prototype's own header is replaced by the site's fixed nav, so
+   the content is pushed down by the nav's height instead of sitting under it. */
+.about-page .about-hero { position: relative; overflow: hidden; border-bottom: 1px solid var(--about-border); }
+.about-page .hero-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 64%; }
+.about-page .about-hero::after { content: ""; position: absolute; inset: 0; background: var(--about-hero-shade); }
+.about-page .hero-content { position: relative; z-index: 1; padding-block: 126px 45px; }
+.about-page .eyebrow { font-size: 10px; font-weight: 700; letter-spacing: 2px; color: var(--about-primary); text-transform: uppercase; display: flex; align-items: center; gap: 9px; }
+.about-page .eyebrow::before { content: ""; width: 21px; height: 2px; background: var(--about-primary); }
+.about-page .hero-content h1 { font-size: 46px; font-weight: 600; line-height: 1.15; margin: 19px 0 12px; }
+.about-page .hero-subtitle { font-size: 19px; font-weight: 500; margin: 0 0 18px; }
+.about-page .hero-description { max-width: 540px; font-size: 13px; line-height: 1.85; color: var(--about-muted); margin: 0 0 13px; }
+.about-page .hero-tags { display: flex; gap: 23px; margin-top: 26px; color: var(--about-foreground); font-size: 11px; }
+.about-page .hero-tags span { display: flex; align-items: center; gap: 7px; }
+.about-page .hero-tags svg { width: 14px; height: 14px; color: var(--about-primary); }
+
+/* Sections */
+.about-page .content-section { padding-block: 35px; border-bottom: 1px solid var(--about-border); }
+.about-page .section-heading { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 24px; gap: 16px; }
+.about-page .section-heading h2 { font-size: 22px; font-weight: 500; margin: 0; }
+.about-page .section-index { color: var(--about-primary); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; }
+
+.about-page .interface-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 46px; }
+.about-page .interface-item { display: flex; gap: 19px; }
+.about-page .interface-item + .interface-item { border-left: 1px solid var(--about-border); padding-left: 35px; }
+.about-page .icon-box { display: grid; place-items: center; width: 43px; height: 43px; flex-shrink: 0; border: 1px solid var(--about-border); background: var(--about-secondary); color: var(--about-primary); border-radius: 6px; }
+.about-page .icon-box svg { width: 21px; height: 21px; }
+.about-page .interface-item h3 { font-size: 17px; margin: 1px 0 9px; font-weight: 500; }
+.about-page .interface-item p,
+.about-page .step-card p,
+.about-page .fix-item p { font-size: 12px; line-height: 1.85; color: var(--about-muted); margin: 0; }
+.about-page .interface-label { display: inline-block; margin-top: 14px; font-size: 9px; letter-spacing: 1.3px; color: var(--about-primary); text-transform: uppercase; }
+
+.about-page .steps-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 0; padding: 0; list-style: none; }
+.about-page .step-card { border: 1px solid var(--about-border); border-radius: 8px; background: var(--about-card); padding: 21px 23px 24px; transition: border-color 180ms ease, transform 180ms ease; }
+.about-page .step-card:hover { border-color: var(--about-primary); transform: translateY(-3px); }
+.about-page .step-top { display: flex; align-items: center; justify-content: space-between; color: var(--about-primary); margin-bottom: 19px; }
+.about-page .step-top span { font-family: var(--about-font-display); font-size: 14px; }
+.about-page .step-top svg { width: 18px; height: 18px; }
+.about-page .step-card h3,
+.about-page .fix-item h3 { font-size: 12px; font-weight: 600; margin: 0 0 10px; text-transform: uppercase; }
+
+.about-page .fixes-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 45px; margin: 0; padding: 0; list-style: none; }
+.about-page .fix-item { display: flex; gap: 15px; padding: 21px 0; }
+.about-page .fix-item:nth-child(-n + 2) { border-bottom: 1px solid var(--about-border); padding-top: 0; }
+.about-page .fix-item:nth-child(n + 3) { padding-bottom: 0; }
+.about-page .fix-icon { width: 18px; height: 18px; color: var(--about-primary); flex-shrink: 0; margin-top: 1px; }
+
+.about-page .disclaimer { display: flex; gap: 17px; padding: 23px 25px; margin-block: 30px; background: var(--about-highlight-surface); border: 1px solid color-mix(in oklab, var(--about-highlight) 40%, transparent); border-left: 3px solid var(--about-highlight); border-radius: 6px; }
+.about-page .disclaimer-icon { width: 22px; height: 22px; color: var(--about-highlight); flex-shrink: 0; margin-top: 2px; }
+.about-page .disclaimer h2 { color: var(--about-highlight); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 9px; }
+.about-page .disclaimer p { font-size: 11px; line-height: 1.9; color: var(--about-foreground); margin: 0; }
+
+/* The nav wraps to two rows below `sm` (640px), so the hero clears more. */
+@media (max-width: 639px) {
+  .about-page .hero-content { padding-top: 132px; }
+}
+
+@media (max-width: 700px) {
+  .about-page .page-width { width: calc(100% - 40px); }
+  .about-page .hero-content { padding-bottom: 36px; }
+  .about-page .hero-content h1 { font-size: 34px; }
+  .about-page .hero-subtitle { font-size: 16px; max-width: 270px; }
+  .about-page .hero-description { max-width: 310px; }
+  .about-page .hero-image { object-position: 62% center; opacity: 0.6; }
+  .about-page .hero-tags { flex-wrap: wrap; gap: 12px 17px; font-size: 10px; }
+  .about-page .section-heading h2 { font-size: 20px; }
+  .about-page .section-index { font-size: 8px; letter-spacing: 1px; }
+  .about-page .interface-grid,
+  .about-page .steps-grid,
+  .about-page .fixes-grid { grid-template-columns: 1fr; gap: 22px; }
+  .about-page .interface-item + .interface-item { border-left: 0; padding-left: 0; border-top: 1px solid var(--about-border); padding-top: 23px; }
+  .about-page .steps-grid { gap: 12px; }
+  .about-page .step-top { margin-bottom: 15px; }
+  .about-page .fixes-grid { gap: 0; }
+  .about-page .fix-item:nth-child(n) { padding-block: 21px; border-bottom: 1px solid var(--about-border); }
+  .about-page .fix-item:first-child { padding-top: 0; }
+  .about-page .fix-item:last-child { border-bottom: 0; padding-bottom: 0; }
+  .about-page .disclaimer { padding: 19px 16px; gap: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .about-page .step-card { transition: none; }
+  .about-page .step-card:hover { transform: none; }
+}

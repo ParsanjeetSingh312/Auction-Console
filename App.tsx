@@ -12,6 +12,7 @@
  *   /data            read-only analytics — pool, teams, SCOUT. No block.
  *   /auction         the live room: auctioneer or franchise
  *   /auction/demo    the standalone war-room on its mock feed (Phase 3)
+ *   /about           what AUCTONIQ is, how it works, the disclaimer
  *   /console         the unified Phase 2/3 console, unchanged
  *
  * `/console` and `/auction/demo` are kept deliberately. They are the Phase 2
@@ -47,6 +48,7 @@ import { useScoutHotkey } from "./console/scoutStore";
 const Auctiq = lazy(() => import("./pages/Auctiq"));
 const DataRoom = lazy(() => import("./pages/DataRoom"));
 const LiveAuction = lazy(() => import("./pages/LiveAuction"));
+const About = lazy(() => import("./pages/About"));
 const AuctionConsole = lazy(() => import("./components/Console/AuctionConsole"));
 const AuctionBlock = lazy(() => import("./components/Auction/AuctionBlock"));
 // The scene bench, while the 3D landing is being built piece by piece.
@@ -85,6 +87,7 @@ export default function App() {
               each piece can be scrolled and judged as it lands, rather than
               only once the whole scene is wired into the hero. */}
           <Route path="/stadium" element={<StadiumLab />} />
+          <Route path="/about" element={<About />} />
           <Route path="/console" element={<AuctionConsole />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
