@@ -37,7 +37,8 @@ import { AuctiqMark } from "../Global/AuctiqLogo";
 // disk and unmounted; restoring it is this import and the line below.
 import WarRoomTrigger from "../WarRoom/WarRoomTrigger";
 import TrendingPlayersCard from "../UI/TrendingPlayersCard";
-import UpcomingAuctionsCard from "../UI/UpcomingAuctionsCard";
+// Removed from the hero after deployment. `UpcomingAuctionsCard` is kept on
+// disk and unmounted; restoring it is its import and a line in the panel stack.
 
 /**
  * Lazy for the same reason the previous hero loads it lazily: three + fiber +
@@ -126,10 +127,9 @@ export default function BroadcastHero() {
         currently doing, and a reader who meets all six at once has no idea which
         to look at first.
       */}
-      <div className="auctiq-stagger flex flex-col gap-3 [&>*:nth-child(1)]:[animation-delay:0.30s] [&>*:nth-child(2)]:[animation-delay:0.41s] [&>*:nth-child(3)]:[animation-delay:0.52s]">
+      <div className="auctiq-stagger flex flex-col gap-3 [&>*:nth-child(1)]:[animation-delay:0.30s] [&>*:nth-child(2)]:[animation-delay:0.41s]">
         <WarRoomTrigger />
         <TrendingPlayersCard />
-        <UpcomingAuctionsCard />
       </div>
     </section>
   );
