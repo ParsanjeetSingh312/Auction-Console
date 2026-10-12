@@ -30,7 +30,7 @@ configured and unused.
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 import httpx
 
@@ -227,6 +227,7 @@ def complete(
     timeout: float = 60.0,
     prefer: Provider | None = None,
     json_object: bool = False,
+    on_answer: Callable[[Provider], None] | None = None,
 ) -> str:
     """
     Run a chat completion against the active provider.
@@ -239,6 +240,10 @@ def complete(
     that arrives, or one error naming every rung that failed -- which is the
     difference between "the assistant is down" and "here is what each vendor
     said", and the second is the one an operator can act on.
+
+    `on_answer`, if given, is called with the provider that actually answered.
+    That is not necessarily the head of the chain -- `active_provider()` names
+    who was asked first, not who replied after an earlier rung fell through.
     """
     chain = provider_chain()
 
@@ -258,7 +263,7 @@ def complete(
     failures: list[str] = []
     for index, provider in enumerate(chain):
         try:
-            return _dispatch(
+            reply = _dispatch(
                 provider, system, messages, task, temperature, max_tokens, timeout,
                 json_object,
             )
@@ -274,6 +279,10 @@ def complete(
                     "%s failed (%s) - falling through to %s",
                     provider, exc, remaining[0],
                 )
+            continue
+        if on_answer is not None:
+            on_answer(provider)
+        return reply
 
     raise LLMError("Every configured provider failed - " + " | ".join(failures))
 

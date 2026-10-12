@@ -326,8 +326,11 @@ export default function ScoutDrawer() {
             </div>
           </div>
 
-          {/* ---- the stage ---- */}
-          <div className="absolute inset-0 z-10">
+          {/* ---- the stage ----
+              Click-through: it covers the transcript, and the wheel has to
+              reach it. ScoutOrb turns pointer events back on for its pill,
+              card and chips. */}
+          <div className="pointer-events-none absolute inset-0 z-10">
             <ScoutOrb
               active={open}
               value={draft}

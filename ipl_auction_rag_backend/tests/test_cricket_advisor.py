@@ -69,9 +69,20 @@ def refs(n: int = 5) -> list[RetrievedRef]:
     ]
 
 
-def stub_model(payload: dict) -> None:
-    """Replace the provider ladder with a fixed reply."""
-    llm_provider.complete = lambda *a, **k: json.dumps(payload)
+def stub_model(payload: dict, answered_by: str = "groq") -> None:
+    """
+    Replace the provider ladder with a fixed reply from a named rung.
+
+    The ladder reports which rung answered through `on_answer`, and the stub
+    must too: otherwise `engine_used` falls back to reading `.env`, and these
+    tests pass or fail on whether the machine running them has a key.
+    """
+    def fake(*a, on_answer=None, **k):
+        if on_answer is not None:
+            on_answer(answered_by)
+        return json.dumps(payload)
+
+    llm_provider.complete = fake
 
 
 def advise(query: AdvisorQuery, retrieval: RetrievalResult | None = None):
@@ -261,6 +272,13 @@ class TestTheShortlistSurvivesABadReply:
         assert [c.player_name for c in rec.candidates] == ["Player 1"]
         assert not any("no usable shortlist" in n for n in rec.notes), (
             "the fallback fired when the model had answered perfectly well")
+
+    def test_the_engine_is_the_rung_that_answered(self):
+        """Not the head of the ladder: Hermes asked first and asleep is not Hermes."""
+        stub_model({"answer": "Player 1 is the one to chase.", "candidates": []},
+                   answered_by="gemini")
+        rec = advise(query("an all rounder under 15 Cr"))
+        assert rec.engine_used == "gemini"
 
     def test_nothing_retrieved_and_nothing_returned_is_an_honest_empty(self):
         """With no rows to fall back to there is nothing to rebuild from."""

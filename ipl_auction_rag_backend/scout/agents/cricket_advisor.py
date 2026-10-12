@@ -413,6 +413,7 @@ async def advise(
         if settings.SCOUT_ADVISOR_USES_HERMES and llm_provider.hermes_configured()
         else None
     )
+    answered_by: list[Engine] = []
     try:
         # `complete` is synchronous -- it posts with sync httpx and, on the
         # Groq and Anthropic rungs, through SDKs that block. Called directly
@@ -426,6 +427,7 @@ async def advise(
             task="rag", temperature=0.2, max_tokens=2600, timeout=timeout,
             prefer=prefer,  # type: ignore[arg-type]
             json_object=True,
+            on_answer=answered_by.append,
         )
     except llm_provider.LLMError as exc:
         notes.append(f"No model answered ({exc}); built the shortlist by rule instead.")
@@ -457,8 +459,14 @@ async def advise(
         return _deterministic(query, retrieval, notes)
 
     # The engine names itself, not the model: a model asked which vendor is
-    # serving it will guess.
-    engine: Engine = prefer if prefer else llm_provider.active_provider()  # type: ignore[assignment]
+    # serving it will guess. And it is the rung that answered, not the one
+    # asked first -- `prefer` and `active_provider()` both name the head of the
+    # ladder, which says "hermes" when Hermes was asleep and Groq replied.
+    engine: Engine = (
+        answered_by[0] if answered_by
+        else prefer if prefer
+        else llm_provider.active_provider()  # type: ignore[assignment]
+    )
     payload["engine_used"] = engine
     payload["max_bid_lakh"] = query.team.max_bid_lakh if query.team else None
     _clamp(payload, query.team, notes)
