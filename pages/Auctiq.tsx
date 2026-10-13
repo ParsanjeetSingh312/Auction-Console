@@ -25,7 +25,11 @@ import AuctiqFooter from "../components/Global/AuctiqFooter";
 import AuctiqNav from "../components/Global/AuctiqNav";
 import BroadcastHero from "../components/Sections/BroadcastHero";
 import StadiumBackdrop from "../components/Sections/StadiumBackdrop";
-import PlayerShowcase from "../components/Sections/PlayerShowcase";
+// The player-select showcase, in place of the scattered deck. `PlayerShowcase`
+// is kept on disk and unmounted: restoring it is this import and one line below.
+import PlayerSelect from "../components/UI/PlayerSelect";
+import { SHOWCASE_PLAYERS } from "../utils/players";
+import { PLAYER_STATS } from "../utils/playerStats";
 
 export default function Auctiq() {
   const page = useRef<HTMLDivElement>(null);
@@ -113,7 +117,7 @@ export default function Auctiq() {
         header and the footer, both of which reach the auction room.
       */}
       <BroadcastHero />
-      <PlayerShowcase />
+      <PlayerSelect players={SHOWCASE_PLAYERS} stats={PLAYER_STATS} />
 
       <AuctiqFooter />
     </div>

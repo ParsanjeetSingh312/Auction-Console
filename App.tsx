@@ -53,6 +53,8 @@ const AuctionConsole = lazy(() => import("./components/Console/AuctionConsole"))
 const AuctionBlock = lazy(() => import("./components/Auction/AuctionBlock"));
 // The scene bench, while the 3D landing is being built piece by piece.
 const StadiumLab = lazy(() => import("./pages/StadiumLab"));
+// Prototype bench for the player-select showcase. Not linked from anywhere.
+const PlayerSelectLab = lazy(() => import("./pages/PlayerSelectLab"));
 
 export default function App() {
   return (
@@ -87,6 +89,7 @@ export default function App() {
               each piece can be scrolled and judged as it lands, rather than
               only once the whole scene is wired into the hero. */}
           <Route path="/stadium" element={<StadiumLab />} />
+          <Route path="/lab/players" element={<PlayerSelectLab />} />
           <Route path="/about" element={<About />} />
           <Route path="/console" element={<AuctionConsole />} />
           <Route path="*" element={<NotFound />} />
