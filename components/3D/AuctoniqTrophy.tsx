@@ -3,9 +3,11 @@
  * The landing's trophy: a gold cricket ball spinning on a tilted off-spin axis
  * above a sculpted silver cradle, a stepped plinth and a gold auction gavel.
  *
- * The model, materials, lighting, camera and controls are the supplied design,
- * unchanged. What this file adds is the render plumbing around it, in the same
- * spirit as `TrophyCanvas`, which it replaces in the hero:
+ * The model, materials, lighting and camera are the supplied design, unchanged.
+ * Its caption and pause/reset bar were removed so the ball always spins.
+ *
+ * What this file adds is the render plumbing around it, in the same spirit as
+ * `TrophyCanvas`, which it replaces in the hero:
  *
  * - **It stops when hidden.** The render loop is cancelled outright while the
  *   stage is off screen or the tab is in the background, rather than drawing
@@ -24,7 +26,6 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as THREE from "three";
-import { Pause, Play, RotateCcw } from "lucide-react";
 
 import { useQuality } from "./rig/quality";
 import "./auctoniqTrophy.css";
@@ -38,9 +39,6 @@ export interface AuctoniqTrophyProps {
 export default function AuctoniqTrophy({ className = "", fallback }: AuctoniqTrophyProps) {
   const quality = useQuality();
   const mount = useRef<HTMLDivElement>(null);
-  const running = useRef(true);
-  const reset = useRef<(() => void) | null>(null);
-  const [paused, setPaused] = useState(false);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -187,7 +185,6 @@ export default function AuctoniqTrophy({ className = "", fallback }: AuctoniqTro
     const up = () => { dragging = false; };
     canvas.addEventListener('pointerdown', down); canvas.addEventListener('pointermove', move);
     canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up); canvas.addEventListener('lostpointercapture', up);
-    reset.current = () => { velocity = 0; targetAzimuth = HOME; };
 
     const resize = new ResizeObserver(() => {
       const { width, height } = host.getBoundingClientRect();
@@ -196,12 +193,13 @@ export default function AuctoniqTrophy({ className = "", fallback }: AuctoniqTro
     });
     resize.observe(host);
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    running.current = !reduced; setPaused(reduced);
 
     const clock = new THREE.Clock(); let frame = 0; let lightTime = 0; let firstFrame = true;
     function animate() {
       frame = requestAnimationFrame(animate); const dt = Math.min(clock.getDelta(), .05);
-      if (running.current) {
+      // Always spinning: there is no pause control. Only a visitor whose system
+      // asks for reduced motion sees it still.
+      if (!reduced) {
         ball.rotation.y += dt * .85;
         lightTime += dt;
         glowMat.opacity = .28 + .035 * Math.sin(lightTime * 3.2);
@@ -234,7 +232,7 @@ export default function AuctoniqTrophy({ className = "", fallback }: AuctoniqTro
       scene.traverse(object => { if (object instanceof THREE.Mesh) object.geometry.dispose(); });
       stitches.dispose();
       [gold,silver,dark,seamMat,accentMat,lightMat,lightningMat,glowMat,haloMat].forEach(m=>m.dispose());
-      env.dispose(); texture.dispose(); pmrem.dispose(); renderer.dispose(); canvas.remove(); reset.current=null;
+      env.dispose(); texture.dispose(); pmrem.dispose(); renderer.dispose(); canvas.remove();
     };
   }, [quality.maxDpr]);
 
@@ -249,22 +247,6 @@ export default function AuctoniqTrophy({ className = "", fallback }: AuctoniqTro
         role="img"
         aria-label="Gold cricket ball rotating on a tilted off-spin axis, above a sculpted silver trophy and gold auction gavel"
       />
-      <div className="trophy-controls">
-        <span className="trophy-caption">THE AUCTONIQ TROPHY</span>
-        <div>
-          <button
-            type="button"
-            aria-label={paused ? 'Play ball rotation' : 'Pause ball rotation'}
-            title={paused ? 'Play rotation' : 'Pause rotation'}
-            onClick={() => { running.current = paused; setPaused(!paused); }}
-          >
-            {paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
-          </button>
-          <button type="button" aria-label="Reset trophy view" title="Reset view" onClick={() => reset.current?.()}>
-            <RotateCcw aria-hidden="true" />
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

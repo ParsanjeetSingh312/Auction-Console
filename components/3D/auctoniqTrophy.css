@@ -28,8 +28,7 @@
   --seam-light: #009dff;
   --seam-light-core: #c1f1ff;
 
-  /* Used by the caption and the contact shadow under the base */
-  --muted-foreground: oklch(.63 .029 255);
+  /* The contact shadow under the base */
   --shadow-contact: radial-gradient(ellipse, oklch(.035 .008 260 / .95) 15%, oklch(.04 .01 260 / .4) 48%, transparent 70%);
 }
 
@@ -41,22 +40,11 @@
 .trophy-canvas:active { cursor: grabbing; }
 .trophy-canvas canvas { display: block; }
 .trophy-shadow { position: absolute; bottom: 65px; left: 25%; width: 50%; height: 38px; background: var(--shadow-contact); }
-.trophy-controls { position: absolute; bottom: 0; left: 20%; right: 20%; display: flex; justify-content: space-between; align-items: center; }
-.trophy-caption { font-size: 9px; color: var(--muted-foreground); }
-.trophy-controls > div { display: flex; color: var(--muted-foreground); }
-.trophy-controls button {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px;
-  background: transparent; color: inherit; cursor: pointer;
-  transition: background-color .15s ease, color .15s ease;
-}
-.trophy-controls button:hover { background: oklch(1 0 0 / .08); color: oklch(.96 .01 255); }
-.trophy-controls button:focus-visible { outline: 2px solid var(--seam-light); outline-offset: 1px; }
-.trophy-controls button svg { width: 16px; height: 16px; }
 
 /* Anchor the contact shadow to the plinth at any stage height. The camera's
  * vertical field of view is fixed, so the base always lands at the same
- * fraction of the canvas height (canvas = stage minus the 28px control bar).
+ * fraction of the canvas height (canvas = stage minus the 28px band
+ * below it, kept where the removed caption bar was so nothing moved).
  * The ratios reproduce the fixed values above exactly at the 480px stage. */
 @supports (container-type: size) {
   .trophy-stage { container-type: size; }
@@ -80,12 +68,10 @@
 
 @media (max-width: 1050px) {
   .trophy-stage { height: 440px; }
-  .trophy-controls { left: 10%; right: 10%; }
 }
 
 @media (max-width: 760px) {
   .trophy-stage { height: 410px; max-width: 480px; }
-  .trophy-controls { left: 12%; right: 12%; }
 }
 
 /* ---- In the landing hero ----
