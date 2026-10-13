@@ -16,10 +16,6 @@
  */
 import { useEffect, useRef } from "react";
 
-import { useReducedMotion } from "framer-motion";
-
-import { useQuality } from "../components/3D/rig/quality";
-import { useJourneyProgress } from "../hooks/useJourney";
 import CricketCursor from "../components/UI/CricketCursor";
 import AuctiqFooter from "../components/Global/AuctiqFooter";
 import AuctiqNav from "../components/Global/AuctiqNav";
@@ -33,34 +29,15 @@ import { PLAYER_STATS } from "../utils/playerStats";
 
 export default function Auctiq() {
   const page = useRef<HTMLDivElement>(null);
-  const quality = useQuality();
-  const reduced = useReducedMotion() ?? false;
 
   /*
-    The journey runs off this page's own scroll rather than a dedicated track.
-
-    The landing already scrolls a long way, so adding a separate tall element to
-    drive the camera would double the page height. Binding the trigger to the
-    page root instead means the arena's beats play out across the sections that
-    are already there — the arena wakes up over the hero, the camera descends
-    through the showcase.
-
-    **No Lenis here, deliberately.** Smooth scroll is what gives the prototype
-    its gliding camera, and it was the plan — but Lenis takes ownership of the
-    page by transforming its wrapper, and this landing is built on `position:
-    fixed` atmospheric layers plus a `position: sticky` showcase stage. Enabling
-    it pushed the whole page down behind an empty band and detached the nav.
-    That is a visible regression on a page that is supposed to be untouched, to
-    buy an easing curve.
-
-    ScrollTrigger does not need it. `self.progress` is computed from the
-    element's own position in the viewport, so the journey runs identically on
-    native scroll; only the easing feel is lost. `useSmoothScroll` is still
-    exported and still correct — it belongs on a page built for it, not
-    retrofitted under one that is not.
+    No scroll journey on this page any more. The 3D arena that took over from
+    the photograph as the page scrolled -- its camera descent and the ball's
+    delivery -- made scrolling lag, so the landing keeps the hero's stadium
+    lights as a still, fixed backdrop the whole way down. The arena itself is
+    untouched and still runs on /stadium; restoring it here is `live3d` on the
+    backdrop below plus `useJourneyProgress(page, quality.canvas && !reduced)`.
   */
-  const journeyOn = quality.canvas && !reduced;
-  useJourneyProgress(page, journeyOn);
 
   useEffect(() => {
     document.title = "AUCTONIQ · IPL 2026 Mega Auction";
@@ -86,8 +63,9 @@ export default function Auctiq() {
       */}
       {/* The photograph goes underneath the gradient pools, not instead of
           them: the pools are what tie the page's blue and gold to the arc's
-          own light, and they still do that job over a picture. */}
-      <StadiumBackdrop live3d />
+          own light, and they still do that job over a picture. Static: no
+          `live3d`, so it never hands over to the 3D arena (see above). */}
+      <StadiumBackdrop />
       <div className="auctiq-stadium" aria-hidden />
       <div className="auctiq-grid" aria-hidden />
 
