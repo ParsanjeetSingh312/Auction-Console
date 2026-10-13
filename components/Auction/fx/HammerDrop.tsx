@@ -29,13 +29,16 @@
  * never dismissed itself. It is kept out of the effect's dependencies here for
  * exactly that reason.
  */
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 
 import { useReducedMotion } from "framer-motion";
 import gsap from "gsap";
 
 import { crore } from "../blockTypes";
-import { Hammer } from "./Hammer";
+import { GavelScene, GRIP, IMPACT, SCENE, STRIKE_ANGLE } from "./Hammer";
+
+/** The pivot, as GSAP's `svgOrigin` wants it: in the scene's own coordinates. */
+const PIVOT = `${GRIP.x} ${GRIP.y}`;
 
 export interface HammerDropProps {
   /** Who was sold. */
@@ -63,7 +66,10 @@ export default function HammerDrop({
   const done = useRef(onDone);
   done.current = onDone;
 
-  useEffect(() => {
+  // A layout effect, not a plain one: the timeline's starting poses (gavel
+  // cocked, impact effects hidden) must be applied before the first paint, or
+  // the gavel flashes upright for a frame before the wind-up begins.
+  useLayoutEffect(() => {
     // Reduced motion still gets the outcome — who, how much — just without the
     // swing. The information is the point; the swing is the presentation.
     if (reduced) {
@@ -74,25 +80,49 @@ export default function HammerDrop({
     const ctx = gsap.context(() => {
       const tl = gsap.timeline({ onComplete: () => done.current() });
 
+      // Everything keyed to the strike starts hidden and stays hidden until it.
+      // `immediateRender: false` on each is what guarantees that: without it a
+      // fromTo placed later in a timeline applies its *from* values the moment
+      // the timeline is built, which is how the shockwave used to sit on
+      // screen as a small ring through the whole wind-up.
+      const atImpact = { immediateRender: false };
+
       tl.fromTo(root.current, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.18 })
-        // Wind up.
+        .fromTo(".hd__scene", { autoAlpha: 0, y: -16 }, { autoAlpha: 1, y: 0, duration: 0.24, ease: "power3.out" }, "<")
+        // Raise the gavel and cock it back, about the grip.
         .fromTo(
-          ".hd__hammer",
-          { rotate: -58, y: -26, autoAlpha: 0 },
-          { rotate: -46, y: -20, autoAlpha: 1, duration: 0.26, ease: "power4.out" },
+          ".hd__gavel",
+          { rotation: 6, svgOrigin: PIVOT },
+          { rotation: 26, duration: 0.28, ease: "power2.out" },
+          "<0.06",
         )
         // And strike. `power3.in` accelerates into the block rather than
-        // easing out of it — a hammer does not decelerate on the way down.
-        .to(".hd__hammer", { rotate: 6, y: 0, duration: 0.14, ease: "power3.in" })
+        // easing out of it -- a gavel does not decelerate on the way down.
+        .to(".hd__gavel", { rotation: STRIKE_ANGLE, duration: 0.15, ease: "power3.in" })
         .addLabel("impact")
-        // The rebound.
-        .to(".hd__hammer", { rotate: -4, duration: 0.12, ease: "back.out(1.7)" })
+        // The rebound, then it settles back onto the block.
+        .to(".hd__gavel", { rotation: STRIKE_ANGLE + 13, duration: 0.09, ease: "power2.out" })
+        .to(".hd__gavel", { rotation: STRIKE_ANGLE, duration: 0.24, ease: "bounce.out" })
         .fromTo(
-          ".hd__shock",
-          { scale: 0.2, autoAlpha: 0.9 },
-          { scale: 2.6, autoAlpha: 0, duration: 0.72, ease: "power4.out" },
+          ".hd__block",
+          { scaleY: 0.88, svgOrigin: "60 152" },
+          { scaleY: 1, duration: 0.34, ease: "elastic.out(1, 0.45)", ...atImpact },
           "impact",
         )
+        .fromTo(
+          ".hd__sparks",
+          { scale: 0.4, autoAlpha: 1, svgOrigin: `${IMPACT.x} ${IMPACT.y}` },
+          { scale: 1.5, autoAlpha: 0, duration: 0.42, ease: "power2.out", ...atImpact },
+          "impact",
+        )
+        .fromTo(
+          ".hd__shock",
+          { scale: 0.15, autoAlpha: 0.9, xPercent: -50, yPercent: -50 },
+          { scale: 2.6, autoAlpha: 0, duration: 0.72, ease: "power4.out", ...atImpact },
+          "impact",
+        )
+        // A short jolt through the lockup, so the hit is felt and not only seen.
+        .fromTo(".hd__lockup", { y: 5 }, { y: 0, duration: 0.3, ease: "elastic.out(1, 0.35)", ...atImpact }, "impact")
         .fromTo(
           ".hd__flood",
           { autoAlpha: 0 },
@@ -140,21 +170,28 @@ export default function HammerDrop({
             "radial-gradient(70% 60% at 50% 55%, rgba(55,208,255,0.30), transparent 72%)",
         }}
       />
-      {/* The shockwave, expanding out of the point of impact. */}
-      <span
-        aria-hidden
-        className="hd__shock absolute left-1/2 top-1/2 aspect-square w-[min(460px,70vw)] -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[rgba(55,208,255,0.8)]"
-      />
-
-      <div className="relative grid justify-items-center gap-3 text-center">
-        {/* `transform-origin` lives on the Hammer's own box — see that file. */}
-        <span
+      <div className="hd__lockup relative grid justify-items-center gap-3 text-center">
+        {/* The gavel and its block. The shockwave lives inside this box so it
+            can expand from the exact point of contact, not the screen centre. */}
+        <div
           aria-hidden
-          className="hd__hammer block aspect-square w-[clamp(88px,14vw,132px)]"
-          style={{ transformOrigin: "72% 88%" }}
+          className="hd__scene relative w-[clamp(150px,20vw,220px)]"
+          style={{ aspectRatio: `${SCENE.width} / ${SCENE.height}` }}
         >
-          <Hammer />
-        </span>
+          <GavelScene restAngle={reduced ? STRIKE_ANGLE : undefined} />
+          {!reduced && (
+            <span
+              className="hd__shock pointer-events-none absolute aspect-square w-[min(460px,70vw)] rounded-full border-2 border-[rgba(55,208,255,0.8)] opacity-0"
+              style={{
+                left: `${(IMPACT.x / SCENE.width) * 100}%`,
+                top: `${(IMPACT.y / SCENE.height) * 100}%`,
+                // Centred on the impact point by the tween's xPercent/yPercent,
+                // so GSAP owns the whole transform and scale cannot fight a
+                // CSS translate for it.
+              }}
+            />
+          )}
+        </div>
 
         <p className="hd__word font-stadium text-[clamp(3.5rem,13vw,8rem)] font-bold leading-[0.9] tracking-[0.04em] text-white [text-shadow:0_0_60px_rgba(55,208,255,0.8)]">
           SOLD
