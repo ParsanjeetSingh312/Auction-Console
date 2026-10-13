@@ -7,11 +7,11 @@
  * chunk's CSS in the document after the chunk loads -- unscoped, these would
  * follow a visitor from /about back to the landing and restyle it.
  *
- * The palette and the type pairing are the prototype's own. They sit on the
- * same navy ground as the landing, and the shared nav and footer carry the
- * site's Chakra Petch either side of them.
+ * The palette is the prototype's own; the page content is set in Kanit. It
+ * sits on the same navy ground as the landing, and the shared nav and footer
+ * carry the site's Chakra Petch either side of it.
  */
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700&display=swap");
 
 .about-page {
   --about-background: oklch(0.155 0.024 265);
@@ -24,8 +24,8 @@
   --about-highlight: oklch(0.826 0.13 85);
   --about-highlight-surface: oklch(0.25 0.027 82);
   --about-hero-shade: linear-gradient(90deg, oklch(0.145 0.03 264 / 95%) 0%, oklch(0.145 0.03 264 / 75%) 36%, oklch(0.145 0.03 264 / 5%) 78%);
-  --about-font-sans: "Manrope", sans-serif;
-  --about-font-display: "Space Grotesk", sans-serif;
+  --about-font-sans: "Kanit", sans-serif;
+  --about-font-display: "Kanit", sans-serif;
 
   background: var(--about-background);
   color: var(--about-foreground);

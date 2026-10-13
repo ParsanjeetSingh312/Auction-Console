@@ -62,7 +62,6 @@ export default function About() {
             height={848}
           />
           <div className="hero-content page-width">
-            <div className="eyebrow">The game behind the game</div>
             <h1 id="about-title">ABOUT AUCTONIQ</h1>
             <p className="hero-subtitle">A virtual cricket auction, run properly.</p>
             <p className="hero-description">
@@ -140,7 +139,6 @@ export default function About() {
           <section className="content-section" aria-labelledby="fixes-title">
             <div className="section-heading">
               <h2 id="fixes-title">What it fixes</h2>
-              <span className="section-index">Less admin. More auction.</span>
             </div>
             <ul className="fixes-grid">
               {PROBLEMS_SOLVED.map((item, i) => {
