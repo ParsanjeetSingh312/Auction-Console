@@ -336,3 +336,57 @@ class TestWhenNoModelAnswers:
         rec = advise(query("an all rounder under 15 Cr"))
         assert all("no model" in c.rationale.lower() for c in rec.candidates), (
             "a data match was worded as though something had judged it")
+
+
+class TestLiveResearchAndTheLedger:
+    """
+    The ledger notes describe saved research; live research is this turn's.
+
+    On Railway the volume starts with an empty ledger, so every answer carried
+    "No research recorded yet; answering from the spreadsheet alone" -- beside
+    evidence quoting the live research -- and `route_from_advisor` read that
+    note as stale and sent every turn round the researcher a second time.
+    """
+
+    LEDGER_EMPTY = "No research recorded yet; answering from the spreadsheet alone."
+    LEDGER_OLD = "Research is 17 days old; form and injury information may be out of date."
+
+    @pytest.fixture(autouse=True)
+    def no_pool_lookup(self, monkeypatch):
+        # refs_for_mentioned reads the players table; nothing here needs it.
+        from scout.tools import search_engine
+        monkeypatch.setattr(search_engine, "refs_for_mentioned", lambda text: ([], []))
+        stub_model({"answer": "Player 1 is the one to chase.", "candidates": [
+            {"player_id": 1, "player_name": "Player 1", "role": "All-Rounder",
+             "rationale": "In form per live research.", "evidence": ["bat_sr 145"]},
+        ]})
+
+    def run(self, ledger_note: str, research_context: str | None):
+        retrieval = RetrievalResult(refs=refs(), notes=[ledger_note])
+
+        async def fake_retrieve(*a, **k):
+            return retrieval
+
+        ca.retrieve_for = fake_retrieve
+        return asyncio.run(ca.advise(
+            query("an all rounder under 15 Cr"), timeout=30.0,
+            use_web=False, research_context=research_context,
+        ))
+
+    @pytest.mark.parametrize("ledger_note", [LEDGER_EMPTY, LEDGER_OLD])
+    def test_live_research_replaces_the_ledger_note(self, ledger_note):
+        rec = self.run(ledger_note, "Player 1 made 80 off 41 last week.")
+        assert ledger_note not in rec.notes
+        assert any("live research" in n for n in rec.notes)
+
+    @pytest.mark.parametrize("ledger_note", [LEDGER_EMPTY, LEDGER_OLD])
+    def test_with_live_research_the_turn_is_not_sent_back(self, ledger_note):
+        from scout.graph.workflow import route_from_advisor
+        rec = self.run(ledger_note, "Player 1 made 80 off 41 last week.")
+        assert route_from_advisor({"recommendation": rec, "refresh_cycles": 0}) == "done"
+
+    def test_without_live_research_the_ledger_note_stands_and_may_refresh(self):
+        from scout.graph.workflow import route_from_advisor
+        rec = self.run(self.LEDGER_EMPTY, None)
+        assert self.LEDGER_EMPTY in rec.notes
+        assert route_from_advisor({"recommendation": rec, "refresh_cycles": 0}) == "refresh"

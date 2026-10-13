@@ -287,6 +287,13 @@ def _why(exc: Exception) -> str:
     return " ".join(lines)[:110]
 
 
+def _is_ledger_freshness(note: str) -> bool:
+    """The two notes `retrieve_for` writes about the saved research ledger."""
+    return note.startswith("No research recorded yet") or (
+        note.startswith("Research is ") and "days old" in note
+    )
+
+
 async def advise(
     query: AdvisorQuery,
     *,
@@ -345,7 +352,21 @@ async def advise(
         retrieval.refs = fresh + retrieval.refs
         notes.extend(named_notes)
 
-    notes.extend(retrieval.notes)
+    # The ledger's freshness notes describe SAVED research only. With live
+    # research in hand for this very question they are wrong twice over: "No
+    # research recorded yet; answering from the spreadsheet alone" contradicts
+    # the answer the user is reading (whose evidence cites the live research),
+    # and that wording is exactly what `route_from_advisor` reads as stale --
+    # so the turn was sent back to the researcher to run the same web search
+    # again. Observed on Railway, whose volume starts with an empty ledger:
+    # every answer said "spreadsheet alone" and every turn ran the researcher
+    # and the advisor twice. Without live context the notes stand, and so does
+    # the refresh they trigger.
+    if research_context:
+        notes.extend(n for n in retrieval.notes if not _is_ledger_freshness(n))
+        notes.append("Answered with live research gathered for this question.")
+    else:
+        notes.extend(retrieval.notes)
 
     if not retrieval.refs:
         return AdvisorRecommendation(
