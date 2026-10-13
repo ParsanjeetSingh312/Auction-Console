@@ -117,7 +117,12 @@ export default function BroadcastHero() {
           `uppercase` as a class rather than capitals in the string, so a screen
           reader gets a sentence instead of six initialisms.
         */}
-        <p className="mt-1 text-center font-tech text-[clamp(0.7rem,1.5vw,0.95rem)] font-medium uppercase tracking-[0.34em] text-neon-cyan">
+        {/* The dark halo keeps the cyan readable over the lit stands of the
+            stadium photograph, which sit right behind this line. */}
+        <p
+          className="mt-1 text-center font-tech text-[clamp(0.7rem,1.5vw,0.95rem)] font-medium uppercase tracking-[0.34em] text-neon-cyan"
+          style={{ textShadow: "0 1px 10px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.7)" }}
+        >
           Where intelligence meets patience
         </p>
       </div>

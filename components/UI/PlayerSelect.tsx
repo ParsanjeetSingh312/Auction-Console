@@ -251,6 +251,10 @@ export default function PlayerSelect({ players, stats }: PlayerSelectProps) {
         }}
         // No background of its own: on the landing the stadium and the ball's
         // delivery play out behind this stage, as they did behind the old deck.
+        // A soft dark halo under every line of type in the section (text-shadow
+        // inherits), so labels stay legible over the stadium whatever is
+        // behind them. Elements with a glow of their own override it.
+        style={{ textShadow: "0 1px 10px rgba(0,0,0,0.85), 0 0 2px rgba(0,0,0,0.6)" }}
         className="sticky top-0 h-[100svh] w-full select-none overflow-hidden text-auctiq-text outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-neon-cyan/50"
       >
         <Backdrop player={active} keyId={index} reduced={reduced} />
@@ -266,18 +270,18 @@ export default function PlayerSelect({ players, stats }: PlayerSelectProps) {
             <br />
             <span className="text-auctiq-gold text-glow-gold">HAS A PRICE</span>
           </h2>
-          <p className="mt-3 hidden max-w-md font-tech text-[13.5px] leading-relaxed text-auctiq-dim sm:block">
+          <p className="mt-3 hidden max-w-md font-tech text-[13.5px] leading-relaxed text-auctiq-text/75 sm:block">
             Two hundred and eighty-four of them, scouted on seventeen metrics apiece. The bidding decides the rest.
           </p>
         </div>
 
         {/* Top chrome: a section label and a counter, like a console's home bar. */}
         <div className="ps-after absolute inset-x-0 top-0 z-10 flex items-center justify-between" style={{ padding: `${chromeTop}px ${pad}px 0` }}>
-          <span className="flex items-center gap-2 font-tech text-[11px] uppercase tracking-[0.3em] text-auctiq-dim">
+          <span className="flex items-center gap-2 font-tech text-[11px] uppercase tracking-[0.3em] text-auctiq-text/75">
             <span className="h-1.5 w-1.5 rounded-full bg-neon-cyan shadow-[0_0_10px_#22D3EE]" />
             On the block · Select a player
           </span>
-          <span className="hidden font-tech text-[11px] uppercase tracking-[0.3em] text-auctiq-dim sm:inline">
+          <span className="hidden font-tech text-[11px] uppercase tracking-[0.3em] text-auctiq-text/75 sm:inline">
             {players.length} players
           </span>
         </div>
@@ -316,7 +320,7 @@ export default function PlayerSelect({ players, stats }: PlayerSelectProps) {
               {[`#${active.number}`, active.roleLabel, `${active.stat} ${active.statLabel}`].map((fact, i) => (
                 <motion.span
                   key={`${active.id}-${i}`}
-                  className="whitespace-nowrap font-tech text-[11px] uppercase tracking-[0.2em] text-auctiq-dim"
+                  className="whitespace-nowrap font-tech text-[11px] uppercase tracking-[0.2em] text-auctiq-text/75"
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={reduced ? INSTANT : { duration: 0.45, delay: 0.14 + i * 0.07 }}
@@ -384,7 +388,7 @@ export default function PlayerSelect({ players, stats }: PlayerSelectProps) {
         {/* Position rail, with the arrows that move focus. */}
         <div className="ps-after absolute bottom-5 z-10 flex items-end gap-4" style={{ left: pad }}>
           <div style={{ width: Math.min(220, box.w * 0.2) }}>
-            <div className="flex justify-between font-num text-sm tabular-nums text-auctiq-dim">
+            <div className="flex justify-between font-num text-sm tabular-nums text-auctiq-text/75">
               <span className="text-auctiq-text">{String(index + 1).padStart(2, "0")}</span>
               <span>{String(players.length).padStart(2, "0")}</span>
             </div>
@@ -416,7 +420,7 @@ export default function PlayerSelect({ players, stats }: PlayerSelectProps) {
           </div>
         </div>
         {/* Clear of the SCOUT button, which sits in this corner on every page. */}
-        <div className="ps-after absolute bottom-6 z-10 hidden font-tech text-[10px] uppercase tracking-[0.24em] text-auctiq-dim lg:block" style={{ right: pad + 76 }}>
+        <div className="ps-after absolute bottom-6 z-10 hidden font-tech text-[10px] uppercase tracking-[0.24em] text-auctiq-text/75 lg:block" style={{ right: pad + 76 }}>
           Click a card or ← → to choose · Enter to open
         </div>
 
@@ -687,7 +691,7 @@ function SelectScreen({
               }}
             >
               <div className={side === "left" ? "text-left" : "text-right"}>
-                <dt className="sel-label font-tech text-[11px] uppercase tracking-[0.22em] text-auctiq-dim">{stat.label}</dt>
+                <dt className="sel-label font-tech text-[11px] uppercase tracking-[0.22em] text-auctiq-text/75">{stat.label}</dt>
                 <dd className="sel-value font-num font-bold leading-none tabular-nums text-auctiq-text" style={{ fontSize: narrow ? clamp(box.w * 0.075, 22, 34) : clamp(box.h * 0.055, 22, 52) }}>
                   {formatStat(stat.value, stat.decimals)}
                 </dd>
@@ -719,7 +723,7 @@ function SelectScreen({
               {player.surname.toUpperCase()}
             </div>
           </div>
-          <div className="sel-chip mt-2 inline-flex items-center gap-2 font-tech text-[11px] uppercase tracking-[0.2em] text-auctiq-dim">
+          <div className="sel-chip mt-2 inline-flex items-center gap-2 font-tech text-[11px] uppercase tracking-[0.2em] text-auctiq-text/75">
             <span className="rounded px-1.5 py-0.5 font-semibold" style={{ color: ROLE_TINT[player.role], backgroundColor: `${ROLE_TINT[player.role]}1F` }}>
               {player.roleLabel}
             </span>
