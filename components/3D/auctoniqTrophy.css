@@ -1,0 +1,95 @@
+/*
+ * auctoniqTrophy.css
+ * Colour tokens and layout for the AUCTONIQ trophy (AuctoniqTrophy.tsx).
+ *
+ * The 3D scene reads these tokens at runtime from its element's computed
+ * style. They are scoped to `.trophy-stage` rather than `:root` so names like
+ * `--muted-foreground` cannot leak into the rest of the site.
+ */
+
+.trophy-stage {
+  /* Metals used by the trophy, ball and gavel */
+  --metal-gold: #d7b96f;
+  --metal-silver: #aeb6b8;
+  --metal-dark: #171c23;
+  --metal-seam: #887043;
+  --metal-cyan: #64bab9;
+
+  /* Studio-light panels baked into the environment map */
+  --studio-dark: #20252e;
+  --studio-white: #f5f8ff;
+  --studio-warm: #ffe6b6;
+  --studio-cool: #6ebfcf;
+
+  /* Blue light effects: "-core" is the bright filament, the plain value is
+     the soft bloom that wraps around it */
+  --cradle-light: #168aff;
+  --cradle-light-core: #a9e6ff;
+  --seam-light: #009dff;
+  --seam-light-core: #c1f1ff;
+
+  /* Used by the caption and the contact shadow under the base */
+  --muted-foreground: oklch(.63 .029 255);
+  --shadow-contact: radial-gradient(ellipse, oklch(.035 .008 260 / .95) 15%, oklch(.04 .01 260 / .4) 48%, transparent 70%);
+}
+
+/* ---- Layout ---- */
+
+.trophy-stage { position: relative; width: 100%; height: 480px; margin: 10px auto 0; }
+.trophy-canvas { position: absolute; inset: 0 0 28px; cursor: grab; touch-action: pan-y; opacity: 0; transition: opacity .6s ease; }
+.trophy-canvas.is-ready { opacity: 1; }
+.trophy-canvas:active { cursor: grabbing; }
+.trophy-canvas canvas { display: block; }
+.trophy-shadow { position: absolute; bottom: 65px; left: 25%; width: 50%; height: 38px; background: var(--shadow-contact); }
+.trophy-controls { position: absolute; bottom: 0; left: 20%; right: 20%; display: flex; justify-content: space-between; align-items: center; }
+.trophy-caption { font-size: 9px; color: var(--muted-foreground); }
+.trophy-controls > div { display: flex; color: var(--muted-foreground); }
+.trophy-controls button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px;
+  background: transparent; color: inherit; cursor: pointer;
+  transition: background-color .15s ease, color .15s ease;
+}
+.trophy-controls button:hover { background: oklch(1 0 0 / .08); color: oklch(.96 .01 255); }
+.trophy-controls button:focus-visible { outline: 2px solid var(--seam-light); outline-offset: 1px; }
+.trophy-controls button svg { width: 16px; height: 16px; }
+
+/* Anchor the contact shadow to the plinth at any stage height. The camera's
+ * vertical field of view is fixed, so the base always lands at the same
+ * fraction of the canvas height (canvas = stage minus the 28px control bar).
+ * The ratios reproduce the fixed values above exactly at the 480px stage. */
+@supports (container-type: size) {
+  .trophy-stage { container-type: size; }
+  .trophy-shadow {
+    --canvas-h: calc(100cqh - 28px);
+    top: calc(var(--canvas-h) * .834); bottom: auto;
+    left: 50%; transform: translateX(-50%);
+    width: calc(var(--canvas-h) * .64); height: calc(var(--canvas-h) * .084);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trophy-canvas { transition: none; }
+}
+
+/* ---- Responsive ---- */
+
+@media (min-width: 1500px) {
+  .trophy-stage { height: 510px; }
+}
+
+@media (max-width: 1050px) {
+  .trophy-stage { height: 440px; }
+  .trophy-controls { left: 10%; right: 10%; }
+}
+
+@media (max-width: 760px) {
+  .trophy-stage { height: 410px; max-width: 480px; }
+  .trophy-controls { left: 12%; right: 12%; }
+}
+
+/* ---- In the landing hero ----
+ * Sized like the trophy it replaced, so the wordmark above and the tagline
+ * below keep their places. Two classes, so it wins over the rules above. */
+
+.trophy-stage.trophy-stage--hero { height: clamp(380px, 60vh, 700px); max-width: 640px; margin: 0 auto; }

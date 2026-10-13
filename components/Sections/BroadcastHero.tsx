@@ -45,7 +45,9 @@ import TrendingPlayersCard from "../UI/TrendingPlayersCard";
  * drei is ~880KB as its own chunk, and the headline and the panels have no
  * business waiting on a 3D scene to become readable.
  */
-const TrophyCanvas = lazy(() => import("../3D/TrophyCanvas"));
+// The AUCTONIQ trophy (ball, cradle and gavel) in place of the chalice.
+// `TrophyCanvas` is kept on disk: swapping back is this import and the JSX below.
+const AuctoniqTrophy = lazy(() => import("../3D/AuctoniqTrophy"));
 
 export default function BroadcastHero() {
   return (
@@ -94,8 +96,8 @@ export default function BroadcastHero() {
           asymmetric rather than a smaller symmetric value.
         */}
         <Suspense fallback={<TrophyFallback />}>
-          <TrophyCanvas
-            className="auctiq-no-lift -mt-8 h-[clamp(340px,60vh,700px)] w-full max-w-[640px] sm:-mt-12"
+          <AuctoniqTrophy
+            className="trophy-stage--hero auctiq-no-lift"
             fallback={<TrophyFallback />}
           />
         </Suspense>
