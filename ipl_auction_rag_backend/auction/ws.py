@@ -300,13 +300,21 @@ async def _dispatch(client_id: str, message: Any) -> None:
         await room.reset(client_id)
 
     elif kind == "set_rules":
+        # The broadcast below is what propagates the change: every connected
+        # client receives the new rules, the new rules_version and the
+        # regenerated briefing in one frame.
         await room.set_rules(
             client_id,
             message.purse,
             message.max_squad,
             message.min_squad,
             message.max_overseas,
+            message.max_players,
+            message.min_overseas,
         )
+
+    elif kind == "acknowledge_rules":
+        await room.acknowledge_rules(client_id, message.rules_version)
 
     elif kind == "finish":
         await room.finish(client_id)

@@ -151,7 +151,13 @@ export default function WaitingRoom({
                       team.connected ? "text-slate-faint" : "text-slate-faint/60"
                     }`}
                   >
-                    {team.connected ? "ready" : "not joined"}
+                    {/* Rule 7: connected is not enough -- a franchise is
+                        ready once it has acknowledged the briefing. */}
+                    {!team.connected
+                      ? "not joined"
+                      : team.acknowledged === false
+                        ? "reading briefing"
+                        : "briefed · ready"}
                   </span>
                 </motion.div>
               );

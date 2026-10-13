@@ -44,13 +44,11 @@ export function moneyTight(value: number | null | undefined): string {
   return value >= 100 ? `${(value / 100).toFixed(2)}cr` : `${value}L`;
 }
 
-/** The auction's increment ladder: the step is a function of the standing bid. */
-export function incrementFor(bid: number): number {
-  if (bid < 100) return 5;
-  if (bid < 200) return 10;
-  if (bid < 500) return 20;
-  if (bid < 1000) return 25;
-  return 50;
+/** The auction's standard bid step, matching the room (auction/rules.py). */
+export function incrementFor(_bid: number): number {
+  // A flat ₹0.25 Cr at every price, the room's rule 4. Keeps its argument so
+  // every caller written against the old price-dependent ladder still works.
+  return 25;
 }
 
 /* ------------------------------------------------------------------ *

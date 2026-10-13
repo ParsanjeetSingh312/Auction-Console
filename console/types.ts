@@ -145,11 +145,20 @@ export interface Team {
 }
 
 export interface Rules {
-  /** Purse per team, in ₹ lakh. */
+  /** Total Budget per team, in ₹ lakh. */
   purse: number;
+  /** Total Squad: the most players one team may hold. */
   maxSquad: number;
+  /** Minimum Players a team must finish with. */
   minSquad: number;
   maxOverseas: number;
+  /**
+   * Live room only. Maximum Players to go under the hammer (the lot limit) and
+   * the minimum overseas each squad must reach. Absent on the offline console,
+   * which has no such rules, so the setup dialog shows them only when present.
+   */
+  maxPlayers?: number;
+  minOverseas?: number;
 }
 
 export interface BlockState {

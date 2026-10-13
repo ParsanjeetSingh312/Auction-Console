@@ -47,6 +47,8 @@ async def _seat_and_open(room, *, teams=(1, 2, 3, 4, 5), player_id=1):
     clients = {team_id: f"client-{team_id}" for team_id in teams}
     for team_id, client_id in clients.items():
         await room.join(client_id, "franchise", team_id, f"Team {team_id}")
+        # Rule 7: a franchise may not bid until it has read the briefing.
+        await room.acknowledge_rules(client_id, room.rules_version)
 
     await room.put_up(auctioneer, player_id)
     return auctioneer, clients
@@ -103,11 +105,11 @@ class TestSimultaneousBids:
 
         assert all(not isinstance(r, Exception) for r in results), results
 
-        # base, then +increment four times: 200 -> 220 -> 240 -> 260 -> 280.
+        # base, then +0.25 Cr four times: 200 -> 225 -> 250 -> 275 -> 300.
         expected = 200
         for _ in range(len(clients) - 1):
             expected += increment_for(expected)
-        assert room.lot.bid == expected == 280
+        assert room.lot.bid == expected == 300
         assert room.lot.version == len(clients) == 5
         assert len(room.lot.contenders) == len(clients)
         assert room.lot.bidder_id in clients
@@ -169,9 +171,13 @@ class TestBudgetInvariants:
     async def test_jumpbid_over_the_ceiling_is_refused(self, room):
         _, clients = await _seat_and_open(room)
         ceiling = room.summary_for(1)["max_bid"]
+        # The first price on the 0.25 Cr ladder above the ceiling, so the
+        # refusal is the budget rule's and not the ladder's.
+        step = increment_for(200)
+        over = 200 + ((ceiling - 200) // step + 1) * step
 
         with pytest.raises(RoomError) as excinfo:
-            await room.bid(clients[1], ceiling + 1, None)
+            await room.bid(clients[1], over, None)
         assert excinfo.value.about == "bid"
         assert "budget" in excinfo.value.message.lower()
 

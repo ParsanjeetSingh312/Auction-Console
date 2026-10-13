@@ -86,6 +86,8 @@ export function useSocketEngine(
           maxSquad: room.rules.max_squad,
           minSquad: room.rules.min_squad,
           maxOverseas: room.rules.max_overseas,
+          maxPlayers: room.rules.max_players,
+          minOverseas: room.rules.min_overseas,
         }
       : local.rules;
 
@@ -299,6 +301,8 @@ export function useSocketEngine(
           maxSquad: next.maxSquad,
           minSquad: next.minSquad,
           maxOverseas: next.maxOverseas,
+          maxPlayers: next.maxPlayers,
+          minOverseas: next.minOverseas,
         });
       },
 

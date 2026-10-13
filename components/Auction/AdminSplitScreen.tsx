@@ -288,7 +288,9 @@ export default function AdminSplitScreen({
       live.purse === wanted.purse &&
       live.maxSquad === wanted.maxSquad &&
       live.minSquad === wanted.minSquad &&
-      live.maxOverseas === wanted.maxOverseas
+      live.maxOverseas === wanted.maxOverseas &&
+      (wanted.maxPlayers === undefined || live.maxPlayers === wanted.maxPlayers) &&
+      (wanted.minOverseas === undefined || live.minOverseas === wanted.minOverseas)
     ) {
       pendingRules.current = null;
       window.clearTimeout(rulesTimer.current);

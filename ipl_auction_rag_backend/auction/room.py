@@ -50,6 +50,17 @@ from typing import Any, Literal
 
 from config.settings import get_settings
 
+from auction import rules as rulebook
+from auction.rules import (
+    MAX_TEAMS,
+    RuleViolation,
+    SquadPosition,
+    check_bid_amount,
+    jump_options,
+    rules_list,
+    slot_plan,
+    validate_setup,
+)
 from auction.schemas import supported_message_types
 
 logger = logging.getLogger("auction.room")
@@ -87,10 +98,13 @@ MAX_UNDO = 60
 # disagree about how long seven seconds is.
 # --------------------------------------------------------------------- #
 
-OPEN_SECONDS = 7
-CLOSE_SECONDS = 7
-TIMEOUT_SECONDS = 30
-TIMEOUTS_PER_TEAM = 3
+# Sourced from the rulebook (auction/rules.py), which holds every
+# non-negotiable number in one place. Re-exported here because older callers
+# and tests read them off this module.
+OPEN_SECONDS = rulebook.ACTION_SECONDS
+CLOSE_SECONDS = rulebook.ACTION_SECONDS
+TIMEOUT_SECONDS = rulebook.BUFFER_SECONDS
+TIMEOUTS_PER_TEAM = rulebook.BUFFERS_PER_TEAM
 
 DEFAULT_TEAMS: list[dict[str, Any]] = [
     {"id": 1, "name": "Mumbai", "code": "MUM", "color": "#123E8C"},
@@ -105,16 +119,10 @@ DEFAULT_TEAMS: list[dict[str, Any]] = [
     {"id": 10, "name": "Ahmedabad", "code": "AHM", "color": "#2B4F6E"},
 ]
 
-DEFAULT_RULES = {
-    "purse": 12000,
-    "max_squad": 25,
-    "min_squad": 18,
-    "max_overseas": 8,
-    "open_seconds": OPEN_SECONDS,
-    "close_seconds": CLOSE_SECONDS,
-    "timeout_seconds": TIMEOUT_SECONDS,
-    "timeouts_per_team": TIMEOUTS_PER_TEAM,
-}
+# Rule 1: the room never seats more franchises than the rulebook allows.
+assert len(DEFAULT_TEAMS) <= MAX_TEAMS
+
+DEFAULT_RULES = rulebook.DEFAULT_RULES
 
 # Playing XI shape. Not a hard constraint of the auction -- it is how the
 # post-auction report picks a side, and a side with no keeper is not a side.
@@ -123,16 +131,13 @@ XI_MAX_OVERSEAS = 4
 
 
 def increment_for(bid: int) -> int:
-    """The ladder, exactly as `format.ts` defines it."""
-    if bid < 100:
-        return 5
-    if bid < 200:
-        return 10
-    if bid < 500:
-        return 20
-    if bid < 1000:
-        return 25
-    return 50
+    """
+    The standard step: a flat 0.25 Cr at every price (rule 4).
+
+    Takes the bid for the signature the ladder used to have, so callers did not
+    need to change when it stopped depending on the price.
+    """
+    return rulebook.BID_INCREMENT
 
 
 def role_short(role: str) -> str:
@@ -147,13 +152,7 @@ def role_short(role: str) -> str:
     return "BAT"
 
 
-def money(lakh: int | float | None) -> str:
-    """₹ lakh rendered the way the console renders it, for ledger strings."""
-    if lakh is None:
-        return "—"
-    if lakh >= 100:
-        return f"₹{lakh / 100:.2f} Cr"
-    return f"₹{lakh} L"
+money = rulebook.money
 
 
 # --------------------------------------------------------------------- #
@@ -171,6 +170,7 @@ class Player:
     overseas: bool
     base: int
     rating: float | None
+    uncapped: bool = False
 
 
 @dataclass
@@ -215,6 +215,8 @@ class Lot:
     # Franchises that have bid on this lot and not withdrawn. One is an
     # uncontested lot the clock may settle; two or more is a live contest.
     contenders: list[int] = field(default_factory=list)
+    # Franchises that folded on this lot (rule 6). Barred from bidding on it.
+    folded: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -223,6 +225,8 @@ class Seat:
     role: Literal["auctioneer", "franchise", "spectator"]
     team_id: int | None = None
     display_name: str | None = None
+    # The rules_version this seat acknowledged in the briefing (rule 7).
+    acked_version: int | None = None
 
 
 @dataclass
@@ -253,7 +257,9 @@ class RoomError(Exception):
 
 @dataclass
 class AuctionRoom:
-    rules: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_RULES))
+    rules: dict[str, Any] = field(default_factory=lambda: copy.deepcopy(DEFAULT_RULES))
+    # Bumped on every setup change; acknowledgements quote it (rule 7).
+    rules_version: int = 1
     teams: list[dict[str, Any]] = field(default_factory=lambda: copy.deepcopy(DEFAULT_TEAMS))
 
     players: dict[int, Player] = field(default_factory=dict)
@@ -311,9 +317,14 @@ class AuctionRoom:
                 overseas=bool(row.get("overseas")),
                 base=int(row.get("base_price") or BASE_PRICE_FLOOR),
                 rating=row.get("rating"),
+                uncapped=str(row.get("cap_status") or "").upper() == "UNCAPPED",
             )
             self.records[pid] = Record()
 
+        # Maximum Players 0 means "the whole pool": pin it to the pool's size so
+        # the lot limit always has a real number behind it.
+        if not self.rules.get("max_players"):
+            self.rules["max_players"] = len(self.players)
         self._loaded = True
         logger.info("Auction room loaded %d players", len(self.players))
         return len(self.players)
@@ -353,15 +364,27 @@ class AuctionRoom:
             if rec.status == "sold" and rec.team_id == team_id
         )
         left = self.rules["purse"] - spent
-        slots_after_this = max(0, self.rules["min_squad"] - (len(squad) + 1))
-        reserve = slots_after_this * self._min_base()
-
+        overseas = sum(1 for p in squad if p.overseas)
+        uncapped = sum(1 for p in squad if p.uncapped)
+        # The general case: one more signing that satisfies none of the
+        # minimums. A signing that does (an overseas or uncapped player) is
+        # re-checked with the real flags in `blocked_reason`.
+        plan = slot_plan(
+            self.rules,
+            size=len(squad),
+            overseas=overseas,
+            uncapped=uncapped,
+            cheapest_base=self._min_base(),
+        )
         return {
             "spent": spent,
             "left": left,
             "size": len(squad),
-            "overseas": sum(1 for p in squad if p.overseas),
-            "max_bid": max(0, left - reserve),
+            "overseas": overseas,
+            "uncapped": uncapped,
+            "overseas_needed": max(0, self.rules["min_overseas"] - overseas),
+            "uncapped_needed": max(0, self.rules["min_uncapped"] - uncapped),
+            "max_bid": max(0, left - plan.reserve),
         }
 
     def blocked_reason(self, team_id: int, player: Player, amount: int) -> str | None:
@@ -371,8 +394,29 @@ class AuctionRoom:
             return f"squad full ({self.rules['max_squad']})"
         if player.overseas and summary["overseas"] >= self.rules["max_overseas"]:
             return f"overseas full ({self.rules['max_overseas']})"
-        if amount > summary["max_bid"]:
-            return f"over budget — max {money(summary['max_bid'])}"
+
+        # This signing, with its real flags. An overseas or uncapped player
+        # pays down an obligation; anyone else uses up a place it may need.
+        plan = slot_plan(
+            self.rules,
+            size=summary["size"],
+            overseas=summary["overseas"],
+            uncapped=summary["uncapped"],
+            signing_overseas=player.overseas,
+            signing_uncapped=player.uncapped,
+            cheapest_base=self._min_base(),
+        )
+        owed = plan.overseas_needed + plan.uncapped_needed
+        if owed > plan.slots_free:
+            need = []
+            if plan.overseas_needed:
+                need.append(f"{plan.overseas_needed} overseas")
+            if plan.uncapped_needed:
+                need.append(f"{plan.uncapped_needed} uncapped")
+            return f"keep squad places for {' and '.join(need)}"
+        max_bid = max(0, summary["left"] - plan.reserve)
+        if amount > max_bid:
+            return f"over budget — max {money(max_bid)}"
         return None
 
     @property
@@ -380,9 +424,12 @@ class AuctionRoom:
         """What the next bid costs. The opening ask is the base itself."""
         if not self.lot:
             return 0
-        if self.lot.bidder_id is None:
-            return self.lot.bid
-        return self.lot.bid + increment_for(self.lot.bid)
+        return rulebook.next_ask(
+            self.players[self.lot.player_id].base,
+            self.lot.bid,
+            self.lot.bidder_id is not None,
+            self.rules["increment"],
+        )
 
     def counts(self) -> dict[str, int]:
         sold = sum(1 for r in self.records.values() if r.status == "sold")
@@ -430,6 +477,45 @@ class AuctionRoom:
         if seat.role != "franchise" or seat.team_id is None:
             raise RoomError(f"Only a franchise can {action}.", about=action)
         return seat
+
+    def _require_briefed(self, seat: Seat, action: str) -> None:
+        """
+        Rule 7. A franchise acts only under rules it has read.
+
+        Compared against the *current* version, so a host change between the
+        acknowledgement and this action sends the franchise back to the
+        briefing instead of letting it bid under numbers it never saw.
+        """
+        if seat.acked_version != self.rules_version:
+            changed = seat.acked_version is not None
+            raise RoomError(
+                f"Read and acknowledge the auction briefing before you {action} — "
+                + ("the rules have changed since you last read them." if changed else "it is waiting for you."),
+                about="briefing",
+            )
+
+    def is_briefed(self, team_id: int) -> bool:
+        return any(
+            s.role == "franchise" and s.team_id == team_id and s.acked_version == self.rules_version
+            for s in self.seats.values()
+        )
+
+    async def acknowledge_rules(self, client_id: str, rules_version: int) -> None:
+        """Record that this franchise has read the briefing for these rules."""
+        seat = self._require_franchise(client_id, "acknowledge the briefing")
+        async with self._lock:
+            if rules_version != self.rules_version:
+                raise RoomError(
+                    "The rules changed while you were reading — review the "
+                    "updated briefing and acknowledge again.",
+                    about="briefing",
+                )
+            if seat.acked_version == self.rules_version:
+                return
+            seat.acked_version = self.rules_version
+            team = self.team_by_id(seat.team_id)
+            self._note(f"{team['code']} acknowledged the briefing")
+            self.version += 1
 
     def _check_auctioneer_password(self, password: str | None) -> None:
         """
@@ -494,6 +580,17 @@ class AuctionRoom:
             else:
                 if team_id is None or self.team_by_id(team_id) is None:
                     raise RoomError("Pick a franchise that exists.", about="join")
+                # Rule 1. The team list is capped too, but seats are what
+                # actually compete, so the limit is checked where they are made.
+                franchises = sum(
+                    1 for s in self.seats.values()
+                    if s.role == "franchise" and s.client_id != client_id
+                )
+                if franchises >= self.rules["max_teams"]:
+                    raise RoomError(
+                        f"The room is full — at most {self.rules['max_teams']} franchises.",
+                        about="join",
+                    )
                 taken = any(
                     s.role == "franchise" and s.team_id == team_id and s.client_id != client_id
                     for s in self.seats.values()
@@ -503,11 +600,15 @@ class AuctionRoom:
                     raise RoomError(
                         f"{team['name']} is already being played.", about="join"
                     )
+                # Re-joining keeps the acknowledgement already given for these
+                # rules, so a dropped connection does not force a re-read.
+                previous = self.seats.get(client_id)
                 seat = Seat(
                     client_id=client_id,
                     role="franchise",
                     team_id=team_id,
                     display_name=display_name,
+                    acked_version=previous.acked_version if previous else None,
                 )
 
             self.seats[client_id] = seat
@@ -615,6 +716,11 @@ class AuctionRoom:
         self._clock_token += 1
         self.lot.clock = clock
         self.lot.deadline = time.time() + seconds
+        # A normal window means no buffer is running, so nobody is holding the
+        # room. Cleared here, in the one place every clock starts, so a bid or
+        # fold that ends a buffer can never leave the old attribution behind.
+        if clock != "timeout":
+            self.lot.timeout_by = None
         self._spawn(self._clock_token, seconds)
 
     def _disarm(self) -> None:
@@ -665,6 +771,11 @@ class AuctionRoom:
         assert self.lot is not None
         if self.lot.clock == "opening":
             self._pass_over("no bid in %ds" % self.rules["open_seconds"])
+            return
+        if self.lot.bidder_id is None:
+            # A buffer called before anyone bid, and nobody bid in it. The last
+            # recorded bid is no bid, so the player goes unsold.
+            self._pass_over("no bid after the %ds buffer" % self.rules["timeout_seconds"])
             return
 
         # "closing" and "timeout" both lapse into a sale, however many
@@ -813,6 +924,17 @@ class AuctionRoom:
             if record.status == "sold":
                 raise RoomError(f"{player.name} is already sold.", about="put_up")
 
+            # Maximum Players: the auction's lot limit. Counted from settled
+            # lots, so re-auctioning an unsold player does not cost a second
+            # place -- only reaching a new player does.
+            settled = sum(1 for r in self.records.values() if r.status != "available")
+            limit = self.rules.get("max_players") or len(self.players)
+            if record.status == "available" and settled >= limit:
+                raise RoomError(
+                    f"The lot limit is reached — {limit} players have gone under the hammer.",
+                    about="put_up",
+                )
+
             self._checkpoint()
             # Opening ask is the base itself: the first bidder pays base, and
             # only the second onwards climbs the ladder.
@@ -932,77 +1054,77 @@ class AuctionRoom:
         max_squad: int,
         min_squad: int,
         max_overseas: int,
+        max_players: int | None = None,
+        min_overseas: int | None = None,
     ) -> None:
         """
-        Change the auction's parameters from the Auction Setup panel.
+        Change the auction's setup from the host's panel.
 
-        Merged over the existing rules rather than replacing them: the panel
-        edits four fields and the rules dict holds eight, so a replace would
-        silently reset the clock durations and the lifeline count to whatever
-        the client happened to know about.
+        **Uniform by construction (rule 2).** There is one `rules` dict and no
+        per-team copy, so the merge below changes the budget and caps of every
+        franchise at once. Everything derived from it -- `max_bid`, the places
+        reserved for overseas and uncapped minimums, `squad n/max` -- is
+        recomputed from this dict on the next broadcast.
 
-        **Refused when it would invalidate a squad that already exists.**
-        Lowering the squad cap to 11 while a franchise holds fourteen players
-        does not un-buy three of them -- it produces a roster the room's own
-        `blocked_reason` calls illegal and no control can fix. Saying so is more
-        use than silently allowing a state the auction cannot leave; the
-        auctioneer can reset and then set the rules, which is the order the
-        setup panel already offers.
+        **Propagation.** The caller (`ws._dispatch`) broadcasts the full state
+        after this returns, so every connected client replaces its rules in the
+        same frame. `rules_version` is bumped, which invalidates every
+        franchise's acknowledgement: the briefing reappears for all of them.
 
-        Everything derived from the rules -- `max_bid`, the reserve held back
-        for the minimum squad, every `squad n/max` on the leaderboard -- is
-        recomputed from this dict on the next broadcast, so no other state needs
-        touching.
+        Refused while a player is on the block -- changing the budget under a
+        live bid would reprice a contest mid-flight -- and refused when it would
+        make a squad that already exists illegal (see `validate_setup`).
         """
         self._require_auctioneer(client_id, "change the auction rules")
 
-        if min_squad > max_squad:
-            raise RoomError(
-                f"The minimum squad ({min_squad}) cannot exceed the maximum "
-                f"({max_squad}).",
-                about="rules",
-            )
-        if max_overseas > max_squad:
-            raise RoomError(
-                f"Overseas places ({max_overseas}) cannot exceed the squad size "
-                f"({max_squad}).",
-                about="rules",
-            )
+        proposed: dict[str, int] = {
+            "purse": purse,
+            "max_squad": max_squad,
+            "min_squad": min_squad,
+            "max_overseas": max_overseas,
+            "max_players": self.rules.get("max_players", 0) if max_players is None else max_players,
+            "min_overseas": self.rules["min_overseas"] if min_overseas is None else min_overseas,
+        }
 
         async with self._lock:
+            if self.lot is not None:
+                raise RoomError(
+                    "Settle the player on the block before changing the rules.",
+                    about="rules",
+                )
+            squads = []
             for team in self.teams:
                 summary = self.summary_for(team["id"])
-                if summary["size"] > max_squad:
-                    raise RoomError(
-                        f"{team['code']} already holds {summary['size']} players; "
-                        f"a cap of {max_squad} would make that squad illegal. "
-                        f"Reset the auction first.",
-                        about="rules",
+                squads.append(
+                    SquadPosition(
+                        code=team["code"],
+                        size=summary["size"],
+                        overseas=summary["overseas"],
+                        spent=summary["spent"],
                     )
-                if summary["overseas"] > max_overseas:
-                    raise RoomError(
-                        f"{team['code']} already holds {summary['overseas']} "
-                        f"overseas players; a cap of {max_overseas} would make "
-                        f"that squad illegal. Reset the auction first.",
-                        about="rules",
-                    )
-                if summary["spent"] > purse:
-                    raise RoomError(
-                        f"{team['code']} has already committed "
-                        f"{money(summary['spent'])}, which is more than a purse "
-                        f"of {money(purse)}. Reset the auction first.",
-                        about="rules",
-                    )
+                )
+            try:
+                clean = validate_setup(proposed, squads)
+            except RuleViolation as exc:
+                raise RoomError(str(exc), about="rules") from exc
 
-            self.rules.update(
-                purse=purse,
-                max_squad=max_squad,
-                min_squad=min_squad,
-                max_overseas=max_overseas,
-            )
+            settled = sum(1 for r in self.records.values() if r.status != "available")
+            if clean.get("max_players") == 0:
+                clean["max_players"] = len(self.players)
+            if self.players and clean["max_players"] < settled:
+                raise RoomError(
+                    f"{settled} players have already gone under the hammer; "
+                    f"Maximum Players cannot be {clean['max_players']}.",
+                    about="rules",
+                )
+
+            self.rules.update(clean)
+            self.rules_version += 1
             self._note(
-                f"Rules set — {money(purse)} purse, squad {min_squad}-{max_squad}, "
-                f"{max_overseas} overseas"
+                f"Rules set — {money(self.rules['purse'])} budget, squad "
+                f"{self.rules['min_squad']}-{self.rules['max_squad']}, overseas "
+                f"{self.rules['min_overseas']}-{self.rules['max_overseas']}, "
+                f"{self.rules['max_players']} players"
             )
             self.version += 1
 
@@ -1035,6 +1157,7 @@ class AuctionRoom:
         assert team_id is not None  # guaranteed by _require_franchise
 
         async with self._lock:
+            self._require_briefed(seat, "bid")
             if self.phase != "live":
                 raise RoomError("The auction is not running.", about="bid")
             if not self.lot:
@@ -1047,18 +1170,25 @@ class AuctionRoom:
 
             if self.lot.bidder_id == team_id:
                 raise RoomError("You already hold the bid.", about="bid")
+            if team_id in self.lot.folded:
+                raise RoomError(
+                    "You withdrew from this player — you cannot bid on him again.",
+                    about="bid",
+                )
 
             player = self.players[self.lot.player_id]
-            ask = self.next_ask
-
-            if amount is None:
-                target = ask
-            else:
-                if amount < ask:
-                    raise RoomError(
-                        f"A jumpbid must beat the ask of {money(ask)}.", about="bid"
-                    )
-                target = amount
+            # Rule 4: the standard ask is the base, then +0.25 Cr; a jump must
+            # clear the ask and land on the 0.25 Cr grid.
+            try:
+                target, jump = check_bid_amount(
+                    amount,
+                    base=player.base,
+                    current=self.lot.bid,
+                    has_bid=self.lot.bidder_id is not None,
+                    increment=self.rules["increment"],
+                )
+            except RuleViolation as exc:
+                raise RoomError(str(exc), about="bid") from exc
 
             blocked = self.blocked_reason(team_id, player, target)
             if blocked:
@@ -1070,7 +1200,6 @@ class AuctionRoom:
             self.lot.bidder_id = team_id
             self.lot.version += 1
 
-            jump = amount is not None and amount > ask
             self._append(
                 "bid",
                 f"{team['code']} {'jumps to' if jump else 'bids'}",
@@ -1100,82 +1229,84 @@ class AuctionRoom:
 
     async def withdraw(self, client_id: str) -> int:
         """
-        Step out of the contest for the lot on the block.
+        Fold: step out of the player on the block (rule 6).
 
-        Withdrawing is an accelerator, never a block. The seven-second buffer
-        settles every lot on its own; stepping out only says "do not wait for
-        me", and once everybody but the standing bidder has said it there is
-        nothing left to wait for, so the lot goes at once instead of sitting
-        out a buffer nobody is going to use.
+        Any franchise that is not leading may fold, whether or not it has bid.
+        A folded franchise cannot bid on this player again; the next player
+        puts it back in contention.
 
-        It replaces a workaround rather than adding a feature. Before this, the
-        only way to signal "I am done with this player" was to leave the seat --
-        which drops the socket, frees the franchise for anyone to claim, and
-        says something far broader than was meant. A withdrawal is per-lot and
-        costs nothing: the next player puts every franchise back in contention.
+        **Settling early.** After the fold, the room counts the connected
+        franchises still able to act -- neither leading nor folded:
 
-        Two refusals, both rules:
+          none, a bid stands   the contest is over: sold to the leader now.
+          none, no bid         nobody wants him: unsold now.
+          some                 the auction carries on. A closing window gets a
+                               fresh full buffer, so a fold never shortens
+                               anyone else's thinking time. If the folder was
+                               holding a decision buffer, the buffer ends and
+                               the standard timer resumes. An opening window is
+                               not extended.
 
-        **You must be in the contest.** Withdrawing from a player you never bid
-        on communicates nothing the room does not already know, and a log full
-        of them would bury the withdrawals that mean something.
+        **The leader may not fold.** Stepping back from your own standing bid
+        is retracting it -- a different act, and the one the host's undo is for.
 
-        **The leader may not withdraw.** Stepping back from your own standing
-        bid is retracting it, which is a different act with different
-        consequences for the ladder -- and one the auctioneer's undo exists for.
-
-        Returns how many contenders remain.
+        Returns how many franchises can still act on this lot.
         """
         seat = self._require_franchise(client_id, "withdraw")
         team_id = seat.team_id
         assert team_id is not None  # guaranteed by _require_franchise
 
         async with self._lock:
+            self._require_briefed(seat, "withdraw")
             if self.phase != "live":
                 raise RoomError("The auction is not running.", about="withdraw")
             if not self.lot:
                 raise RoomError("Nothing is on the block.", about="withdraw")
-            if team_id not in self.lot.contenders:
-                raise RoomError(
-                    "You are not in this contest — you have not bid on this lot.",
-                    about="withdraw",
-                )
             if self.lot.bidder_id == team_id:
                 raise RoomError(
                     "You hold the bid — withdrawing would retract it. "
                     "Let it stand, or be outbid.",
                     about="withdraw",
                 )
+            if team_id in self.lot.folded:
+                raise RoomError("You have already withdrawn from this player.", about="withdraw")
 
             self._checkpoint()
+            self.lot.folded.append(team_id)
             self.lot.contenders = [t for t in self.lot.contenders if t != team_id]
             self.lot.version += 1
 
             team = self.team_by_id(team_id)
-            remaining = len(self.lot.contenders)
             self._append("withdraw", f"{team['code']} withdraws")
 
-            if remaining <= 1 and self.lot.bidder_id is not None:
-                # Everyone who was in has stepped back but the standing bidder.
-                # The contest is over, so the lot goes now -- making the room
-                # sit out a seven-second buffer it has already answered would be
-                # ceremony, not process.
-                # `checkpoint=False`: the snapshot above already covers this
-                # whole action, and a second one would make the withdrawal take
-                # two undos to reverse.
-                try:
-                    self._hammer_down(how="unopposed", checkpoint=False)
-                except RoomError as exc:
-                    logger.warning("withdrawal could not settle lot: %s", exc.message)
-                    self._pass_over(exc.message, checkpoint=False)
-            else:
-                # Somebody is still in. The remaining franchises get a fresh
-                # full buffer to act in: a withdrawal should never shorten
-                # anyone else's thinking time, only their own.
+            still_in = [
+                t for t in self.connected_team_ids()
+                if t != self.lot.bidder_id and t not in self.lot.folded
+            ]
+            if not still_in:
+                # `checkpoint=False`: the snapshot above covers this whole
+                # action, so one undo reverses the fold and its settlement.
+                if self.lot.bidder_id is not None:
+                    try:
+                        self._hammer_down(how="unopposed", checkpoint=False)
+                    except RoomError as exc:
+                        logger.warning("withdrawal could not settle lot: %s", exc.message)
+                        self._pass_over(exc.message, checkpoint=False)
+                else:
+                    self._pass_over("every franchise withdrew", checkpoint=False)
+            elif self.lot.clock == "closing":
                 self._arm("closing", self.rules["close_seconds"])
+            elif self.lot.clock == "timeout" and self.lot.timeout_by == team_id:
+                # The buffer was this franchise's to think in, and it has
+                # decided. The standard timer resumes for everyone else.
+                if self.lot.bidder_id is not None:
+                    self._arm("closing", self.rules["close_seconds"])
+                else:
+                    self._arm("opening", self.rules["open_seconds"])
+                self.lot.timeout_by = None
 
             self.version += 1
-            return remaining
+            return len(still_in)
 
     # ---------------------------------------------------------------- #
     # Lifelines
@@ -1213,6 +1344,7 @@ class AuctionRoom:
         assert team_id is not None  # guaranteed by _require_franchise
 
         async with self._lock:
+            self._require_briefed(seat, "call a decision buffer")
             if self.phase != "live":
                 raise RoomError("The auction is not running.", about="timeout")
             if not self.lot:
@@ -1225,9 +1357,15 @@ class AuctionRoom:
                     "has the room held.",
                     about="timeout",
                 )
-            if self.lot.clock != "closing":
+            # Rule 5: decision time is available whenever a player is up --
+            # in the opening window as well as after a bid. Expiry settles to
+            # the last recorded bid either way (see `_fire`).
+            if self.lot.clock not in ("opening", "closing"):
+                raise RoomError("The block is not open for bidding.", about="timeout")
+            if team_id in self.lot.folded:
                 raise RoomError(
-                    "A timeout answers a bid — nobody has bid yet.", about="timeout"
+                    "You withdrew from this player — there is nothing to decide.",
+                    about="timeout",
                 )
             if self.lot.bidder_id == team_id:
                 raise RoomError(
@@ -1249,7 +1387,7 @@ class AuctionRoom:
             team = self.team_by_id(team_id)
             self._append(
                 "timeout",
-                f"{team['code']} calls timeout — {left - 1} left",
+                f"{team['code']} calls a decision buffer — {left - 1} left",
             )
             self._arm("timeout", self.rules["timeout_seconds"])
             self.version += 1
@@ -1290,6 +1428,7 @@ class AuctionRoom:
                     "connected": team["id"] in connected,
                     "buys": buys[team["id"]],
                     "timeouts_left": self.timeouts_left(team["id"]),
+                    "acknowledged": self.is_briefed(team["id"]),
                     **summary,
                 }
             )
@@ -1332,6 +1471,26 @@ class AuctionRoom:
                     (self.team_by_id(t) or {}).get("code", "?")
                     for t in self.lot.contenders
                 ],
+                "folded": list(self.lot.folded),
+                "folded_codes": [
+                    (self.team_by_id(t) or {}).get("code", "?")
+                    for t in self.lot.folded
+                ],
+                "has_bid": self.lot.bidder_id is not None,
+                # Why each franchise cannot meet the next ask, or None if it can.
+                # Computed here so a station shows the room's own reason --
+                # including the places kept for overseas and uncapped minimums --
+                # instead of re-deriving it and risking a different answer.
+                "blocked": {
+                    str(team["id"]): self.blocked_reason(team["id"], player, self.next_ask)
+                    for team in self.teams
+                },
+                "jump_options": jump_options(
+                    player.base,
+                    self.lot.bid,
+                    self.lot.bidder_id is not None,
+                    self.rules["jump_steps"],
+                ),
             }
 
         return {
@@ -1342,7 +1501,9 @@ class AuctionRoom:
             # message at a process that predates it and showing nothing.
             "supports": supported_message_types(),
             "phase": self.phase,
-            "rules": dict(self.rules),
+            "rules": copy.deepcopy(self.rules),
+            "rules_version": self.rules_version,
+            "briefing": rules_list(self.rules),
             "teams": teams,
             "lot": lot,
             "log": self.log[:40],

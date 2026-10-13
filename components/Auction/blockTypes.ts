@@ -33,13 +33,11 @@ export interface TickerEntry {
   mine: boolean;
 }
 
-/** The ladder: the step grows with the price, as it does in the room. */
-export function incrementFor(bid: number): number {
-  if (bid < 100) return 5;
-  if (bid < 200) return 10;
-  if (bid < 500) return 20;
-  if (bid < 1000) return 25;
-  return 50;
+/** The standard bid step, as the room defines it (auction/rules.py). */
+export function incrementFor(_bid: number): number {
+  // A flat ₹0.25 Cr at every price, the room's rule 4. Keeps its argument so
+  // every caller written against the old price-dependent ladder still works.
+  return 25;
 }
 
 /** ₹ lakh in, broadcast caption out. */

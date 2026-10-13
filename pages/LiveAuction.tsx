@@ -43,6 +43,7 @@ import AdminSplitScreen from "../components/Auction/AdminSplitScreen";
 import PostAuctionReport from "../components/Auction/PostAuctionReport";
 import SocketBlock from "../components/Auction/SocketBlock";
 import WaitingRoom from "../components/Auction/WaitingRoom";
+import AuctionBriefing from "../components/Auction/AuctionBriefing";
 
 import "../console/console.css";
 
@@ -296,6 +297,22 @@ function LiveAuctionInner() {
   }
 
   /* ---------------- franchise ---------------- */
+
+  /*
+    Rule 7, the mandatory briefing. A franchise that has not acknowledged the
+    room's current rules sees them instead of the waiting room or the block --
+    before the auction and, if the host changes the rules between lots, again
+    mid-auction. The room refuses bids from an unbriefed franchise regardless;
+    this is where it is told why.
+  */
+  if (socket.state && !socket.briefed) {
+    return (
+      <>
+        <AuctionBriefing socket={socket} onLeave={leaveSeat} />
+        {toastLayer}
+      </>
+    );
+  }
 
   if (phase !== "live") {
     return (

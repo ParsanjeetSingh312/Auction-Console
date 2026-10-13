@@ -95,12 +95,20 @@ export default function SocketBlock({ socket, engine, onLeave }: SocketBlockProp
    */
   const blockedReason = useMemo(() => {
     if (!room?.lot || !myTeam) return null;
+    // Rule 6: a franchise that withdrew is out of this lot.
+    if (socket.hasFolded) return "withdrawn from this player";
+    // The room's own reason, so this station never disagrees with the rule
+    // engine -- including the squad places kept for the overseas and
+    // uncapped minimums, which a local check would not know about.
+    if (socket.myBlockedReason) return socket.myBlockedReason;
+    // An older server without `blocked`: fall back to the local check.
+    if (room.lot.blocked) return null;
     const player = engine.playerById(room.lot.player_id);
     if (!player) return null;
     const reason = engine.blockedReason(myTeam.id, player, room.lot.next_ask);
     if (!reason) return null;
     return reason.startsWith("over budget") ? null : reason;
-  }, [room?.lot, myTeam, engine]);
+  }, [room?.lot, myTeam, engine, socket.hasFolded, socket.myBlockedReason]);
 
   return (
     <BlockView
@@ -134,6 +142,13 @@ export default function SocketBlock({ socket, engine, onLeave }: SocketBlockProp
       onTimeout={socket.callTimeout}
       canTimeout={socket.canCallTimeout}
       timeoutsLeft={socket.timeoutsLeft}
+      // The room's own figures: the next ask, the +5/+10/+15 Cr jump prices,
+      // and this franchise's ceiling after the places it must keep back.
+      nextAsk={room?.lot?.next_ask}
+      jumpOptions={room?.lot?.jump_options}
+      maxBid={myTeam?.max_bid}
+      bufferSeconds={room?.rules.timeout_seconds}
+      folded={room?.lot?.folded_codes ?? []}
       corner={
         <div className="flex items-center gap-3">
           <button

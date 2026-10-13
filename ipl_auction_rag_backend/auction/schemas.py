@@ -216,10 +216,33 @@ class SetRules(BaseModel):
 
     model_config = Strict
     type: Literal["set_rules"]
+    # Total Budget, lakh.
     purse: int = Field(ge=1, le=10_000_000)
+    # Total Squad: the most players one franchise may hold.
     max_squad: int = Field(ge=1, le=100)
+    # Minimum Players: the squad every franchise must finish with.
     min_squad: int = Field(ge=1, le=100)
-    max_overseas: int = Field(ge=1, le=100)
+    max_overseas: int = Field(ge=0, le=100)
+    # Optional so an older client sending only the four fields above still
+    # works; the room keeps its current value for anything omitted.
+    # Maximum Players: how many players may go under the hammer in total.
+    max_players: int | None = Field(default=None, ge=0, le=10_000)
+    min_overseas: int | None = Field(default=None, ge=0, le=100)
+
+
+class AcknowledgeRules(BaseModel):
+    """
+    Franchise: "I have read the briefing."
+
+    Quotes the `rules_version` the franchise was shown. The room accepts it only
+    when it matches the current version, so an acknowledgement of yesterday's
+    rules cannot be replayed after the host changes them -- the briefing must be
+    read again, which is the point of rule 7.
+    """
+
+    model_config = Strict
+    type: Literal["acknowledge_rules"]
+    rules_version: int = Field(ge=0)
 
 
 class Ping(BaseModel):
@@ -243,6 +266,7 @@ ClientMessage = Annotated[
     | FinishAuction
     | ResetRoom
     | SetRules
+    | AcknowledgeRules
     | Ping,
     Field(discriminator="type"),
 ]
@@ -315,6 +339,13 @@ class TeamState(BaseModel):
     # own: which rivals can still freeze a lot is exactly the sort of thing a
     # bidder should be able to price in before committing.
     timeouts_left: int = 0
+    uncapped: int = 0
+    # Still owed to reach the room's minimums. Shown so a franchise can see why
+    # its max bid is lower than its purse: those places are reserved.
+    overseas_needed: int = 0
+    uncapped_needed: int = 0
+    # Has this franchise acknowledged the current rules_version?
+    acknowledged: bool = False
     # [player_id, price] pairs. Lets a client rebuild this squad without
     # re-fetching the pool -- see RoomState on why the pool is not broadcast.
     buys: list[list[int]] = Field(default_factory=list)
@@ -393,6 +424,13 @@ class LotState(BaseModel):
     # see who it is actually still bidding against.
     contenders: list[int] = Field(default_factory=list)
     contender_codes: list[str] = Field(default_factory=list)
+    # Franchises that folded on this lot. They may not bid on it again.
+    folded: list[int] = Field(default_factory=list)
+    folded_codes: list[str] = Field(default_factory=list)
+    has_bid: bool = False
+    # The +5 / +10 / +15 Cr shortcuts as absolute prices from where the lot
+    # stands, computed by the room so the buttons can never offer an illegal bid.
+    jump_options: list[int] = Field(default_factory=list)
 
 
 class LogItem(BaseModel):
@@ -421,6 +459,12 @@ class RoomState(BaseModel):
     # rather than hardcoded in the client so the dial, the lifeline counter and
     # the room can never disagree about how long seven seconds is.
     rules: dict
+    # Bumped on every setup change. A franchise must acknowledge this exact
+    # number before it may bid, fold or call a buffer.
+    rules_version: int = 0
+    # The briefing as {id, title, body} items, generated from `rules` so the
+    # text can never quote a number the engine is not enforcing.
+    briefing: list[dict] = Field(default_factory=list)
     teams: list[TeamState]
     lot: LotState | None
     log: list[LogItem]

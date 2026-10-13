@@ -275,40 +275,76 @@ export function SetupDialog({
    */
   warning?: string | null;
 }) {
+  // The live room carries two more setup fields than the offline console.
+  // Their presence on `rules` is what makes them appear here.
+  const live = rules.maxPlayers !== undefined || rules.minOverseas !== undefined;
   const [draft, setDraft] = useState({
-    purse: String(rules.purse),
+    // Entered in crore, the unit the auction is spoken in; sent as lakh.
+    purse: String(rules.purse / 100),
     maxSquad: String(rules.maxSquad),
     minSquad: String(rules.minSquad),
     maxOverseas: String(rules.maxOverseas),
+    maxPlayers: String(rules.maxPlayers ?? ""),
+    minOverseas: String(rules.minOverseas ?? ""),
   });
   const [error, setError] = useState<string | null>(null);
 
   function save() {
     const next: Rules = {
-      purse: Number(draft.purse),
+      purse: Math.round(Number(draft.purse) * 100),
       maxSquad: Number(draft.maxSquad),
       minSquad: Number(draft.minSquad),
       maxOverseas: Number(draft.maxOverseas),
+      ...(live
+        ? { maxPlayers: Number(draft.maxPlayers), minOverseas: Number(draft.minOverseas) }
+        : {}),
     };
 
-    if (Object.values(next).some((value) => !Number.isFinite(value) || value <= 0)) {
-      setError("Every field needs a positive number.");
+    // The same checks the room runs, in the same order, so the host hears the
+    // first broken rule here instead of after a round trip. The room
+    // re-checks regardless, including against squads that already exist.
+    const counts = [next.maxSquad, next.minSquad, next.maxOverseas];
+    if (!Number.isFinite(next.purse) || next.purse <= 0) {
+      setError("Total Budget needs a positive number of crore.");
+      return;
+    }
+    if (counts.some((value) => !Number.isInteger(value) || value < 0) || next.maxSquad < 1) {
+      setError("Squad fields need whole numbers.");
       return;
     }
     if (next.minSquad > next.maxSquad) {
-      setError("The minimum squad cannot exceed the maximum.");
+      setError("Minimum Players cannot exceed the Total Squad.");
       return;
     }
     if (next.maxOverseas > next.maxSquad) {
-      setError("Overseas places cannot exceed the squad size.");
+      setError("Maximum overseas cannot exceed the Total Squad.");
       return;
+    }
+    if (live) {
+      const { maxPlayers = 0, minOverseas = 0 } = next;
+      if (!Number.isInteger(maxPlayers) || maxPlayers < 1) {
+        setError("Maximum Players needs a whole number of at least 1.");
+        return;
+      }
+      if (!Number.isInteger(minOverseas) || minOverseas < 0) {
+        setError("Minimum overseas needs a whole number.");
+        return;
+      }
+      if (minOverseas > next.maxOverseas) {
+        setError("Minimum overseas cannot exceed the maximum.");
+        return;
+      }
+      if (minOverseas + 1 > next.maxSquad) {
+        setError("The squad must have room for the overseas minimum and one uncapped player.");
+        return;
+      }
     }
 
     onSave(next);
     onClose();
   }
 
-  const field = (key: keyof typeof draft, label: string, hint?: string) => (
+  const field = (key: keyof typeof draft, label: string, hint?: string, step = "1") => (
     <div className="fieldrow">
       <label htmlFor={`setup-${key}`}>
         {label}
@@ -317,7 +353,8 @@ export function SetupDialog({
       <input
         id={`setup-${key}`}
         type="number"
-        min={1}
+        min={0}
+        step={step}
         value={draft[key]}
         onChange={(event) => setDraft((prev) => ({ ...prev, [key]: event.target.value }))}
       />
@@ -328,7 +365,7 @@ export function SetupDialog({
     <Modal onClose={onClose} labelledBy="setup-title">
       <header>
         <h2 id="setup-title">
-          Auction setup<span>Purse and squad limits</span>
+          Auction setup<span>Applies to every franchise in the room</span>
         </h2>
         <button type="button" className="x" aria-label="Close" onClick={onClose}>
           ✕
@@ -336,10 +373,21 @@ export function SetupDialog({
       </header>
 
       <div className="mbody">
-        {field("purse", "Purse per team", "₹ lakh")}
-        {field("maxSquad", "Maximum squad")}
-        {field("minSquad", "Minimum squad", "reserved when computing max bid")}
-        {field("maxOverseas", "Overseas places")}
+        {field("purse", "Total Budget", "₹ crore per franchise", "0.25")}
+        {field("maxSquad", "Total Squad", "most players a team can have")}
+        {field("minSquad", "Minimum Players", "reserved when computing max bid")}
+        {live && field("maxPlayers", "Maximum Players", "players to go under the hammer")}
+        {field("maxOverseas", "Maximum overseas")}
+        {live && field("minOverseas", "Minimum overseas", "highlighted in the briefing")}
+
+        {live && (
+          <p className="mt-2 rounded-md border border-rule px-2.5 py-2 text-mini leading-relaxed text-muted">
+            Fixed for every room: 10 franchises · 7-second bid timer · ₹0.25 Cr increments ·
+            jump bids of +5 / +10 / +15 Cr or more · 30-second decision buffer, 3 per
+            franchise · at least 1 uncapped player. Saving sends every franchise back to the
+            briefing to acknowledge the new rules.
+          </p>
+        )}
 
         {error && <p className="mt-1 text-mini text-unsold">{error}</p>}
 

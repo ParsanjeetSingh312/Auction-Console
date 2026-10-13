@@ -110,6 +110,21 @@ export interface BlockViewProps {
   canTimeout?: boolean;
   /** Lifelines this franchise has left, rendered as pips on the control. */
   timeoutsLeft?: number;
+
+  /* ---------------- the room's own figures ----------------
+     Supplied by the live-room driver so the screen never re-derives a price the
+     room has already decided. Absent, the view falls back to its local ladder. */
+
+  /** The standard next bid, ₹ lakh, as the room computes it. */
+  nextAsk?: number;
+  /** The +5 / +10 / +15 Cr jump bids as absolute prices, ₹ lakh. */
+  jumpOptions?: number[];
+  /** The most this franchise may bid after the places the room keeps back. */
+  maxBid?: number;
+  /** Length of the decision buffer, for the control's label. */
+  bufferSeconds?: number;
+  /** Codes of the franchises that folded on this lot. */
+  folded?: string[];
 }
 
 export default function BlockView({
@@ -132,6 +147,11 @@ export default function BlockView({
   onTimeout,
   canTimeout = false,
   timeoutsLeft = 0,
+  nextAsk,
+  jumpOptions,
+  maxBid,
+  bufferSeconds = 30,
+  folded,
 }: BlockViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const bidValueRef = useRef<HTMLSpanElement>(null);
@@ -141,7 +161,7 @@ export default function BlockView({
 
   /* ---------------- derived state ---------------- */
 
-  const nextBid = leadingTeam ? currentBid + incrementFor(currentBid) : currentBid;
+  const nextBid = nextAsk ?? (leadingTeam ? currentBid + incrementFor(currentBid) : currentBid);
   const isWinning = leadingTeam !== "" && leadingTeam === myTeam;
   const canAfford = nextBid <= purseLeft;
   const barred = blockedReason !== null && blockedReason !== "";
@@ -455,6 +475,11 @@ export default function BlockView({
                     in the contest · {contenders.join(" · ")}
                   </div>
                 )}
+                {folded && folded.length > 0 && (
+                  <div className="mt-1 text-center font-mono text-[10px] uppercase tracking-[0.25em] text-neutral-700">
+                    withdrawn · {folded.join(" · ")}
+                  </div>
+                )}
               </div>
             )}
 
@@ -486,7 +511,11 @@ export default function BlockView({
             {onJumpBid && (
               <JumpBid
                 floor={nextBid}
-                disabled={stance === "blocked" && barred}
+                anchor={currentBid}
+                step={incrementFor(currentBid)}
+                presets={jumpOptions ?? []}
+                ceiling={maxBid ?? purseLeft}
+                disabled={(stance === "blocked" && barred) || isWinning}
                 onJump={onJumpBid}
               />
             )}
@@ -510,16 +539,16 @@ export default function BlockView({
                     disabled={!canTimeout}
                     title={
                       canTimeout
-                        ? `Freeze the block for 30 seconds — ${timeoutsLeft} lifeline${
+                        ? `Pause the timer and take ${bufferSeconds} seconds to decide — ${timeoutsLeft} buffer${
                             timeoutsLeft === 1 ? "" : "s"
-                          } left`
+                          } left. If nobody bids, the player goes to the last recorded bid.`
                         : timeoutsLeft === 0
-                          ? "No lifelines left"
-                          : "A timeout answers a standing bid — you cannot call one on your own"
+                          ? "No decision buffers left"
+                          : "Not available while you hold the bid, after withdrawing, or while a buffer is running"
                     }
                     className="flex items-center gap-2 rounded-md border border-cyan-500/50 bg-cyan-500/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.25em] text-cyan-300 transition-colors hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:border-neutral-800 disabled:bg-transparent disabled:text-neutral-700"
                   >
-                    timeout
+                    {bufferSeconds}s buffer
                     {/* Pips, not a number: three of anything is countable at a
                         glance, and this is read under time pressure. */}
                     <span className="flex gap-0.5" aria-hidden>
@@ -543,8 +572,8 @@ export default function BlockView({
                     disabled={!canWithdraw}
                     title={
                       canWithdraw
-                        ? "Step out of this player — the lot goes to the standing bid"
-                        : "You can withdraw only from a player you have bid on, and not while you hold the bid"
+                        ? "Withdraw from this player — you cannot bid on him again; the other franchises carry on"
+                        : "Not available while you hold the bid, or once you have withdrawn"
                     }
                     className="rounded-md border border-neutral-700 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.25em] text-neutral-400 transition-colors hover:border-red-500/60 hover:text-red-300 disabled:cursor-not-allowed disabled:border-neutral-900 disabled:text-neutral-700"
                   >
@@ -686,11 +715,23 @@ function Chip({ children }: { children: React.ReactNode }) {
  */
 function JumpBid({
   floor,
+  anchor,
+  step,
+  presets,
+  ceiling,
   disabled,
   onJump,
 }: {
-  /** ₹ lakh: the standard next ask, which a jump must beat. */
+  /** ₹ lakh: the standard next ask, which a jump must reach. */
   floor: number;
+  /** ₹ lakh: where the price stands; a jump must land on the step grid from here. */
+  anchor: number;
+  /** ₹ lakh: the standard step (25 = ₹0.25 Cr). */
+  step: number;
+  /** The +5 / +10 / +15 Cr jumps as absolute prices, from the room. */
+  presets: number[];
+  /** ₹ lakh: the most this franchise may bid. Presets above it are disabled. */
+  ceiling: number;
   disabled: boolean;
   onJump: (amount: number) => void;
 }) {
@@ -699,7 +740,9 @@ function JumpBid({
 
   const crores = Number(text);
   const lakh = Math.round(crores * 100);
-  const valid = text.trim() !== "" && Number.isFinite(crores) && lakh >= floor;
+  const onGrid = step > 0 ? (lakh - anchor) % step === 0 : true;
+  const valid =
+    text.trim() !== "" && Number.isFinite(crores) && lakh >= floor && onGrid && lakh <= ceiling;
 
   const submit = () => {
     if (!valid) return;
@@ -710,14 +753,35 @@ function JumpBid({
 
   if (!open) {
     return (
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen(true)}
-        className="mt-4 rounded-md border border-neutral-800 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.25em] text-neutral-500 transition-colors hover:border-neutral-600 hover:text-neutral-300 disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        jumpbid
-      </button>
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+        {/* Rule 4's shortcuts. The prices are the room's, so they are always
+            on the ladder; one above this franchise's ceiling is disabled
+            rather than offered and refused. */}
+        {presets.map((price) => {
+          const over = price > ceiling;
+          return (
+            <button
+              key={price}
+              type="button"
+              disabled={disabled || over}
+              onClick={() => onJump(price)}
+              title={over ? `Above your maximum bid of ${crore(ceiling)}` : `Jump straight to ${crore(price)}`}
+              className="min-h-[36px] rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.15em] text-amber-300 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:border-neutral-800 disabled:bg-transparent disabled:text-neutral-700"
+            >
+              +{Math.round((price - anchor) / 100)} Cr
+              <span className="ml-1.5 text-[10px] text-amber-200/70">{crore(price)}</span>
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setOpen(true)}
+          className="min-h-[36px] rounded-md border border-neutral-800 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.25em] text-neutral-500 transition-colors hover:border-neutral-600 hover:text-neutral-300 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          custom jump
+        </button>
+      </div>
     );
   }
 
@@ -758,7 +822,11 @@ function JumpBid({
         title={
           valid
             ? `Commit ${crore(lakh)}`
-            : `Must be at least ${crore(floor)}`
+            : lakh > ceiling
+              ? `Above your maximum bid of ${crore(ceiling)}`
+              : !onGrid
+                ? `Bids move in steps of ₹${(step / 100).toFixed(2)} Cr`
+                : `Must be at least ${crore(floor)}`
         }
         className="rounded-md border border-amber-500/60 bg-amber-500/10 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.2em] text-amber-300 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:border-neutral-800 disabled:bg-transparent disabled:text-neutral-700"
       >

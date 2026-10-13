@@ -79,7 +79,7 @@ const TONES: Record<"war" | "panel", Record<LotClock["kind"], Tone>> = {
     // the room is deliberately paused, not counting down to a decision nobody
     // made.
     timeout: {
-      label: "timeout",
+      label: "decision buffer",
       bar: "bg-cyan-400",
       text: "text-cyan-300",
       track: "border-cyan-500/40 bg-neutral-900",
@@ -101,7 +101,7 @@ const TONES: Record<"war" | "panel", Record<LotClock["kind"], Tone>> = {
       track: "border-[#D9A21B]/40 bg-surface-sunken",
     },
     timeout: {
-      label: "timeout",
+      label: "decision buffer",
       bar: "bg-[#1E86A8]",
       text: "text-[#1E86A8]",
       track: "border-[#1E86A8]/40 bg-surface-sunken",
@@ -190,7 +190,7 @@ function Dial({
   const fraction = clock.total > 0 ? Math.min(1, clock.endsIn / clock.total) : 1;
 
   const label =
-    clock.kind === "timeout" && timeoutBy ? `timeout · ${timeoutBy}` : base.label;
+    clock.kind === "timeout" && timeoutBy ? `decision buffer · ${timeoutBy}` : base.label;
 
   return (
     <div
