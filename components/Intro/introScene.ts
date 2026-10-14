@@ -30,6 +30,7 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 
+
 export type IntroTier = 1 | 2 | 3;
 
 /* ---------------------------------------------------------------- layout -- */
@@ -55,7 +56,25 @@ const IMPACT = new THREE.Vector3(0.0, 0.41, -(STUMP_RADIUS + BALL_RADIUS));
 /** Share of the delivery's time spent before it pitches. */
 const BOUNCE_AT = 0.76;
 
-/** Six towers, at the corners of a hexagon turned so none stands dead behind the bowler. */
+/**
+ * The delivery opening's clock, in seconds of the ball's own time: the film
+ * starts at `start`, the ball leaves the bowler's crease at `release` (zero),
+ * is in the stumps `flight` later, and after the strike ricochets off them and
+ * climbs back up the pitch on a parabola, high over the bowler's end and out
+ * through the top of the frame. The rise is cinema, not physics: launched hard
+ * under a heavy gravity so the climb fits in a couple of seconds.
+ */
+export const DELIVERY = {
+  start: -1.1,
+  release: 0,
+  flight: 0.55,
+  get strike() {
+    return this.release + this.flight;
+  },
+  rise: { vx: -1.0, vy: 64.7, vz: -14.1, g: 38.1 },
+} as const;
+
+/** Six towers, at the corners of a hexagon turned so none stands dead behind the bowler's end. */
 const TOWER_ANGLES = [30, 90, 150, 210, 270, 330].map((d) => THREE.MathUtils.degToRad(d));
 
 /* ----------------------------------------------------------------- state -- */
@@ -75,6 +94,36 @@ export interface IntroState {
   delivery: number;
   /** Tone-mapping exposure: the lights coming up from black. */
   exposure: number;
+  /**
+   * Delivery opening only. The ball's clock, set by the film: its flight and
+   * its rise are functions of it, so the film can be scrubbed and slowed
+   * without the ball ever drifting off its path.
+   */
+  clip: number;
+  /**
+   * Delivery opening only. How much `cam` and `look` are offsets from the
+   * ball rather than world positions: 0 is the world, 1 rides with the ball.
+   */
+  camFrom: { ball: number };
+  lookFrom: { ball: number };
+  /**
+   * Delivery opening only: 0 takes the ball out of the sky once it has gone
+   * at the top of its arc, so it never falls back into a frozen frame.
+   */
+  ballOn: number;
+  /** Delivery opening only: 0..1, a star of light where the ball is. */
+  glint: number;
+}
+
+export interface DropBallOptions {
+  /**
+   * Where the ball should land, asked every frame: a point in viewport pixels
+   * and the radius it should have there. Null cancels the drop.
+   */
+  locate: () => { x: number; y: number; r: number } | null;
+  /** Seconds from the top of the screen to the target. */
+  duration?: number;
+  onArrive: () => void;
 }
 
 export interface IntroStage {
@@ -94,7 +143,13 @@ export interface IntroStage {
    * light flash in `primary`, with `secondary` mixed into the sparks. Null
    * restores the opening's red LEDs and turns the sparks off.
    */
-  setTeamColors(primary: string | null, secondary?: string | null): void;
+  setTeamColors(primary: string | null, secondary?: string | null, led?: string | null, intensity?: number): void;
+  /**
+   * Delivery opening only: bring the ball back down out of the sky onto a
+   * point on screen, then hide it. The landing uses it to set the ball onto
+   * the top of the trophy.
+   */
+  dropBall(options: DropBallOptions): void;
   dispose(): void;
   /** For tuning from the console: draw calls and triangles last frame. */
   debug(): { calls: number; triangles: number; frames: number; internals: unknown };
@@ -107,6 +162,13 @@ export interface IntroStage {
 
 export interface IntroStageOptions {
   tier: IntroTier;
+  /**
+   * "strike" (the default): the wicket alone, the ball arriving from off
+   * screen. "delivery": the ball is launched from the far crease in a glint
+   * of light, the far wicket standing behind it, and its flight, the strike
+   * and its climb are all driven by the film's clock.
+   */
+  opening?: "strike" | "delivery";
   /** Called after the first frame has actually been drawn. */
   onReady?: () => void;
 }
@@ -258,6 +320,32 @@ function pitchTexture() {
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;
+  return tex;
+}
+
+/** A four-point star with a soft core: a glint of light on the ball. */
+function starTexture() {
+  const S = 256;
+  const { c, ctx } = canvas(S, S);
+  const core = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  core.addColorStop(0, "rgba(255,255,255,1)");
+  core.addColorStop(0.08, "rgba(255,255,255,0.8)");
+  core.addColorStop(0.3, "rgba(200,220,255,0.12)");
+  core.addColorStop(1, "rgba(200,220,255,0)");
+  ctx.fillStyle = core;
+  ctx.fillRect(0, 0, S, S);
+  for (const [w, h] of [
+    [S, 5],
+    [5, S],
+  ]) {
+    const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+    g.addColorStop(0, "rgba(255,255,255,0.95)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect((S - w) / 2, (S - h) / 2, w, h);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
@@ -461,7 +549,8 @@ function stepBody(b: Body, dt: number) {
 
 /* ------------------------------------------------------------------ stage -- */
 
-export function createIntroStage(host: HTMLElement, { tier, onReady }: IntroStageOptions): IntroStage {
+export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "strike" }: IntroStageOptions): IntroStage {
+  const cast = opening === "delivery";
   const disposables: Array<{ dispose(): void }> = [];
   const track = <T extends { dispose(): void }>(x: T) => {
     disposables.push(x);
@@ -868,13 +957,41 @@ export function createIntroStage(host: HTMLElement, { tier, onReady }: IntroStag
   zingLight.position.set(0, STUMP_HEIGHT, 0.05);
   scene.add(zingLight);
 
+  // The bowler's end, for the delivery opening: the same wicket, standing
+  // still, its LEDs dark.
+  if (cast) {
+    const idleLed = track(ledMat.clone());
+    const far = new THREE.Group();
+    [-1, 0, 1].forEach((i) => {
+      const g = new THREE.Group();
+      const shaft = new THREE.Mesh(shaftGeo, stumpMat);
+      shaft.position.y = -0.06;
+      const cap = new THREE.Mesh(capGeo, idleLed);
+      cap.position.y = STUMP_HEIGHT / 2 - 0.06;
+      const dome = new THREE.Mesh(domeGeo, idleLed);
+      dome.position.y = STUMP_HEIGHT / 2;
+      for (const part of [shaft, cap, dome]) {
+        part.castShadow = true;
+        g.add(part);
+      }
+      g.position.set(i * STUMP_SPACING, STUMP_HEIGHT / 2, 0);
+      far.add(g);
+    });
+    [-1, 1].forEach((side) => {
+      const bail = new THREE.Mesh(bailGeo, idleLed);
+      bail.castShadow = true;
+      bail.position.set((side * STUMP_SPACING) / 2, STUMP_HEIGHT + 0.009, 0);
+      far.add(bail);
+    });
+    far.position.z = -PITCH_LENGTH;
+    scene.add(far);
+  }
+
   /* ---- the ball ---- */
   // A white ball: this is a night T20.
   const ball = new THREE.Group();
-  const ballMesh = new THREE.Mesh(
-    track(new THREE.SphereGeometry(BALL_RADIUS, 32, 24)),
-    track(new THREE.MeshStandardMaterial({ color: "#f6f5ef", roughness: 0.32, emissive: "#ffffff", emissiveIntensity: 0.18 })),
-  );
+  const ballMat = track(new THREE.MeshStandardMaterial({ color: "#f6f5ef", roughness: 0.32, emissive: "#ffffff", emissiveIntensity: 0.18 }));
+  const ballMesh = new THREE.Mesh(track(new THREE.SphereGeometry(BALL_RADIUS, 32, 24)), ballMat);
   ballMesh.castShadow = true;
   const seam = new THREE.Mesh(
     track(new THREE.TorusGeometry(BALL_RADIUS * 1.001, 0.0022, 6, 48)),
@@ -975,8 +1092,104 @@ export function createIntroStage(host: HTMLElement, { tier, onReady }: IntroStag
   scene.add(burstLight);
   let sparksOn = false;
   let sparkAge = -1;
+  let burstPeak = 9;
 
-  function setTeamColors(primary: string | null, secondary?: string | null) {
+  /* ---- the delivery opening: the ball's glow, its glint and its trail ---- */
+  /** Where the ball leaves the far crease. */
+  const release = RELEASE.clone();
+  const ballGlow = new THREE.Sprite(
+    track(
+      new THREE.SpriteMaterial({
+        map: glow,
+        color: new THREE.Color("#dfe9ff"),
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    ),
+  );
+  ballGlow.visible = false;
+  scene.add(ballGlow);
+  // The ball's last moment in the sky: a four-point star at the top of its arc.
+  const starMat = track(
+    new THREE.SpriteMaterial({
+      map: track(starTexture()),
+      color: new THREE.Color(2.2, 2.3, 2.6),
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+    }),
+  );
+  const star = new THREE.Sprite(starMat);
+  star.visible = false;
+  scene.add(star);
+  // The arc it climbs on, drawn behind it as a tapering ribbon of light, so
+  // the parabola reads as a shape and not just a moving point.
+  const TRAIL = 28;
+  const trailPos = new Float32Array(TRAIL * 2 * 3);
+  const trailCol = new Float32Array(TRAIL * 2 * 3);
+  const trailGeo = track(new THREE.BufferGeometry());
+  trailGeo.setAttribute("position", new THREE.BufferAttribute(trailPos, 3).setUsage(THREE.DynamicDrawUsage));
+  trailGeo.setAttribute("color", new THREE.BufferAttribute(trailCol, 3));
+  {
+    const idx: number[] = [];
+    for (let i = 0; i < TRAIL - 1; i++) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
+    trailGeo.setIndex(idx);
+    for (let i = 0; i < TRAIL; i++) {
+      const k = Math.pow(1 - i / (TRAIL - 1), 1.6);
+      trailCol.set([0.85 * k, 0.92 * k, 1.1 * k, 0.85 * k, 0.92 * k, 1.1 * k], i * 6);
+    }
+  }
+  const trailMat = track(
+    new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      fog: false,
+    }),
+  );
+  // A puff of clay where the ball pitches: a function of the ball's clock, so
+  // it scrubs with everything else.
+  const PUFF = 56;
+  const puffPos = new Float32Array(PUFF * 3);
+  const puffCol = new Float32Array(PUFF * 3);
+  const puffVel: number[] = [];
+  {
+    const rand = rng(43);
+    const c = new THREE.Color();
+    for (let i = 0; i < PUFF; i++) {
+      c.set(rand() < 0.7 ? "#dcc79c" : "#b39a6c").multiplyScalar(0.95 + rand() * 0.3);
+      puffCol.set([c.r, c.g, c.b], i * 3);
+      const a = rand() * Math.PI * 2;
+      const sp = 0.5 + rand() * 1.6;
+      // Mostly on along the line of the ball, a little up and out.
+      puffVel.push(Math.cos(a) * sp * 0.45, 0.35 + rand() * 0.9, Math.abs(Math.sin(a)) * sp + 0.6);
+    }
+  }
+  const puffGeo = track(new THREE.BufferGeometry());
+  puffGeo.setAttribute("position", new THREE.BufferAttribute(puffPos, 3).setUsage(THREE.DynamicDrawUsage));
+  puffGeo.setAttribute("color", new THREE.BufferAttribute(puffCol, 3));
+  const puffMat = track(
+    new THREE.PointsMaterial({ size: 0.06, map: glow, vertexColors: true, transparent: true, depthWrite: false, opacity: 0 }),
+  );
+  const puff = new THREE.Points(puffGeo, puffMat);
+  puff.frustumCulled = false;
+  puff.visible = false;
+  scene.add(puff);
+  /** Where on screen (NDC) the climbing ball was last seen, for its return. */
+  let lastSeen: THREE.Vector2 | null = null;
+  const ndc = new THREE.Vector3();
+
+  const trail = new THREE.Mesh(trailGeo, trailMat);
+  trail.frustumCulled = false;
+  trail.visible = false;
+  scene.add(trail);
+  function setTeamColors(primary: string | null, secondary?: string | null, led?: string | null, intensity = 1) {
     if (!primary) {
       sparksOn = false;
       ledMat.emissive.set("#ff1e1e");
@@ -984,8 +1197,8 @@ export function createIntroStage(host: HTMLElement, { tier, onReady }: IntroStag
       return;
     }
     sparksOn = true;
-    ledMat.emissive.set(primary);
-    zingLight.color.set(primary);
+    ledMat.emissive.set(led || primary);
+    zingLight.color.set(led || primary);
     burstLight.color.set(primary);
     const a = new THREE.Color(primary);
     const b = new THREE.Color(secondary || "#ffffff");
@@ -994,12 +1207,26 @@ export function createIntroStage(host: HTMLElement, { tier, onReady }: IntroStag
     const c = new THREE.Color();
     for (let i = 0; i < SPARKS; i++) {
       const pick = rand();
-      if (pick < 0.66) c.copy(a).multiplyScalar(3.2);
-      else if (pick < 0.86) c.copy(b).multiplyScalar(2.6);
-      else c.copy(white).multiplyScalar(3);
+      if (pick < 0.66) c.copy(a).multiplyScalar(3.2 * intensity);
+      else if (pick < 0.86) c.copy(b).multiplyScalar(2.6 * intensity);
+      else c.copy(white).multiplyScalar(3 * intensity);
       sparkCol.set([c.r, c.g, c.b], i * 3);
     }
     (sparkGeo.attributes.color as THREE.BufferAttribute).needsUpdate = true;
+    burstPeak = 9 * intensity;
+    sparkMat.size = 0.055 * (0.55 + 0.45 * intensity);
+  }
+
+  // Compile every program the film will need now, while the visitor is still
+  // on the gate. Drawn for the first time mid-film, the ball, its glow and
+  // trail, the glint and the clay puff would each stall the frame they
+  // appear on while the GPU built their shaders, and on a cold shader cache
+  // that is hundreds of milliseconds, right on the press of Enter.
+  {
+    const hidden = [ball, streak, ballGlow, star, trail, puff].filter((o) => !o.visible);
+    for (const o of hidden) o.visible = true;
+    renderer.compile(scene, camera);
+    for (const o of hidden) o.visible = false;
   }
 
   /* ---- post ---- */
@@ -1024,10 +1251,19 @@ export function createIntroStage(host: HTMLElement, { tier, onReady }: IntroStag
     timeScale: 1,
     delivery: -1,
     exposure: 0,
+    clip: DELIVERY.start,
+    camFrom: { ball: 0 },
+    lookFrom: { ball: 0 },
+    ballOn: 1,
+    glint: 0,
   };
 
   let simTime = 0;
   let struckAt = -1;
+  /** Delivery opening: the ball's clock at the strike, or -1. */
+  let struckClip = -1;
+  let drop: (Required<DropBallOptions> & { t: number; started: boolean }) | null = null;
+  let ballScale = 1;
   let debrisAge = -1;
   let driftAngle = 0;
   let width = 1;
@@ -1037,8 +1273,8 @@ export function createIntroStage(host: HTMLElement, { tier, onReady }: IntroStag
   const deliveryPoint = (u: number, out: THREE.Vector3) => {
     if (u <= BOUNCE_AT) {
       const s = u / BOUNCE_AT;
-      out.lerpVectors(RELEASE, BOUNCE, s);
-      out.y = BOUNCE.y + (RELEASE.y - BOUNCE.y) * Math.pow(1 - s, 1.18);
+      out.lerpVectors(release, BOUNCE, s);
+      out.y = BOUNCE.y + (release.y - BOUNCE.y) * Math.pow(1 - s, 1.18);
     } else {
       const s = (u - BOUNCE_AT) / (1 - BOUNCE_AT);
       out.lerpVectors(BOUNCE, IMPACT, s);
@@ -1091,6 +1327,93 @@ export function createIntroStage(host: HTMLElement, { tier, onReady }: IntroStag
   const prev = new THREE.Vector3();
   const dir = new THREE.Vector3();
   const look = new THREE.Vector3();
+  const focus = new THREE.Vector3();
+  const KEY_OFFSET = new THREE.Vector3(-26, 46, 25);
+  const ray = new THREE.Vector3();
+  const trailA = new THREE.Vector3();
+  const trailB = new THREE.Vector3();
+
+  /** The climb after the strike, `t` seconds of ball time after it. */
+  const risePoint = (t: number, out: THREE.Vector3) => {
+    const r = DELIVERY.rise;
+    const k = Math.max(0, t);
+    return out.set(IMPACT.x + r.vx * k, IMPACT.y + r.vy * k - 0.5 * r.g * k * k, IMPACT.z + r.vz * k);
+  };
+
+  /** Viewport pixels to a point `d` metres down that pixel's line of sight. */
+  const alongRay = (x: number, y: number, d: number, rect: DOMRect, out: THREE.Vector3) => {
+    ray.set(((x - rect.left) / rect.width) * 2 - 1, -(((y - rect.top) / rect.height) * 2 - 1), 0.5);
+    ray.unproject(camera).sub(camera.position).normalize();
+    return out.copy(camera.position).addScaledVector(ray, d);
+  };
+
+  /** Falls, accelerating, then is caught and set down over the last frames. */
+  const fall = (s: number) =>
+    s < 0.8 ? 0.92 * Math.pow(s / 0.8, 2.1) : 0.92 + 0.08 * (1 - Math.pow(1 - (s - 0.8) / 0.2, 3));
+
+  /** The ball's way down from the sky to the target on screen. */
+  function placeDrop(dt: number) {
+    if (!drop) return;
+    const rect = host.getBoundingClientRect();
+    const target = drop.locate();
+    if (!target || rect.width < 1) {
+      endDrop();
+      return;
+    }
+    // Out of the night above the top of the screen, a little to one side,
+    // growing as it falls towards the lens.
+    const D0 = 42;
+    const D1 = 6;
+    const pxPerM = rect.height / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+    ballScale = (target.r * D1) / pxPerM / BALL_RADIUS;
+    // From where the climbing ball left the top of the frame, if it did, so
+    // the ball that comes down is plainly the one that went up.
+    const sx = lastSeen ? rect.left + ((lastSeen.x + 1) / 2) * rect.width : target.x + rect.width * 0.05;
+    const sy = rect.top - rect.height * 0.06;
+    drop.started = true;
+    drop.t += dt;
+    const s = Math.min(1, drop.t / drop.duration);
+    const e = fall(s);
+    const x = sx + (target.x - sx) * e;
+    const y = sy + (target.y - sy) * e;
+    const d = D0 * Math.pow(D1 / D0, e);
+    alongRay(x, y, d, rect, ball.position);
+    ball.visible = true;
+    // Lit a little from within: it falls behind the landing's scrim and
+    // must still arrive as white as the ball the trophy takes from it.
+    ballMat.emissiveIntensity = 0.62;
+    ball.rotation.x -= dt * 9;
+    // The trail points back up the way it came.
+    const eb = Math.max(0, e - 0.03);
+    alongRay(sx + (target.x - sx) * eb, sy + (target.y - sy) * eb, D0 * Math.pow(D1 / D0, eb), rect, prev);
+    dir.subVectors(ball.position, prev);
+    if (s < 0.9 && dir.lengthSq() > 1e-8) {
+      const len = Math.min(dir.length() * 2.2, BALL_RADIUS * ballScale * 12);
+      streak.visible = true;
+      streak.position.copy(ball.position);
+      streak.quaternion.setFromUnitVectors(UP, dir.normalize());
+      streak.scale.set(ballScale, len, ballScale);
+    } else streak.visible = false;
+    if (s >= 1) endDrop();
+  }
+
+  function endDrop() {
+    const done = drop;
+    drop = null;
+    ballMat.emissiveIntensity = 0.18;
+    ball.visible = false;
+    streak.visible = false;
+    ballGlow.visible = false;
+    done?.onArrive();
+  }
+
+  function dropBall(options: DropBallOptions) {
+    if (!cast) {
+      options.onArrive();
+      return;
+    }
+    drop = { duration: 1.15, ...options, t: 0, started: false };
+  }
   const pivot = new THREE.Vector3(0, 0, PITCH_Z);
   const clock = new THREE.Clock();
   let frame = 0;
@@ -1110,8 +1433,43 @@ export function createIntroStage(host: HTMLElement, { tier, onReady }: IntroStag
     if (state.fov !== fovApplied) applyFov();
     crowdMat.uniforms.uTime.value += dt;
 
-    // Ball on its delivery, until the strike hands it to the physics.
-    if (!ballBody.live) {
+    if (cast) {
+      // The delivery opening: everything the ball does is a function of its
+      // clock: waiting at the far crease, down the pitch, up past the roof.
+      const c = state.clip;
+      ballScale = 1;
+      if (drop) {
+        // Placed below, once the camera is.
+      } else if (struckClip >= 0) {
+        risePoint(c - struckClip, p);
+        risePoint(c - struckClip - 0.018, prev);
+        ball.visible = true;
+        ball.position.copy(p);
+      } else if (c >= DELIVERY.release) {
+        const u = Math.min((c - DELIVERY.release) / DELIVERY.flight, 1);
+        deliveryPoint(u, p);
+        deliveryPoint(Math.max(u - 0.03, 0), prev);
+        ball.visible = true;
+        ball.position.copy(p);
+      } else {
+        // Not yet released: unseen, waiting where it will appear.
+        p.copy(release);
+        prev.copy(release);
+        ball.visible = false;
+        ball.position.copy(p);
+      }
+      ball.rotation.x -= sdt * 38;
+      if (!drop && state.ballOn < 0.5) ball.visible = false;
+      dir.subVectors(p, prev);
+      const len = dir.length();
+      if (ball.visible && !drop && c >= DELIVERY.release && len > 0.02) {
+        streak.visible = true;
+        streak.position.copy(p);
+        streak.quaternion.setFromUnitVectors(UP, dir.normalize());
+        streak.scale.set(1, Math.min(len * 1.7, 2.8), 1);
+      } else streak.visible = false;
+    } else if (!ballBody.live) {
+      // Ball on its delivery, until the strike hands it to the physics.
       if (state.delivery >= 0) {
         ball.visible = true;
         deliveryPoint(Math.min(state.delivery, 1), p);
@@ -1181,13 +1539,28 @@ export function createIntroStage(host: HTMLElement, { tier, onReady }: IntroStag
       }
       (sparkGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
       sparkMat.opacity = Math.max(0, 1 - sparkAge / 1.4);
-      burstLight.intensity = 9 * Math.max(0, 1 - sparkAge / 0.5);
+      burstLight.intensity = burstPeak * Math.max(0, 1 - sparkAge / 0.5);
     }
 
     // Camera: the tweened shot, a decaying shake, and the slow drift round the ground.
     driftAngle += dt * 0.035 * state.drift;
     p.set(state.cam.x, state.cam.y, state.cam.z);
     look.set(state.look.x, state.look.y, state.look.z);
+    if (cast) {
+      p.addScaledVector(ball.position, state.camFrom.ball);
+      look.addScaledVector(ball.position, state.lookFrom.ball);
+
+      // The key light's shadow follows the action: the far wicket, then the
+      // ball down the pitch, then the wicket it breaks.
+      if (key.castShadow) {
+        if (struckClip >= 0 || drop || state.clip >= DELIVERY.strike) focus.set(0, 0, -1);
+        else if (state.clip >= DELIVERY.release) focus.set(ball.position.x, 0, Math.min(ball.position.z, -1));
+        else focus.set(0, 0, -PITCH_LENGTH + 1);
+        key.position.copy(focus).add(KEY_OFFSET);
+        key.target.position.copy(focus);
+        key.target.updateMatrixWorld();
+      }
+    }
     if (driftAngle !== 0) {
       p.sub(pivot).applyAxisAngle(UP, driftAngle).add(pivot);
       look.sub(pivot).applyAxisAngle(UP, driftAngle).add(pivot);
@@ -1201,6 +1574,86 @@ export function createIntroStage(host: HTMLElement, { tier, onReady }: IntroStag
     }
     camera.position.copy(p);
     camera.lookAt(look);
+
+    if (cast) {
+      camera.updateMatrixWorld();
+      if (drop) placeDrop(dt);
+      // Keep a ball far from the lens a few pixels wide, with a soft halo, so
+      // the climb reads as a bright point rather than vanishing.
+      if (ball.visible) {
+        const dist = Math.max(0.01, camera.position.distanceTo(ball.position));
+        const pxPerM = height / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+        const px = ((BALL_RADIUS * ballScale) / dist) * pxPerM;
+        if (!drop && px < 2.2) ballScale *= 2.2 / px;
+        ball.scale.setScalar(ballScale);
+        if (!drop) streak.scale.x = streak.scale.z = ballScale;
+        const climbing = struckClip >= 0 && !drop;
+        ballGlow.visible = state.clip >= DELIVERY.release || !!drop;
+        ballGlow.position.copy(ball.position);
+        ballGlow.scale.setScalar(BALL_RADIUS * ballScale * (climbing ? 16 : 7));
+        (ballGlow.material as THREE.SpriteMaterial).opacity = climbing ? 0.55 : 0.28;
+      } else ballGlow.visible = false;
+      // The puff where it pitched.
+      const sincePitch = state.clip - (DELIVERY.release + BOUNCE_AT * DELIVERY.flight);
+      if (sincePitch >= 0 && sincePitch < 1.1 && !drop) {
+        const drag = (1 - Math.exp(-3 * sincePitch)) / 3;
+        for (let i = 0; i < PUFF; i++) {
+          puffPos[i * 3] = BOUNCE.x + puffVel[i * 3] * drag;
+          puffPos[i * 3 + 1] = BOUNCE.y + Math.max(0, puffVel[i * 3 + 1] * drag - 0.9 * sincePitch * sincePitch);
+          puffPos[i * 3 + 2] = BOUNCE.z + puffVel[i * 3 + 2] * drag;
+        }
+        (puffGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+        // Soft and billowing: big, faint sprites that spread as they fade.
+        puffMat.opacity = 0.85 * Math.pow(1 - sincePitch / 1.1, 1.3);
+        puffMat.size = 0.2 + sincePitch * 0.5;
+        puff.visible = true;
+      } else puff.visible = false;
+
+      // Remember where the climbing ball leaves the frame: it comes back down
+      // from there onto the trophy.
+      if (struckClip >= 0 && !drop && ball.visible) {
+        ndc.copy(ball.position).project(camera);
+        if (Math.abs(ndc.x) <= 1 && Math.abs(ndc.y) <= 1 && ndc.z < 1) lastSeen = new THREE.Vector2(ndc.x, ndc.y);
+      }
+
+      // The climb's trail: the last half second of the arc, facing the lens.
+      if (struckClip >= 0 && !drop && state.ballOn > 0.5) {
+        const tau = state.clip - struckClip;
+        const w = BALL_RADIUS * ballScale * 1.25;
+        for (let i = 0; i < TRAIL; i++) {
+          risePoint(Math.max(0, tau - i * 0.018), trailA);
+          risePoint(Math.max(0, tau - i * 0.018 - 0.01), trailB);
+          trailB.subVectors(trailA, trailB);
+          ray.subVectors(trailA, camera.position);
+          trailB.cross(ray).normalize().multiplyScalar(w * (1 - (i / TRAIL) * 0.85));
+          trailPos.set([trailA.x + trailB.x, trailA.y + trailB.y, trailA.z + trailB.z, trailA.x - trailB.x, trailA.y - trailB.y, trailA.z - trailB.z], i * 6);
+        }
+        (trailGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+        // Only once the ball is away from the lens: up close a ribbon of light
+        // that wide is a beam across the frame, not a trail.
+        const away = camera.position.distanceTo(trailA.copy(ball.position));
+        trailMat.opacity = THREE.MathUtils.smoothstep(away, 6, 16) * 0.85;
+        trail.visible = tau > 0.02 && trailMat.opacity > 0.01;
+        // The streak too: right by the lens it would be a bar across the frame.
+        streakMat.uniforms.uOpacity.value = 0.9 * THREE.MathUtils.smoothstep(away, 3, 9);
+      } else {
+        trail.visible = false;
+        streakMat.uniforms.uOpacity.value = 0.9;
+      }
+      // The glint marks both ends of the ball's flight: its launch from the
+      // far crease and the top of its climb.
+      if (state.glint > 0.001) {
+        const dist = camera.position.distanceTo(p);
+        star.visible = true;
+        star.position.copy(p);
+        // Bigger at the launch: the far crease is a long way off, and the star
+        // is the only thing announcing the ball.
+        const size = state.clip < DELIVERY.release + 0.2 ? 0.34 : 0.16;
+        star.scale.setScalar(dist * size * (0.4 + 0.6 * state.glint));
+        starMat.opacity = Math.min(1, state.glint * 1.4);
+        starMat.rotation = 0.35 * state.glint;
+      } else star.visible = false;
+    }
 
     composer.render(dt);
     frames++;
@@ -1242,9 +1695,14 @@ export function createIntroStage(host: HTMLElement, { tier, onReady }: IntroStag
     bailB.w.set(-9, -18, 16);
     for (const b of bodies) b.live = true;
 
-    ball.position.copy(IMPACT);
-    ballBody.v.set(0.5, 1.4, 8.4);
-    ballBody.live = true;
+    if (cast) {
+      // The ball does not fall with the pieces: it climbs out of the ground.
+      struckClip = DELIVERY.strike;
+    } else {
+      ball.position.copy(IMPACT);
+      ballBody.v.set(0.5, 1.4, 8.4);
+      ballBody.live = true;
+    }
 
     const rand = rng(Math.floor(performance.now()));
     for (let i = 0; i < DEBRIS; i++) {
@@ -1280,6 +1738,13 @@ export function createIntroStage(host: HTMLElement, { tier, onReady }: IntroStag
 
   function reset() {
     struckAt = -1;
+    struckClip = -1;
+    drop = null;
+    lastSeen = null;
+    puff.visible = false;
+    ballGlow.visible = false;
+    trail.visible = false;
+    ball.scale.setScalar(1);
     debrisAge = -1;
     debrisMat.opacity = 0;
     driftAngle = 0;
@@ -1337,5 +1802,5 @@ export function createIntroStage(host: HTMLElement, { tier, onReady }: IntroStag
     }
   };
 
-  return { state, strike, reset, dispose, debug, advance, setLive, setTeamColors };
+  return { state, strike, reset, dispose, debug, advance, setLive, setTeamColors, dropBall };
 }

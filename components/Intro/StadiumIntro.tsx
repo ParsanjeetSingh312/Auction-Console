@@ -40,12 +40,15 @@ import gsap from "gsap";
 import { AuctiqMark } from "../Global/AuctiqLogo";
 import { useQuality } from "../3D/rig/quality";
 import IntroGate from "./IntroGate";
+import { ballHandoff } from "./ballHandoff";
+import { buildDeliveryFilm, settleDelivery } from "./deliveryFilm";
 import { createIntroStage, type IntroStage, type IntroState } from "./introScene";
 import "./stadiumIntro.css";
 
 const AuctoniqTrophy = lazy(() => import("../3D/AuctoniqTrophy"));
 
 const WORD = "AUCTONIQ".split("");
+const PRESENT = "Presenting to you".split("");
 
 /**
  * The settled frame: high behind the striker's end, looking across the ground
@@ -86,6 +89,16 @@ export interface StadiumIntroProps {
   /** Actions shown under the tagline once the mark has landed. */
   children?: ReactNode;
   className?: string;
+  /**
+   * "strike" (the default): the ball arrives at the wicket from off screen.
+   * "delivery": the ball is launched from the far crease in a glint, hangs
+   * in the air under PRESENTING TO YOU while the camera goes round it,
+   * breaks the wicket, climbs out of sight, and —
+   * once the landing is up — falls back out of the sky onto the trophy
+   * (see ballHandoff). The delivery opening always runs into the site: it
+   * lands no mark of its own.
+   */
+  opening?: "strike" | "delivery";
 }
 
 export default function StadiumIntro({
@@ -97,7 +110,9 @@ export default function StadiumIntro({
   mark: withMark = true,
   children,
   className = "",
+  opening = "strike",
 }: StadiumIntroProps) {
+  const delivery = opening === "delivery";
   const quality = useQuality();
   const root = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLDivElement>(null);
@@ -108,6 +123,8 @@ export default function StadiumIntro({
   const enterRef = useRef<(() => void) | null>(null);
   const completeRef = useRef(onComplete);
   completeRef.current = onComplete;
+  /** The visitor skipped: the ball goes straight into the cradle. */
+  const skippedRef = useRef(false);
 
   const [failed, setFailed] = useState(false);
   const [done, setDone] = useState(false);
@@ -118,6 +135,16 @@ export default function StadiumIntro({
 
   const reduced =
     typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // The delivery opening owes the landing a ball: hold the hero's wordmark
+  // and the trophy's ball back until it arrives. Laid out before the page
+  // paints, so neither is ever seen and then taken away.
+  useLayoutEffect(() => {
+    // Reduced motion gets the settled landing straight away: nothing held.
+    if (!delivery || instant || reduced) return;
+    ballHandoff.setPhase("awaiting");
+    return () => ballHandoff.setPhase("idle");
+  }, [delivery, instant, reduced]);
 
   // Build the scene, then the timeline against it.
   useLayoutEffect(() => {
@@ -131,7 +158,7 @@ export default function StadiumIntro({
     const ready = new Promise<void>((r) => (readyResolve = r));
 
     try {
-      stage = createIntroStage(el, { tier: quality.tier, onReady: () => readyResolve() });
+      stage = createIntroStage(el, { tier: quality.tier, onReady: () => readyResolve(), opening });
       stageRef.current = stage;
     } catch (error) {
       console.warn("[StadiumIntro] WebGL unavailable, showing the mark alone.", error);
@@ -155,6 +182,10 @@ export default function StadiumIntro({
 
       const settle = () => {
         if (!stage) return;
+        if (delivery) {
+          settleDelivery(stage);
+          return;
+        }
         Object.assign(stage.state.cam, WIDE.cam);
         Object.assign(stage.state.look, WIDE.look);
         stage.state.fov = WIDE.fov;
@@ -199,13 +230,34 @@ export default function StadiumIntro({
         defaults: { ease: "power2.out" },
         onComplete: () => {
           setDone(true);
-          if (withMark) completeRef.current?.();
+          if (withMark && !delivery) completeRef.current?.();
         },
       });
       tlRef.current = tl;
       enterRef.current = () => tl.play(0);
       // A handle for scrubbing beats from the console while tuning.
       if (import.meta.env.DEV) (window as unknown as { __intro?: unknown }).__intro = { tl, stage: st };
+
+      if (delivery) {
+        const film = buildDeliveryFilm(tl, st, {
+          fade,
+          flash,
+          bars,
+          vignette: q(".intro-vignette"),
+          present: q(".intro-present"),
+          presentChars: q(".intro-present-char"),
+          presentRule: q(".intro-present-rule"),
+        });
+        gsap.set(mark, { autoAlpha: 0 });
+        gsap.set(scrim, { autoAlpha: 0 });
+        // A call rather than the timeline's end, so a skip still fires it.
+        tl.call(() => completeRef.current?.(), undefined, film.handoff);
+        const fonts = document.fonts?.ready ?? Promise.resolve();
+        Promise.all([ready, Promise.race([fonts, new Promise((r) => setTimeout(r, 1200))])]).then(() => {
+          if (!cancelled) setArmed(true);
+        });
+        return;
+      }
 
       // Opening frame. Set on the timeline so a replay starts from it too.
       const orbit = {
@@ -312,12 +364,45 @@ export default function StadiumIntro({
       stage?.dispose();
       stageRef.current = null;
     };
-  }, [quality.tier, reduced, instant, withMark]);
+  }, [quality.tier, reduced, instant, withMark, delivery, opening]);
 
   // Handing over to the landing: the mark and controls go, the stadium stills.
   useEffect(() => {
     if (!backdrop || !root.current) return;
     const q = gsap.utils.selector(root.current);
+    const timers: gsap.core.Tween[] = [];
+    const freeze = () => stageRef.current?.setLive(false);
+
+    // The delivery opening's last beat: its ball, gone at the top of its
+    // climb, comes back down out of the sky onto the top of the trophy.
+    const land = (instant: boolean) => {
+      ballHandoff.socket()?.receive({ instant });
+      ballHandoff.setPhase("landed");
+      timers.push(gsap.delayedCall(0.1, freeze));
+    };
+    const dropIntoTrophy = () => {
+      const stage = stageRef.current;
+      if (!stage || skippedRef.current || reduced || !ballHandoff.holding()) return land(true);
+      let waited = 0;
+      // The trophy's chunk and first frame may still be on their way; give
+      // them a moment, never forever.
+      const attempt = () => {
+        const socket = ballHandoff.socket();
+        if (socket && socket.locate()) {
+          ballHandoff.setPhase("falling");
+          stage.dropBall({
+            locate: () => ballHandoff.socket()?.locate() ?? null,
+            onArrive: () => land(false),
+          });
+          return;
+        }
+        waited += 0.1;
+        if (waited > 3) return land(true);
+        timers.push(gsap.delayedCall(0.1, attempt));
+      };
+      attempt();
+    };
+
     const tween = gsap.to(q(".intro-mark, .intro-skip, .intro-bar"), {
       autoAlpha: 0,
       duration: 0.6,
@@ -327,14 +412,15 @@ export default function StadiumIntro({
       onComplete: () => {
         const tl = tlRef.current;
         const left = tl && tl.isActive() ? tl.duration() - tl.time() : 0;
-        gsap.delayedCall(left + 0.05, () => stageRef.current?.setLive(false));
+        timers.push(gsap.delayedCall(left + 0.05, delivery && !instant ? dropIntoTrophy : freeze));
       },
     });
     gsap.to(q(".intro-site-scrim"), { autoAlpha: 1, duration: 0.8, ease: "power1.inOut" });
     return () => {
       tween.kill();
+      timers.forEach((t) => t.kill());
     };
-  }, [backdrop]);
+  }, [backdrop, delivery, instant, reduced]);
 
   const enter = useCallback(() => {
     if (!armed || entered) return;
@@ -352,7 +438,11 @@ export default function StadiumIntro({
     tl.seek(tl.duration(), false);
   }, []);
 
-  const skip = useCallback(() => (onSkip ? onSkip() : finish()), [onSkip, finish]);
+  const skip = useCallback(() => {
+    skippedRef.current = true;
+    if (onSkip) onSkip();
+    else finish();
+  }, [onSkip, finish]);
 
   const replay = useCallback(() => {
     const tl = tlRef.current;
@@ -384,6 +474,22 @@ export default function StadiumIntro({
       <div className="intro-scrim pointer-events-none absolute inset-0 opacity-0" aria-hidden />
       {/* Heavier, for the landing's dense content once it sits on the stadium. */}
       <div className="intro-site-scrim pointer-events-none absolute inset-0 opacity-0" aria-hidden />
+      {delivery && (
+        <>
+          {/* Time stops: the edges of the frame fall away round the ball. */}
+          <div className="intro-vignette pointer-events-none absolute inset-0 opacity-0" aria-hidden />
+          <div className="intro-present pointer-events-none absolute inset-x-0 opacity-0" aria-hidden>
+            <p className="intro-present-line">
+              {PRESENT.map((ch, i) => (
+                <span key={i} className="intro-present-char">
+                  {ch === " " ? "\u00a0" : ch}
+                </span>
+              ))}
+            </p>
+            <span className="intro-present-rule" />
+          </div>
+        </>
+      )}
       <div className="intro-flash pointer-events-none absolute inset-0 bg-white opacity-0" aria-hidden />
       <div className="intro-bar intro-bar--top pointer-events-none absolute inset-x-0 top-0 bg-black" aria-hidden />
       <div className="intro-bar intro-bar--bottom pointer-events-none absolute inset-x-0 bottom-0 bg-black" aria-hidden />

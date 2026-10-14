@@ -14,7 +14,7 @@
  * everywhere, would mean editing thirty-odd existing components to describe a
  * theme none of them will ever be shown in.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 import StadiumIntro from "../components/Intro/StadiumIntro";
 import CricketCursor from "../components/UI/CricketCursor";
@@ -41,7 +41,53 @@ function introAlreadySeen(): boolean {
   }
 }
 
-export default function Auctiq() {
+/**
+ * The landing's sections, memoised. They take no props, so the opening's
+ * handoff (`landed` flipping in `Auctiq`) never re-renders them: before this
+ * the whole page, the player showcase included, re-rendered on the very
+ * frame the stadium handed over, and that frame stalled.
+ */
+const LandingSections = memo(function LandingSections() {
+  return (
+    <>
+      <AuctiqNav />
+      {/*
+        The mockup's front page.
+
+        `HeroSection` used to sit directly below this one and is now unmounted —
+        unmounted, not deleted. It carries a revolving trophy and a headline of
+        its own, so with BroadcastHero above it the landing ran the same trophy
+        animation twice: once centre-left where the mockup puts it, and again a
+        screen further down. Two WebGL canvases showing the same object is not a
+        second section, it is the same section twice.
+
+        The file is untouched at components/Sections/HeroSection.tsx and nothing
+        else in the app imports it, so bringing it back is this import and one
+        line. Its copy — the 284/10/₹120Cr figures — has no home on this page;
+        its two calls to action are covered by the JOIN NOW controls in the
+        header and the footer, both of which reach the auction room.
+      */}
+      <BroadcastHero />
+      <PlayerSelect players={SHOWCASE_PLAYERS} stats={PLAYER_STATS} />
+      <AuctiqFooter />
+    </>
+  );
+});
+
+export interface AuctiqProps {
+  /**
+   * Which opening greets a first visit: "delivery" (the default: the ball
+   * launched from the far crease, PRESENTING TO YOU, the pitch and the
+   * stumps, the climb past the floodlights and the ball dropped onto the top
+   * of the hero trophy) or "strike" (the earlier opening: the ball into the
+   * stumps from off screen). Switching back is this default.
+   */
+  opening?: "strike" | "delivery";
+  /** Play the opening on every visit and never mark it seen. For the lab. */
+  alwaysPlay?: boolean;
+}
+
+export default function Auctiq({ opening = "delivery", alwaysPlay = false }: AuctiqProps = {}) {
   const page = useRef<HTMLDivElement>(null);
 
   /*
@@ -62,7 +108,7 @@ export default function Auctiq() {
     instead stalled the crane for half a second on a laptop GPU. The handoff
     is then only a fade.
   */
-  const [seen] = useState(introAlreadySeen);
+  const [seen] = useState(() => !alwaysPlay && introAlreadySeen());
   const [landed, setLanded] = useState(false);
   const content = useRef<HTMLDivElement>(null);
   // `inert` until the handoff: hidden content must not take focus or clicks.
@@ -74,12 +120,12 @@ export default function Auctiq() {
   }, [landed]);
   const handOff = useCallback(() => {
     try {
-      window.sessionStorage.setItem(INTRO_SEEN, "1");
+      if (!alwaysPlay) window.sessionStorage.setItem(INTRO_SEEN, "1");
     } catch {
       /* private mode: the opening simply plays again next time */
     }
     setLanded(true);
-  }, []);
+  }, [alwaysPlay]);
 
   /*
     No scroll journey on this page any more. The 3D arena that took over from
@@ -124,6 +170,7 @@ export default function Auctiq() {
         instant={seen}
         backdrop={landed}
         mark={false}
+        opening={opening}
         onComplete={handOff}
         className={landed ? "!fixed inset-0 z-0 pointer-events-none" : "!fixed inset-0 z-[200]"}
       />
@@ -133,7 +180,7 @@ export default function Auctiq() {
       <div
         ref={content}
         aria-hidden={!landed || undefined}
-        style={{ opacity: landed ? 1 : 0, transition: "opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1)" }}
+        style={{ opacity: landed ? 1 : 0.001, willChange: "opacity", transition: "opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1)" }}
       >
 
       {/* The mark is part of the header bar now — AuctiqNav renders it with
@@ -145,28 +192,8 @@ export default function Auctiq() {
               needs a visible one. */}
           {landed && <CricketCursor />}
 
-          <AuctiqNav />
+          <LandingSections />
 
-      {/*
-        The mockup's front page.
-
-        `HeroSection` used to sit directly below this one and is now unmounted —
-        unmounted, not deleted. It carries a revolving trophy and a headline of
-        its own, so with BroadcastHero above it the landing ran the same trophy
-        animation twice: once centre-left where the mockup puts it, and again a
-        screen further down. Two WebGL canvases showing the same object is not a
-        second section, it is the same section twice.
-
-        The file is untouched at components/Sections/HeroSection.tsx and nothing
-        else in the app imports it, so bringing it back is this import and one
-        line. Its copy — the 284/10/₹120Cr figures — has no home on this page;
-        its two calls to action are covered by the JOIN NOW controls in the
-        header and the footer, both of which reach the auction room.
-      */}
-          <BroadcastHero />
-          <PlayerSelect players={SHOWCASE_PLAYERS} stats={PLAYER_STATS} />
-
-          <AuctiqFooter />
       </div>
     </div>
   );

@@ -59,6 +59,8 @@ const PlayerSelectLab = lazy(() => import("./pages/PlayerSelectLab"));
 const IntroLab = lazy(() => import("./pages/IntroLab"));
 // Prototype bench for the marquee player reveal. Not linked from anywhere.
 const MarqueeLab = lazy(() => import("./pages/MarqueeLab"));
+// Prototype of the landing with the ball's delivery opening. Not linked.
+const OpeningLab = lazy(() => import("./pages/OpeningLab"));
 
 export default function App() {
   return (
@@ -96,6 +98,7 @@ export default function App() {
           <Route path="/lab/players" element={<PlayerSelectLab />} />
           <Route path="/lab/intro" element={<IntroLab />} />
           <Route path="/lab/marquee" element={<MarqueeLab />} />
+          <Route path="/lab/opening" element={<OpeningLab />} />
           <Route path="/about" element={<About />} />
           <Route path="/console" element={<AuctionConsole />} />
           <Route path="*" element={<NotFound />} />

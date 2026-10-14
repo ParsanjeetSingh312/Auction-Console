@@ -91,6 +91,65 @@
   outline-offset: 3px;
 }
 
+/* ---- The delivery opening ---- */
+
+/* While the ball hangs: the frame's edges fall away round it. */
+.stadium-intro .intro-vignette {
+  background: radial-gradient(ellipse 72% 68% at 42% 46%, rgba(2, 4, 11, 0) 38%, rgba(2, 4, 11, 0.62) 100%);
+}
+
+/* PRESENTING TO YOU: a broadcast caption under the hanging ball. Tracked
+ * wide and set in the landing's companion face, so the wordmark it
+ * introduces keeps Russo One to itself. The left padding balances the
+ * tracking the last letter carries. */
+.stadium-intro .intro-present {
+  top: 66%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0 16px 0 calc(16px + 0.38em);
+  font-family: "Chakra Petch", Inter, system-ui, sans-serif;
+  font-size: clamp(1.15rem, 2.9vw, 2.6rem);
+  font-weight: 700;
+  /* Its own stacking context, so the shade below stays behind the words and
+   * in front of the stadium rather than dropping under the canvas. */
+  isolation: isolate;
+  letter-spacing: 0.38em;
+  text-transform: uppercase;
+  color: #f4f6fb;
+  text-shadow: 0 2px 22px rgba(0, 0, 0, 0.75), 0 0 2px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+}
+/* It sits over the pitch's light clay, where white alone measures about 2:1.
+ * A soft pool of shade behind the line, the way a broadcast caption carries
+ * its own ground, brings it well past the 4.5:1 a caption needs without
+ * boxing it in. */
+.stadium-intro .intro-present::before {
+  content: "";
+  position: absolute;
+  inset: -1.6em -6vw;
+  z-index: -1;
+  background: radial-gradient(closest-side, rgba(2, 4, 11, 0.62), rgba(2, 4, 11, 0.38) 55%, rgba(2, 4, 11, 0));
+  pointer-events: none;
+}
+.stadium-intro .intro-present-line {
+  display: flex;
+  overflow: hidden;
+  padding: 0.12em 0;
+}
+.stadium-intro .intro-present-char {
+  display: inline-block;
+  will-change: transform, opacity;
+}
+.stadium-intro .intro-present-rule {
+  display: block;
+  width: min(46vw, 560px);
+  height: 1px;
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0), #22d3ee 28%, #fb923c 72%, rgba(251, 146, 60, 0));
+  transform-origin: 50% 50%;
+}
+
 /* ---- The gate ---- */
 
 .intro-gate-card .gate-word {

@@ -27,6 +27,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as THREE from "three";
 
+import { ballHandoff } from "../Intro/ballHandoff";
 import { useQuality } from "./rig/quality";
 import "./auctoniqTrophy.css";
 
@@ -34,9 +35,17 @@ export interface AuctoniqTrophyProps {
   className?: string;
   /** Rendered if WebGL is unavailable. */
   fallback?: ReactNode;
+  /**
+   * The landing's trophy: while the delivery opening still owes it a ball
+   * (see Intro/ballHandoff) the cradle stands empty and dimmed, and the match
+   * ball the opening drops out of the sky is set into it — arriving white,
+   * settling, turning gold as the seam and cradle lights come up. Without
+   * this, or with no opening pending, the trophy is exactly as it was.
+   */
+  receivesBall?: boolean;
 }
 
-export default function AuctoniqTrophy({ className = "", fallback }: AuctoniqTrophyProps) {
+export default function AuctoniqTrophy({ className = "", fallback, receivesBall = false }: AuctoniqTrophyProps) {
   const quality = useQuality();
   const mount = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
@@ -89,6 +98,7 @@ export default function AuctoniqTrophy({ className = "", fallback }: AuctoniqTro
       parent.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 160, radius * 7, 8, closed), haloMat));
     }
     const trophy = new THREE.Group(); scene.add(trophy);
+    const washes: THREE.PointLight[] = [];
     function cylinder(radius: number, height: number, y: number, material: THREE.Material, upper = radius) {
       const mesh = new THREE.Mesh(new THREE.CylinderGeometry(upper, radius, height, 96), material);
       mesh.position.y = y; trophy.add(mesh); return mesh;
@@ -130,10 +140,13 @@ export default function AuctoniqTrophy({ className = "", fallback }: AuctoniqTro
       const wash = new THREE.PointLight(color('--cradle-light'), 3.5, 2.1, 2);
       wash.position.set(.82 * Math.cos(angle), 1.85, .82 * Math.sin(angle));
       trophy.add(wash);
+      washes.push(wash);
     }
     const tilt = new THREE.Group(); tilt.position.set(0, 3.15, 0); tilt.rotation.z = -Math.PI / 5; trophy.add(tilt);
     const ball = new THREE.Group(); tilt.add(ball);
-    ball.add(new THREE.Mesh(new THREE.SphereGeometry(.755, 96, 64), gold));
+    // Its own gold, so the ball can arrive white without whitening the plinth.
+    const ballGold = gold.clone();
+    ball.add(new THREE.Mesh(new THREE.SphereGeometry(.755, 96, 64), ballGold));
     const seam = new THREE.Group(); seam.rotation.z = .28; ball.add(seam);
     for (const offset of [-.07, -.025, .025, .07]) {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(Math.sqrt(.76 ** 2 - offset ** 2), .009, 8, 160), offset === -.025 || offset === .025 ? accentMat : seamMat);
@@ -171,9 +184,98 @@ export default function AuctoniqTrophy({ className = "", fallback }: AuctoniqTro
     const head = new THREE.Mesh(new THREE.CylinderGeometry(.19,.19,.48,48), gold); head.position.set(-.73,.02,0); gavel.add(head);
     for (const y of [-.25, -.19, .19, .25]) { const rim = new THREE.Mesh(new THREE.CylinderGeometry(.22,.22,.045,48), gold); rim.position.set(-.73,y,0); gavel.add(rim); }
     trophy.add(gavel);
+    /* ---- The ball's arrival from the opening (receivesBall) ---- */
+    const BALL_R = .755;
+    const goldColor = ballGold.color.clone();
+    const white = new THREE.Color('#f6f5ef');
+    const lightCore = lightMat.color.clone();
+    const pulse = new THREE.Mesh(
+      new THREE.RingGeometry(BALL_R * 1.02, BALL_R * 1.1, 96),
+      new THREE.MeshBasicMaterial({ color: color('--seam-light'), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }),
+    );
+    pulse.visible = false; scene.add(pulse);
+    const burst = new THREE.PointLight(color('--cradle-light'), 0, 7, 2); scene.add(burst);
+    /** The cradle's own light, 0.35 while it waits for its ball. */
+    let lightLevel = 1;
+    let spinRate = .85;
+    /** Seconds since the ball arrived, or -1. */
+    let arrival = -1;
+    let held = receivesBall && ballHandoff.holding();
+    const ballCentre = new THREE.Vector3();
+    const showBall = () => {
+      held = false; arrival = -1;
+      ball.visible = true; seam.visible = true; tilt.position.y = 3.15;
+      ballGold.color.copy(goldColor); ballGold.metalness = 1; ballGold.roughness = .24;
+      ballGold.emissive.setRGB(0, 0, 0); ballGold.emissiveIntensity = 0;
+      lightLevel = 1; spinRate = .85; pulse.visible = false; burst.intensity = 0;
+    };
+    if (held) { ball.visible = false; lightLevel = .35; }
+    const applyLight = () => {
+      lightMat.color.copy(lightCore).multiplyScalar(lightLevel);
+      for (const w of washes) w.intensity = 3.5 * lightLevel;
+    };
+    applyLight();
+    /** Arrival, `a` seconds in: settle into the cradle, white to gold, lights up. */
+    const arrive = (a: number) => {
+      // Dips into the cradle under its own weight and springs back to rest.
+      tilt.position.y = 3.15 - .13 * Math.exp(-5.5 * a) * Math.sin(10 * a);
+      const k = THREE.MathUtils.smoothstep(a, .1, .95);
+      ballGold.color.lerpColors(white, goldColor, k);
+      ballGold.metalness = .12 + .88 * k;
+      ballGold.roughness = .4 - .16 * k;
+      ballGold.emissive.setRGB(1, 1, 1); ballGold.emissiveIntensity = .35 * (1 - k);
+      seam.visible = a >= .18;
+      lightLevel = a < .22 ? .35 + 1.15 * (a / .22) : 1 + .5 * Math.exp(-(a - .22) * 4);
+      spinRate = .85 * THREE.MathUtils.smoothstep(a, .3, 1.4);
+      const e = Math.min(1, a / .8);
+      pulse.visible = e < 1;
+      tilt.getWorldPosition(ballCentre);
+      pulse.position.copy(ballCentre); pulse.quaternion.copy(camera.quaternion);
+      pulse.scale.setScalar(1 + 1.7 * (1 - Math.pow(1 - e, 3)));
+      (pulse.material as THREE.MeshBasicMaterial).opacity = .9 * Math.pow(1 - e, 2);
+      burst.position.copy(ballCentre);
+      burst.intensity = 38 * Math.exp(-a * 6);
+      if (a > 1.6) showBall();
+    };
+    let drawn = false;
+    const detach = receivesBall ? ballHandoff.attach({
+      locate() {
+        const rect = host.getBoundingClientRect();
+        if (!drawn || rect.width < 1) return null;
+        tilt.getWorldPosition(ballCentre);
+        const dist = camera.position.distanceTo(ballCentre);
+        const p = ballCentre.clone().project(camera);
+        if (p.z > 1) return null;
+        const pxPerUnit = rect.height / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+        return { x: rect.left + (p.x + 1) / 2 * rect.width, y: rect.top + (1 - p.y) / 2 * rect.height, r: BALL_R / dist * pxPerUnit };
+      },
+      receive(options) {
+        if (!held && arrival < 0) return;
+        if (options?.instant || reduced) { showBall(); return; }
+        held = false; arrival = 0; ball.visible = true; seam.visible = false;
+        arrive(0);
+      },
+    }) : null;
+    // Whatever happens to the opening, the ball ends up in the cradle.
+    const unsubscribe = receivesBall ? ballHandoff.subscribe(() => {
+      if (held && !ballHandoff.holding()) showBall();
+    }) : null;
+
     const key = new THREE.DirectionalLight(color('--studio-white'), 3); key.position.set(-3,6,4); scene.add(key);
     const fill = new THREE.DirectionalLight(color('--studio-cool'), 2); fill.position.set(4,2,-3); scene.add(fill);
     scene.add(new THREE.AmbientLight(color('--studio-white'), .5));
+    // Compile every program now, the held ball, its seam and the arrival's
+    // pulse included: drawn for the first time mid-arrival they would stall
+    // the frame the ball lands on while the shaders built.
+    if (receivesBall) {
+      const wasBall = ball.visible;
+      const wasSeam = seam.visible;
+      ball.visible = seam.visible = pulse.visible = true;
+      renderer.compile(scene, camera);
+      ball.visible = wasBall;
+      seam.visible = wasSeam;
+      pulse.visible = false;
+    }
 
     // Drag to orbit, with a little momentum carried past the release. The
     // resting angle lays the gavel across the front, as in the reference look.
@@ -199,15 +301,17 @@ export default function AuctoniqTrophy({ className = "", fallback }: AuctoniqTro
       frame = requestAnimationFrame(animate); const dt = Math.min(clock.getDelta(), .05);
       // Always spinning: there is no pause control. Only a visitor whose system
       // asks for reduced motion sees it still.
+      if (arrival >= 0) { arrival += dt; arrive(arrival); applyLight(); }
       if (!reduced) {
-        ball.rotation.y += dt * .85;
+        ball.rotation.y += dt * spinRate;
         lightTime += dt;
-        glowMat.opacity = .28 + .035 * Math.sin(lightTime * 3.2);
-      }
+        glowMat.opacity = (.28 + .035 * Math.sin(lightTime * 3.2)) * Math.min(lightLevel, 1.3);
+      } else glowMat.opacity = .28 * Math.min(lightLevel, 1.3);
       if (!dragging && Math.abs(velocity) > 1e-5) { targetAzimuth += velocity; velocity *= Math.exp(-6 * dt); }
       azimuth += (targetAzimuth - azimuth) * (1 - Math.exp(-5 * dt));
       camera.position.set(Math.sin(azimuth)*10.9,3.9,Math.cos(azimuth)*10.9); camera.lookAt(0,1.65,0);
       renderer.render(scene,camera);
+      drawn = true;
       if (firstFrame) { firstFrame = false; setReady(true); }
     }
 
@@ -226,6 +330,8 @@ export default function AuctoniqTrophy({ className = "", fallback }: AuctoniqTro
 
     return () => {
       cancelAnimationFrame(frame); frame = 0;
+      detach?.(); unsubscribe?.();
+      pulse.geometry.dispose(); (pulse.material as THREE.Material).dispose(); ballGold.dispose();
       observer?.disconnect(); document.removeEventListener('visibilitychange', sync); resize.disconnect();
       canvas.removeEventListener('pointerdown',down); canvas.removeEventListener('pointermove',move);
       canvas.removeEventListener('pointerup',up); canvas.removeEventListener('pointercancel',up); canvas.removeEventListener('lostpointercapture',up);
@@ -234,7 +340,7 @@ export default function AuctoniqTrophy({ className = "", fallback }: AuctoniqTro
       [gold,silver,dark,seamMat,accentMat,lightMat,lightningMat,glowMat,haloMat].forEach(m=>m.dispose());
       env.dispose(); texture.dispose(); pmrem.dispose(); renderer.dispose(); canvas.remove();
     };
-  }, [quality.maxDpr]);
+  }, [quality.maxDpr, receivesBall]);
 
   if (failed) return <>{fallback ?? null}</>;
 

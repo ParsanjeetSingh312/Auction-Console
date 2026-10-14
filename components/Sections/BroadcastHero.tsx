@@ -30,9 +30,12 @@
  * slot markers are gone. The container and its `gap-3` are the same ones the
  * shell established, so nothing moved when the contents landed.
  */
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useLayoutEffect, useRef } from "react";
+
+import gsap from "gsap";
 
 import { AuctiqMark } from "../Global/AuctiqLogo";
+import { useHandoffPhase } from "../Intro/ballHandoff";
 // Superseded in place by the war-room trigger. `LiveBiddingCard` is kept on
 // disk and unmounted; restoring it is this import and the line below.
 import WarRoomTrigger from "../WarRoom/WarRoomTrigger";
@@ -49,7 +52,43 @@ import TrendingPlayersCard from "../UI/TrendingPlayersCard";
 // `TrophyCanvas` is kept on disk: swapping back is this import and the JSX below.
 const AuctoniqTrophy = lazy(() => import("../3D/AuctoniqTrophy"));
 
+const WORD = "AUCTONIQ".split("");
+
 export default function BroadcastHero() {
+  /*
+    The delivery opening ends by dropping its match ball into this trophy's
+    cradle. Until it lands the wordmark and tagline are held back, so the
+    ball falls through clear sky; then they come in, the letters rising the
+    way they do on the gate. With no opening pending (a returning visitor,
+    the strike opening) the phase never holds and nothing here changes.
+  */
+  const phase = useHandoffPhase();
+  const holding = phase === "awaiting" || phase === "falling";
+  const wordRef = useRef<HTMLHeadingElement>(null);
+  const taglineRef = useRef<HTMLParagraphElement>(null);
+  const wasHolding = useRef(holding);
+  useLayoutEffect(() => {
+    if (holding) {
+      wasHolding.current = true;
+      return;
+    }
+    if (!wasHolding.current || !wordRef.current || !taglineRef.current) return;
+    wasHolding.current = false;
+    // Reduced motion: the readable final state, at once.
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const letters = wordRef.current.querySelectorAll(".hero-letter");
+    // One thing at a time: the ball settles into the cradle first (about half
+    // a second), then the name rises over it, then the line under it.
+    const tl = gsap
+      .timeline({ defaults: { ease: "expo.out" } })
+      .fromTo(letters, { yPercent: 105, rotateX: -80, autoAlpha: 0 }, { yPercent: 0, rotateX: 0, autoAlpha: 1, duration: 1, stagger: 0.05 }, 0.55)
+      .fromTo(wordRef.current, { letterSpacing: "0.3em" }, { letterSpacing: "0.06em", duration: 1.4 }, 0.55)
+      .fromTo(taglineRef.current, { y: 14, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.9, ease: "power2.out" }, 1.3);
+    return () => {
+      tl.progress(1).kill();
+    };
+  }, [holding]);
+
   return (
     <section
       aria-label="IPL Auction 2026"
@@ -77,8 +116,17 @@ export default function BroadcastHero() {
           the showcase heading's 0.02em because this is one word standing alone
           rather than a line of them.
         */}
-        <h1 className="font-auctiq text-[clamp(2.75rem,7.5vw,6rem)] uppercase leading-none tracking-[0.06em] text-neon-orange text-glow-orange">
-          AUCTONIQ
+        <h1
+          ref={wordRef}
+          aria-label="AUCTONIQ"
+          className="font-auctiq text-[clamp(2.75rem,7.5vw,6rem)] uppercase leading-none tracking-[0.06em] text-neon-orange text-glow-orange [perspective:700px]"
+          style={holding ? { visibility: "hidden" } : undefined}
+        >
+          {WORD.map((ch, i) => (
+            <span key={i} aria-hidden className="hero-letter inline-block origin-bottom">
+              {ch}
+            </span>
+          ))}
         </h1>
 
         {/*
@@ -99,6 +147,7 @@ export default function BroadcastHero() {
           <AuctoniqTrophy
             className="trophy-stage--hero auctiq-no-lift"
             fallback={<TrophyFallback />}
+            receivesBall
           />
         </Suspense>
 
@@ -120,8 +169,12 @@ export default function BroadcastHero() {
         {/* The dark halo keeps the cyan readable over the lit stands of the
             stadium photograph, which sit right behind this line. */}
         <p
+          ref={taglineRef}
           className="mt-1 text-center font-tech text-[clamp(0.7rem,1.5vw,0.95rem)] font-medium uppercase tracking-[0.34em] text-neon-cyan"
-          style={{ textShadow: "0 1px 10px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.7)" }}
+          style={{
+            textShadow: "0 1px 10px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.7)",
+            ...(holding ? { visibility: "hidden" as const } : null),
+          }}
         >
           Where intelligence meets patience
         </p>
