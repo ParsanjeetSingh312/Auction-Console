@@ -410,3 +410,56 @@ class TestPropagation:
                     assert state["rules"]["min_overseas"] == 3
                     assert state["rules_version"] == fresh.rules_version
                     assert {t["left"] for t in state["teams"]} == {7500}
+
+
+# --------------------------------------------------------------------- #
+# Marquee players: the reveal holds the lot before bidding opens
+# --------------------------------------------------------------------- #
+
+
+class TestMarqueeReveal:
+    """
+    A marquee player's lot is held while every client plays his reveal, and
+    the ordinary opening window starts only when it ends -- the reveal must
+    never eat into the time a franchise has to bid.
+    """
+
+    async def marquee_room(self, monkeypatch, seconds=0.2):
+        import auction.room as room_module
+
+        monkeypatch.setattr(room_module, "MARQUEE_REVEAL_SECONDS", seconds)
+        monkeypatch.setattr(room_module, "MARQUEE_PLAYERS", frozenset({"Capped Opener"}))
+        return await live_room(fast=True)
+
+    def test_a_marquee_player_is_presented_first(self, monkeypatch):
+        async def go():
+            room = await self.marquee_room(monkeypatch)
+            assert room.lot.clock == "presenting"
+            assert room.state_payload()["lot"]["clock"] == "presenting"
+        run(go())
+
+    def test_nothing_can_be_done_while_he_is_presented(self, monkeypatch):
+        async def go():
+            room = await self.marquee_room(monkeypatch)
+            for action in (room.bid("c1"), room.withdraw("c2"), room.call_timeout("c3")):
+                with pytest.raises(RoomError, match="being presented"):
+                    await action
+        run(go())
+
+    def test_the_full_opening_window_follows_the_reveal(self, monkeypatch):
+        async def go():
+            room = await self.marquee_room(monkeypatch, seconds=0.1)
+            await asyncio.sleep(0.15)
+            assert room.lot is not None and room.lot.clock == "opening"
+            await room.bid("c1")
+            assert room.lot.bidder_id == 1
+        run(go())
+
+    def test_an_ordinary_player_opens_straight_away(self, monkeypatch):
+        async def go():
+            import auction.room as room_module
+
+            monkeypatch.setattr(room_module, "MARQUEE_PLAYERS", frozenset({"Someone Else"}))
+            room = await live_room(fast=True)
+            assert room.lot.clock == "opening"
+        run(go())

@@ -64,6 +64,21 @@ SETUP_FIELDS: dict[str, tuple[int, int, int]] = {
     "min_overseas": (4, 0, 100),  # Minimum overseas a team must finish with
 }
 
+#: Players whose arrival on the block plays the marquee reveal in every
+#: client: a broken wicket in their franchise colours, highlight stats, a
+#: tagline, the jersey number and the name. Matched by pool name. The client's
+#: copy (components/Marquee/marqueePlayers.ts) holds the taglines and stats;
+#: this one only decides who holds the clock.
+MARQUEE_PLAYERS: frozenset[str] = frozenset({
+    "Virat Kohli", "Rohit Sharma", "MS Dhoni", "Jasprit Bumrah", "Shubman Gill",
+})
+
+#: How long the room holds a marquee lot before bidding opens. A shade longer
+#: than the reveal's own 9.2 seconds, so every client has handed back to the
+#: bidding screen before the 7-second window starts -- the reveal must never
+#: eat into the time a franchise has to bid.
+MARQUEE_REVEAL_SECONDS = 9.4
+
 DEFAULT_RULES: dict[str, Any] = {
     **{key: spec[0] for key, spec in SETUP_FIELDS.items()},
     "min_uncapped": MIN_UNCAPPED,

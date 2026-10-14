@@ -98,7 +98,8 @@ export interface LotState {
    * `timeout` (the 30s decision buffer) -> the last recorded bid: SOLD if one
    * stands, UNSOLD if none does.
    */
-  clock: "opening" | "closing" | "timeout" | null;
+  /** "presenting": a marquee player's reveal is playing; bidding opens after it. */
+  clock: "presenting" | "opening" | "closing" | "timeout" | null;
   /** Unix seconds the countdown fires. */
   deadline: number | null;
   /**
@@ -109,6 +110,8 @@ export interface LotState {
    * would otherwise show a lot expiring while the room still holds it open.
    */
   ends_in: number | null;
+  /** Full length of a marquee hold while `clock` is "presenting"; else null. */
+  reveal_seconds?: number | null;
   timeout_by_id: number | null;
   timeout_by_code: string | null;
   /** Franchises that have bid on this lot and not withdrawn from it. */
@@ -576,6 +579,9 @@ export function useAuctionSocket(): AuctionSocket {
   const lotClock = useMemo<LotClock | null>(() => {
     const lot = state?.lot;
     if (!lot?.clock || lot.ends_in == null || !state) return null;
+    // No dial while a marquee reveal plays: the bidding clock has not started,
+    // and the reveal covers the block anyway.
+    if (lot.clock === "presenting") return null;
     const total =
       lot.clock === "opening"
         ? state.rules.open_seconds
@@ -613,7 +619,15 @@ export function useAuctionSocket(): AuctionSocket {
 
   // Any franchise may fold, whether or not it has bid -- except the leader,
   // for whom stepping back would be retracting a standing offer.
-  const canWithdraw = !!(connected && live && state?.lot && briefed && !leading && !hasFolded);
+  const canWithdraw = !!(
+    connected &&
+    live &&
+    state?.lot &&
+    state.lot.clock !== "presenting" &&
+    briefed &&
+    !leading &&
+    !hasFolded
+  );
 
   // Rule 5: decision time is available whenever a player is up, before or
   // after the first bid, but not to the leader, a folded team, or on top of a

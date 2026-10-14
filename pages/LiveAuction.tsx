@@ -44,6 +44,7 @@ import PostAuctionReport from "../components/Auction/PostAuctionReport";
 import SocketBlock from "../components/Auction/SocketBlock";
 import WaitingRoom from "../components/Auction/WaitingRoom";
 import AuctionBriefing from "../components/Auction/AuctionBriefing";
+import LiveMarquee from "../components/Marquee/LiveMarquee";
 
 import "../console/console.css";
 
@@ -146,18 +147,27 @@ function LiveAuctionInner() {
     window.location.replace(url.toString());
   }, []);
 
-  const toastLayer = (
-    <div className="toasts" aria-live="polite">
-      {toasts.map((toast) => (
-        <div key={toast.id} className={`toast${toast.kind === "err" ? " err" : ""}`}>
-          {toast.message}
-        </div>
-      ))}
-    </div>
-  );
-
   const phase = socket.state?.phase ?? "lobby";
   const role = socket.seat?.role ?? null;
+
+  /*
+    The layer every screen below renders on top of itself: the toasts, and the
+    marquee reveal. The reveal is mounted for anyone holding a seat while the
+    auction is live, franchises and auctioneer alike, so the whole room sees a
+    marquee player arrive together -- the room holds the lot until it ends.
+  */
+  const toastLayer = (
+    <>
+      {role !== null && phase === "live" && <LiveMarquee socket={socket} />}
+      <div className="toasts" aria-live="polite">
+        {toasts.map((toast) => (
+          <div key={toast.id} className={`toast${toast.kind === "err" ? " err" : ""}`}>
+            {toast.message}
+          </div>
+        ))}
+      </div>
+    </>
+  );
 
   /*
     Whether the auctioneer has stepped out of the waiting room and back into

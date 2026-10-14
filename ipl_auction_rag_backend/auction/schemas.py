@@ -395,8 +395,12 @@ class LotState(BaseModel):
     # `closing` and `timeout` therefore differ in duration and in what the dial
     # should say, never in consequence.
     #
+    # `presenting` holds a marquee player's lot while every client plays his
+    # reveal; nothing can be bid, folded or bought time for until it lapses
+    # into `opening`.
+    #
     # None when no lot is live, or when the auctioneer has taken manual control.
-    clock: Literal["opening", "closing", "timeout"] | None = None
+    clock: Literal["presenting", "opening", "closing", "timeout"] | None = None
 
     # Unix time the countdown fires. Absolute, so a client re-rendering
     # mid-second does not restart its own dial from the top.
@@ -412,6 +416,9 @@ class LotState(BaseModel):
     # anchors on this figure and then counts down on its own monotonic clock
     # has no skew to accumulate.
     ends_in: float | None = None
+
+    # The full length of a marquee hold while `clock` is "presenting".
+    reveal_seconds: float | None = None
 
     # Who is holding the room up, when `clock` is "timeout". Named because a
     # thirty-second freeze with no attribution reads as the room having hung.

@@ -52,6 +52,8 @@ from config.settings import get_settings
 
 from auction import rules as rulebook
 from auction.rules import (
+    MARQUEE_PLAYERS,
+    MARQUEE_REVEAL_SECONDS,
     MAX_TEAMS,
     RuleViolation,
     SquadPosition,
@@ -193,7 +195,13 @@ class Record:
 # lot that no amount of waiting would settle, and the auctioneer had to close
 # every contested lot by hand. The buffer settles the lot; withdrawing only
 # gets there sooner.
-Clock = Literal["opening", "closing", "timeout"]
+#: "presenting" runs before "opening" for a marquee player: every client is
+#: playing the reveal, so the lot is held and nobody may bid, fold or call a
+#: buffer until it ends. When it lapses the ordinary opening window starts.
+Clock = Literal["presenting", "opening", "closing", "timeout"]
+
+#: Refused while a marquee reveal is playing.
+_PRESENTING = "The player is being presented — bidding opens when the reveal ends."
 
 
 @dataclass
@@ -769,6 +777,12 @@ class AuctionRoom:
     def _fire(self) -> None:
         """The countdown lapsed. Lock held, lot present, phase live."""
         assert self.lot is not None
+        if self.lot.clock == "presenting":
+            # The reveal has played; now the lot opens like any other.
+            self._arm("opening", self.rules["open_seconds"])
+            self.lot.version += 1
+            self.version += 1
+            return
         if self.lot.clock == "opening":
             self._pass_over("no bid in %ds" % self.rules["open_seconds"])
             return
@@ -945,7 +959,14 @@ class AuctionRoom:
             # auctioneer gets round to asking for bids. That is the point of
             # the rule: an unwanted lot costs the room seven seconds, not
             # however long it takes somebody to decide nobody wants him.
-            self._arm("opening", self.rules["open_seconds"])
+            #
+            # A marquee player is the one exception: the room is watching his
+            # reveal, so the lot is held for it first and the seven seconds
+            # start when it ends (see _fire). Nobody loses bidding time to it.
+            if player.name in MARQUEE_PLAYERS:
+                self._arm("presenting", MARQUEE_REVEAL_SECONDS)
+            else:
+                self._arm("opening", self.rules["open_seconds"])
             self.version += 1
 
     async def sell(self, client_id: str) -> None:
@@ -1162,6 +1183,8 @@ class AuctionRoom:
                 raise RoomError("The auction is not running.", about="bid")
             if not self.lot:
                 raise RoomError("Nothing is on the block.", about="bid")
+            if self.lot.clock == "presenting":
+                raise RoomError(_PRESENTING, about="bid")
 
             if lot_version is not None and lot_version != self.lot.version:
                 raise RoomError(
@@ -1262,6 +1285,8 @@ class AuctionRoom:
                 raise RoomError("The auction is not running.", about="withdraw")
             if not self.lot:
                 raise RoomError("Nothing is on the block.", about="withdraw")
+            if self.lot.clock == "presenting":
+                raise RoomError(_PRESENTING, about="withdraw")
             if self.lot.bidder_id == team_id:
                 raise RoomError(
                     "You hold the bid — withdrawing would retract it. "
@@ -1349,6 +1374,8 @@ class AuctionRoom:
                 raise RoomError("The auction is not running.", about="timeout")
             if not self.lot:
                 raise RoomError("Nothing is on the block.", about="timeout")
+            if self.lot.clock == "presenting":
+                raise RoomError(_PRESENTING, about="timeout")
 
             if self.lot.clock == "timeout":
                 holder = self.team_by_id(self.lot.timeout_by)
@@ -1451,6 +1478,11 @@ class AuctionRoom:
                 "next_ask": self.next_ask,
                 "version": self.lot.version,
                 "clock": self.lot.clock,
+                # The full length of a marquee hold, so a client can place its
+                # reveal on the room's timeline: seconds in = this - ends_in.
+                "reveal_seconds": (
+                    MARQUEE_REVEAL_SECONDS if self.lot.clock == "presenting" else None
+                ),
                 "deadline": self.lot.deadline,
                 # Seconds left as this frame is written. Sent beside the
                 # absolute deadline because seven seconds is short enough for

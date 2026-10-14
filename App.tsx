@@ -57,6 +57,8 @@ const StadiumLab = lazy(() => import("./pages/StadiumLab"));
 const PlayerSelectLab = lazy(() => import("./pages/PlayerSelectLab"));
 // Prototype bench for the stadium opening. Not linked from anywhere.
 const IntroLab = lazy(() => import("./pages/IntroLab"));
+// Prototype bench for the marquee player reveal. Not linked from anywhere.
+const MarqueeLab = lazy(() => import("./pages/MarqueeLab"));
 
 export default function App() {
   return (
@@ -93,6 +95,7 @@ export default function App() {
           <Route path="/stadium" element={<StadiumLab />} />
           <Route path="/lab/players" element={<PlayerSelectLab />} />
           <Route path="/lab/intro" element={<IntroLab />} />
+          <Route path="/lab/marquee" element={<MarqueeLab />} />
           <Route path="/about" element={<About />} />
           <Route path="/console" element={<AuctionConsole />} />
           <Route path="*" element={<NotFound />} />
@@ -151,7 +154,7 @@ function GlobalScout() {
 
   // The opening is a full-screen film; the assistant has nothing to do there
   // and its drawer would sit on top of the Enter button.
-  if (pathname.startsWith("/lab/intro")) return null;
+  if (pathname.startsWith("/lab/intro") || pathname.startsWith("/lab/marquee")) return null;
 
   return (
     <>

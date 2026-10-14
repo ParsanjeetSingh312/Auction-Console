@@ -1,0 +1,283 @@
+/*
+ * marquee.css
+ * Layout for the marquee reveal (MarqueeReveal.tsx). Motion lives in the
+ * timeline; this file places things and sets their resting look.
+ *
+ * `--team` and `--team2` are set per player on `.marquee`.
+ */
+
+.marquee {
+  --team: #e8202a;
+  --team2: #d9b44a;
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  overflow: hidden;
+  background: #02040b;
+  visibility: hidden;
+  opacity: 0;
+}
+
+.marquee .mq-stage,
+.marquee .mq-backdrop,
+.marquee .mq-flash,
+.marquee .mq-flicker,
+.marquee .mq-bolts {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.marquee .mq-stage {
+  transform: scale(1.04); /* hides blur's soft edge once the card is up */
+}
+
+/* The card's ground: the frozen stadium shows through, pulled into the dark,
+   with the team's colour rising from the bottom edge behind the number. */
+.marquee .mq-backdrop {
+  background:
+    radial-gradient(70vw 60vh at 72% 100%, color-mix(in srgb, var(--team) 34%, transparent), transparent 70%),
+    linear-gradient(90deg, rgba(2, 4, 11, 0.92) 0%, rgba(2, 4, 11, 0.7) 48%, rgba(2, 4, 11, 0.45) 100%);
+}
+
+.marquee .mq-flash {
+  background: var(--team);
+  mix-blend-mode: screen;
+}
+
+.marquee .mq-flicker {
+  background: color-mix(in srgb, var(--team2) 55%, white);
+  mix-blend-mode: screen;
+}
+
+.marquee .mq-bolts path {
+  fill: none;
+  stroke-linejoin: miter;
+  stroke-linecap: round;
+}
+/* Two strokes per bolt: a wide coloured glow and a thin white-hot core. */
+.marquee .mq-bolts path.glow {
+  stroke: var(--team);
+  stroke-width: 12px;
+  opacity: 0.6;
+  filter: blur(5px);
+}
+.marquee .mq-bolts path.core {
+  stroke: #fff;
+  stroke-width: 3px;
+  filter: drop-shadow(0 0 4px var(--team2));
+}
+
+/* ---- the card ---- */
+
+.marquee .mq-card {
+  position: absolute;
+  inset: 0;
+  padding: clamp(24px, 5vh, 56px) clamp(20px, 5vw, 80px);
+}
+
+.marquee .mq-card-inner {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: clamp(14px, 3vh, 28px);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.marquee .mq-jersey {
+  position: absolute;
+  right: -1vw;
+  top: 50%;
+  translate: 0 -54%;
+  font-family: "Barlow Condensed", "Oswald", sans-serif;
+  font-weight: 800;
+  font-style: italic;
+  line-height: 0.8;
+  font-size: min(70vh, 48vw);
+  letter-spacing: -0.04em;
+  color: var(--team);
+  text-shadow: 0 0 60px color-mix(in srgb, var(--team) 55%, transparent);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.marquee .mq-sparks {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+}
+
+.marquee .mq-spark {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 0 10px 3px var(--team), 0 0 4px 1px var(--team2);
+  opacity: 0;
+}
+
+.marquee .mq-meta,
+.marquee .mq-stats,
+.marquee .mq-tagline,
+.marquee .mq-name {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+}
+
+.marquee .mq-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: "Chakra Petch", Inter, sans-serif;
+  font-weight: 600;
+  font-size: clamp(0.95rem, 1.4vw, 1.15rem);
+  color: #e2e8f0;
+}
+.marquee .mq-meta i {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--team);
+  box-shadow: 0 0 12px var(--team);
+}
+
+.marquee .mq-stats {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(6px, 1.4vh, 14px);
+}
+
+.marquee .mq-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.marquee .mq-stat-value {
+  font-family: "Barlow Condensed", "Oswald", sans-serif;
+  font-weight: 800;
+  font-style: italic;
+  font-size: clamp(2.6rem, 6.2vh, 4.4rem);
+  line-height: 1;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  min-width: 4.2ch;
+}
+
+.marquee .mq-stat span {
+  font-family: "Chakra Petch", Inter, sans-serif;
+  font-size: clamp(1rem, 1.5vw, 1.2rem);
+  color: #cbd5e1;
+}
+
+.marquee .mq-tagline {
+  font-family: "Barlow Condensed", "Oswald", sans-serif;
+  font-weight: 800;
+  font-style: italic;
+  text-transform: uppercase;
+  font-size: clamp(2rem, 5vw, 4.4rem);
+  line-height: 0.95;
+  color: var(--team);
+  transform-origin: 0% 50%;
+  text-shadow: 0 0 28px color-mix(in srgb, var(--team) 45%, transparent);
+}
+
+.marquee .mq-name {
+  display: flex;
+  flex-direction: column;
+  line-height: 0.9;
+}
+
+.marquee .mq-first {
+  font-family: "Russo One", Impact, sans-serif;
+  text-transform: uppercase;
+  font-size: clamp(1.4rem, 3vw, 2.4rem);
+  letter-spacing: 0.08em;
+  color: #e2e8f0;
+}
+
+.marquee .mq-last {
+  display: flex;
+  font-family: "Russo One", Impact, sans-serif;
+  text-transform: uppercase;
+  font-size: clamp(3.6rem, 11vw, 10rem);
+  letter-spacing: 0.02em;
+  color: #fff;
+  transform-origin: 0% 100%;
+  /* A filter on the word, not a text-shadow on the letters: each letter sits in
+     a clipping mask, which cut a shadow off into visible boxes. */
+  filter: drop-shadow(0 0 22px color-mix(in srgb, var(--team) 45%, transparent));
+}
+
+.marquee .mq-last-mask {
+  display: inline-block;
+  overflow: hidden;
+  padding-bottom: 0.06em;
+}
+
+.marquee .mq-last-char {
+  display: inline-block;
+}
+
+.marquee .mq-skip {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 5;
+  min-height: 40px;
+  padding: 0 1.1rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+  font-family: "Chakra Petch", Inter, sans-serif;
+  font-weight: 600;
+}
+.marquee .mq-skip:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.marquee .mq-skip:focus-visible {
+  outline: 2px solid var(--team2);
+  outline-offset: 3px;
+}
+
+/* ---- phone: the number above, the story below ---- */
+@media (max-width: 700px) {
+  .marquee .mq-card-inner {
+    justify-content: flex-end;
+    padding-bottom: 4vh;
+  }
+  .marquee .mq-jersey {
+    top: 4vh;
+    right: -2vw;
+    translate: none;
+    font-size: 44vh;
+  }
+  .marquee .mq-backdrop {
+    background:
+      radial-gradient(90vw 50vh at 70% 20%, color-mix(in srgb, var(--team) 30%, transparent), transparent 70%),
+      linear-gradient(0deg, rgba(2, 4, 11, 0.95) 0%, rgba(2, 4, 11, 0.75) 55%, rgba(2, 4, 11, 0.4) 100%);
+  }
+  .marquee .mq-stat-value {
+    font-size: 2.4rem;
+  }
+}
+
+/* The lab's stand-in bidding panel arriving after the reveal. */
+.mq-block-in {
+  animation: mq-block-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes mq-block-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mq-block-in { animation: none; }
+}

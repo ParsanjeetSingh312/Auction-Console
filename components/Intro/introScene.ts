@@ -89,6 +89,12 @@ export interface IntroStage {
    * page for free.
    */
   setLive(on: boolean): void;
+  /**
+   * Break the wicket in a franchise's colours: LED bails, a spark burst and a
+   * light flash in `primary`, with `secondary` mixed into the sparks. Null
+   * restores the opening's red LEDs and turns the sparks off.
+   */
+  setTeamColors(primary: string | null, secondary?: string | null): void;
   dispose(): void;
   /** For tuning from the console: draw calls and triangles last frame. */
   debug(): { calls: number; triangles: number; frames: number; internals: unknown };
@@ -937,6 +943,65 @@ export function createIntroStage(host: HTMLElement, { tier, onReady }: IntroStag
   debris.frustumCulled = false;
   scene.add(debris);
 
+  /* ---- sparks: a team-coloured burst where the ball meets the stumps ----
+     Off unless `setTeamColors` has been given a team: the site's opening keeps
+     its red LED flash and clay debris. The marquee reveal turns them on, so a
+     Bengaluru player breaks the wicket in red and a Chennai one in yellow.
+     HDR colours (multiplied past 1) so the bloom pass lifts them into light. */
+  const SPARKS = tier === 1 ? 90 : 220;
+  const sparkPos = new Float32Array(SPARKS * 3);
+  const sparkVel = new Float32Array(SPARKS * 3);
+  const sparkCol = new Float32Array(SPARKS * 3);
+  const sparkGeo = track(new THREE.BufferGeometry());
+  sparkGeo.setAttribute("position", new THREE.BufferAttribute(sparkPos, 3));
+  sparkGeo.setAttribute("color", new THREE.BufferAttribute(sparkCol, 3));
+  const sparkMat = track(
+    new THREE.PointsMaterial({
+      size: 0.055,
+      map: glow,
+      vertexColors: true,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      opacity: 0,
+    }),
+  );
+  const sparks = new THREE.Points(sparkGeo, sparkMat);
+  sparks.frustumCulled = false;
+  scene.add(sparks);
+  // Lights the pitch and the flying stumps in the team's colour for an instant.
+  const burstLight = new THREE.PointLight("#ffffff", 0, 6, 1.6);
+  burstLight.position.copy(IMPACT);
+  scene.add(burstLight);
+  let sparksOn = false;
+  let sparkAge = -1;
+
+  function setTeamColors(primary: string | null, secondary?: string | null) {
+    if (!primary) {
+      sparksOn = false;
+      ledMat.emissive.set("#ff1e1e");
+      zingLight.color.set("#ff2a2a");
+      return;
+    }
+    sparksOn = true;
+    ledMat.emissive.set(primary);
+    zingLight.color.set(primary);
+    burstLight.color.set(primary);
+    const a = new THREE.Color(primary);
+    const b = new THREE.Color(secondary || "#ffffff");
+    const white = new THREE.Color("#ffffff");
+    const rand = rng(97);
+    const c = new THREE.Color();
+    for (let i = 0; i < SPARKS; i++) {
+      const pick = rand();
+      if (pick < 0.66) c.copy(a).multiplyScalar(3.2);
+      else if (pick < 0.86) c.copy(b).multiplyScalar(2.6);
+      else c.copy(white).multiplyScalar(3);
+      sparkCol.set([c.r, c.g, c.b], i * 3);
+    }
+    (sparkGeo.attributes.color as THREE.BufferAttribute).needsUpdate = true;
+  }
+
   /* ---- post ---- */
   // The composer's own half-float target, deliberately without MSAA samples:
   // a multisampled half-float target resolves to solid black on Intel GPUs
@@ -1103,6 +1168,22 @@ export function createIntroStage(host: HTMLElement, { tier, onReady }: IntroStag
       debrisMat.opacity = Math.max(0, 1 - debrisAge / 1.6);
     }
 
+    if (sparkAge >= 0) {
+      sparkAge += sdt;
+      // Sparks float and slow rather than fall like clay: light drag, light
+      // gravity, so in slow motion they hang round the wicket as a starburst.
+      const drag = Math.exp(-2.4 * sdt);
+      for (let i = 0; i < SPARKS; i++) {
+        sparkVel[i * 3] *= drag;
+        sparkVel[i * 3 + 1] = sparkVel[i * 3 + 1] * drag - 2.2 * sdt;
+        sparkVel[i * 3 + 2] *= drag;
+        for (let k = 0; k < 3; k++) sparkPos[i * 3 + k] += sparkVel[i * 3 + k] * sdt;
+      }
+      (sparkGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+      sparkMat.opacity = Math.max(0, 1 - sparkAge / 1.4);
+      burstLight.intensity = 9 * Math.max(0, 1 - sparkAge / 0.5);
+    }
+
     // Camera: the tweened shot, a decaying shake, and the slow drift round the ground.
     driftAngle += dt * 0.035 * state.drift;
     p.set(state.cam.x, state.cam.y, state.cam.z);
@@ -1178,6 +1259,23 @@ export function createIntroStage(host: HTMLElement, { tier, onReady }: IntroStag
     }
     debrisAge = 0;
     debrisMat.opacity = 1;
+
+    if (sparksOn) {
+      for (let i = 0; i < SPARKS; i++) {
+        sparkPos.set([IMPACT.x, IMPACT.y, IMPACT.z], i * 3);
+        // A sphere of directions, biased back and up: the burst follows the ball.
+        const u = rand() * 2 - 1;
+        const th = rand() * Math.PI * 2;
+        const r = Math.sqrt(1 - u * u);
+        const sp = 2.5 + rand() * 7.5;
+        sparkVel[i * 3] = r * Math.cos(th) * sp;
+        sparkVel[i * 3 + 1] = Math.abs(u) * sp * 0.9 + 0.8;
+        sparkVel[i * 3 + 2] = r * Math.sin(th) * sp + 1.5;
+      }
+      (sparkGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+      sparkAge = 0;
+      sparkMat.opacity = 1;
+    }
   }
 
   function reset() {
@@ -1194,6 +1292,9 @@ export function createIntroStage(host: HTMLElement, { tier, onReady }: IntroStag
     }
     ledMat.emissiveIntensity = 0;
     zingLight.intensity = 0;
+    sparkAge = -1;
+    sparkMat.opacity = 0;
+    burstLight.intensity = 0;
   }
 
   function dispose() {
@@ -1236,5 +1337,5 @@ export function createIntroStage(host: HTMLElement, { tier, onReady }: IntroStag
     }
   };
 
-  return { state, strike, reset, dispose, debug, advance, setLive };
+  return { state, strike, reset, dispose, debug, advance, setLive, setTeamColors };
 }
