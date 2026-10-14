@@ -318,6 +318,61 @@ export default function AdminSplitScreen({
     [],
   );
 
+  /** Send a setup to the room and wait for it to come back confirmed. */
+  const sendRules = useCallback(
+    (next: Rules) => {
+      engine.setRules(next);
+      /*
+        No success toast here, deliberately.
+
+        Every intent on the socket engine is fire-and-forget: `setRules`
+        returns the moment the frame is written, long before the room has
+        decided anything. Announcing "Auction rules updated" at this point
+        is a guess, and it was a wrong guess for the whole of the period
+        when `setRules` was an empty function — the panel cheerfully
+        confirmed a change that had gone nowhere, which is exactly how the
+        bug stayed invisible.
+
+        The confirmation is raised by the effect above instead, when the
+        room's own rules actually change. A refusal arrives as an error
+        frame and raises its own toast, so the two outcomes are now
+        distinguishable from the outside.
+      */
+      pendingRules.current = next;
+      window.clearTimeout(rulesTimer.current);
+      rulesTimer.current = window.setTimeout(() => {
+        if (!pendingRules.current) return;
+        pendingRules.current = null;
+        onNotice(
+          "The room did not apply the new rules. If the server was " +
+            "started before this change, restart it with .\\start.ps1.",
+          "err",
+        );
+      }, 4000);
+    },
+    [engine, onNotice],
+  );
+
+  /**
+   * A setup saved while a player is on the block, waiting for the lot to settle.
+   *
+   * The room refuses a rules change mid-lot, and rightly — changing the budget
+   * under a live bid would reprice a contest that is already running. But the
+   * dialog used to send it anyway, close, and leave every purse, max bid and
+   * leaderboard figure on the old budget behind a single error toast, which
+   * reads exactly like the setup being ignored. So the change is held here
+   * instead and sent the moment the block clears — sold, unsold or undone.
+   *
+   * Live room only: the offline engine applies rules locally at any time.
+   */
+  const [queuedRules, setQueuedRules] = useState<Rules | null>(null);
+
+  useEffect(() => {
+    if (!queuedRules || engine.block) return;
+    setQueuedRules(null);
+    sendRules(queuedRules);
+  }, [queuedRules, engine.block, sendRules]);
+
   const activePreset: Preset | null = useMemo(() => {
     const match = (Object.keys(PRESETS) as Preset[]).find(
       (key) => Math.abs(PRESETS[key] - split) < 0.02,
@@ -440,9 +495,10 @@ export default function AdminSplitScreen({
               {...(reduced ? {} : pressable)}
               type="button"
               onClick={() => setShowSetup(true)}
+              title={queuedRules ? "New setup waiting for the lot on the block to settle" : undefined}
               className="rounded-md border border-line px-2.5 py-1 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-muted transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
             >
-              Setup
+              {queuedRules ? "Setup · pending" : "Setup"}
             </motion.button>
           )}
           <span className="hidden font-ui text-[10px] uppercase tracking-[0.1em] text-slate-faint sm:inline">
@@ -667,38 +723,22 @@ export default function AdminSplitScreen({
       <AnimatePresence>
         {showSetup && (
           <SetupDialog
-            rules={engine.rules}
+            rules={queuedRules ?? engine.rules}
             warning={staleServer}
+            note={
+              socket && engine.block
+                ? "A player is on the block. Saved changes apply as soon as this lot is settled."
+                : null
+            }
             onSave={(next) => {
-              engine.setRules(next);
               setShowSetup(false);
-              /*
-                No success toast here, deliberately.
-
-                Every intent on the socket engine is fire-and-forget: `setRules`
-                returns the moment the frame is written, long before the room has
-                decided anything. Announcing "Auction rules updated" at this point
-                is a guess, and it was a wrong guess for the whole of the period
-                when `setRules` was an empty function — the panel cheerfully
-                confirmed a change that had gone nowhere, which is exactly how the
-                bug stayed invisible.
-
-                The confirmation is raised by the effect above instead, when the
-                room's own rules actually change. A refusal arrives as an error
-                frame and raises its own toast, so the two outcomes are now
-                distinguishable from the outside.
-              */
-              pendingRules.current = next;
-              window.clearTimeout(rulesTimer.current);
-              rulesTimer.current = window.setTimeout(() => {
-                if (!pendingRules.current) return;
-                pendingRules.current = null;
-                onNotice(
-                  "The room did not apply the new rules. If the server was " +
-                    "started before this change, restart it with .\\start.ps1.",
-                  "err",
-                );
-              }, 4000);
+              if (socket && engine.block) {
+                setQueuedRules(next);
+                onNotice("Setup saved — it applies as soon as the player on the block is settled.");
+                return;
+              }
+              setQueuedRules(null);
+              sendRules(next);
             }}
             onReset={() => {
               engine.resetAuction();

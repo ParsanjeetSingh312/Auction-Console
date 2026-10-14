@@ -260,6 +260,7 @@ export function SetupDialog({
   onClose,
   onReset,
   warning,
+  note,
 }: {
   rules: Rules;
   onSave: (next: Rules) => void;
@@ -274,6 +275,11 @@ export function SetupDialog({
    * otherwise indistinguishable from the panel simply not doing anything.
    */
   warning?: string | null;
+  /**
+   * Shown above the buttons when saving works but not at once — in a live
+   * room, a player on the block holds the change until the lot settles.
+   */
+  note?: string | null;
 }) {
   // The live room carries two more setup fields than the offline console.
   // Their presence on `rules` is what makes them appear here.
@@ -390,6 +396,12 @@ export function SetupDialog({
         )}
 
         {error && <p className="mt-1 text-mini text-unsold">{error}</p>}
+
+        {note && !warning && (
+          <p className="mt-2 rounded-md border border-rule px-2.5 py-2 text-mini leading-relaxed text-ink">
+            {note}
+          </p>
+        )}
 
         {warning && (
           <p
