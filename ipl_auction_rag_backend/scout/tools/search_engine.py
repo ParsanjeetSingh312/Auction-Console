@@ -62,6 +62,27 @@ _NUMERIC_FILTERS: dict[str, tuple[str, str]] = {
     "max_economy": ("economy", "<="),
     "min_wickets": ("wickets", ">="),
     "min_matches": ("matches", ">="),
+    # Situational splits. Populated for about half the pool (135 of 284 have
+    # `sr_vs_fast`), so these follow the same rule as every other floor below:
+    # a player with no recorded split is not asserted to clear it.
+    "min_sr_vs_fast": ("sr_vs_fast", ">="),
+    "min_sr_vs_spin": ("sr_vs_spin", ">="),
+    "min_boundary_pct_fast": ("boundary_pct_fast", ">="),
+    "min_boundary_pct_spin": ("boundary_pct_spin", ">="),
+    "max_econ_vs_lhb": ("econ_vs_lhb", "<="),
+    "max_econ_vs_rhb": ("econ_vs_rhb", "<="),
+}
+
+#: The column a shortlist is sorted by when the question was about a split.
+#: Asked for "strike rate above 180 against pace", the fastest against pace
+#: should lead -- not the highest-rated player who happens to clear the bar.
+_SPLIT_SORT: dict[str, str] = {
+    "min_sr_vs_fast": "sr_vs_fast DESC",
+    "min_sr_vs_spin": "sr_vs_spin DESC",
+    "min_boundary_pct_fast": "boundary_pct_fast DESC",
+    "min_boundary_pct_spin": "boundary_pct_spin DESC",
+    "max_econ_vs_lhb": "econ_vs_lhb ASC",
+    "max_econ_vs_rhb": "econ_vs_rhb ASC",
 }
 
 #: How old research may be before the advisor should consider refreshing it.
@@ -82,6 +103,12 @@ class RetrievalResult:
     matched_by_constraints: int = 0
     research_age_days: float | None = None
     searched_web: bool = False
+    #: True when the question carried filters and no player satisfied them.
+    #: The advisor short-circuits on this: there is nothing to recommend, so
+    #: no model is asked to recommend something.
+    no_match: bool = False
+    #: Vector matches discarded by the similarity gate, for the notes.
+    dropped_by_similarity: int = 0
 
     @property
     def is_stale(self) -> bool:
@@ -147,11 +174,19 @@ def constraints_to_sql(c: Constraints) -> tuple[str, list[Any]]:
     clause = f" WHERE {' AND '.join(where)}" if where else ""
     # Rating first because it is the pool's own quality signal, then strike
     # rate. NULLs last either way, so an unrated player never leads a shortlist.
+    # A question about a split leads with that split instead (see _SPLIT_SORT);
+    # every split filter already excludes NULLs, so no NULL guard is needed.
+    split_order = [order for name, order in _SPLIT_SORT.items() if getattr(c, name, None) is not None]
+    order_by = ", ".join(
+        split_order + ["rating IS NULL", "rating DESC", "bat_sr IS NULL", "bat_sr DESC"]
+    )
     sql = (
         "SELECT id, player_name, country, role, cap_status, overseas, base_price, "
-        "rating, matches, total_runs, bat_avg, bat_sr, wickets, economy "
+        "rating, matches, total_runs, bat_avg, bat_sr, wickets, economy, "
+        "sr_vs_fast, sr_vs_spin, boundary_pct_fast, boundary_pct_spin, "
+        "econ_vs_lhb, econ_vs_rhb "
         f"FROM players{clause} "
-        "ORDER BY rating IS NULL, rating DESC, bat_sr IS NULL, bat_sr DESC "
+        f"ORDER BY {order_by} "
         "LIMIT ?"
     )
     params.append(c.limit)
@@ -173,7 +208,12 @@ def _describe(row: dict[str, Any]) -> str:
         ("base price", "base_price", " lakh"), ("rating", "rating", ""),
         ("matches", "matches", ""), ("runs", "total_runs", ""),
         ("batting average", "bat_avg", ""), ("strike rate", "bat_sr", ""),
+        ("strike rate vs pace", "sr_vs_fast", ""), ("strike rate vs spin", "sr_vs_spin", ""),
+        ("boundary % vs pace", "boundary_pct_fast", ""),
+        ("boundary % vs spin", "boundary_pct_spin", ""),
         ("wickets", "wickets", ""), ("economy", "economy", ""),
+        ("economy vs left-handers", "econ_vs_lhb", ""),
+        ("economy vs right-handers", "econ_vs_rhb", ""),
     ):
         value = row.get(key)
         if value is not None:
@@ -345,6 +385,44 @@ def semantic(query: str, *, n_results: int = 8, include_research: bool = True) -
     return refs
 
 
+def gate_by_similarity(
+    refs: list[RetrievedRef],
+    *,
+    floor: float | None = None,
+    band: float | None = None,
+) -> tuple[list[RetrievedRef], int]:
+    """
+    Drop vector matches too weak to put in front of the advisor.
+
+    Two tests, because one is not enough on this embedding model. A nearest
+    neighbour always exists, however unrelated the question, so without a
+    floor "cooking recipes for pasta" still returns eight cricketers at 0.43
+    -- and the advisor writes cards for them. An absolute floor alone is not
+    enough either: on-topic scores sit in a narrow 0.60-0.77 range, so the
+    band keeps only matches close to this question's best one.
+
+    Only `scored_by == "vector"` refs are tested. A structured match or a name
+    resolution has no similarity to test, and inventing one to gate it would
+    drop exact answers.
+
+    Returns the survivors and how many were dropped, so the drop can be noted.
+    """
+    settings = get_settings()
+    floor = settings.SCOUT_MIN_SIMILARITY if floor is None else floor
+    band = settings.SCOUT_SIMILARITY_BAND if band is None else band
+
+    scored = [r.score for r in refs if r.scored_by == "vector" and r.score is not None]
+    if not scored:
+        return refs, 0
+    cutoff = max(floor, max(scored) - band)
+
+    kept = [
+        r for r in refs
+        if r.scored_by != "vector" or (r.score is not None and r.score >= cutoff)
+    ]
+    return kept, len(refs) - len(kept)
+
+
 def rerank(query: str, refs: list[RetrievedRef], *, top_k: int = 5) -> list[RetrievedRef]:
     """
     Reorder with the cross-encoder. Costs about 13.7 seconds on CPU.
@@ -511,30 +589,61 @@ async def retrieve_for(
             seen.add(fingerprint)
             result.refs.append(ref)
 
-    if not constraints.is_empty():
-        # SQLite is fast enough to be uninteresting, but `semantic` below
-        # runs a BGE embedding on CPU and `rerank` runs a cross-encoder for
-        # ~14 seconds. Both are pure CPU work with no await in them, so both
-        # belong in a thread -- see the note in cricket_advisor.advise.
-        refs, sql, matched = await asyncio.to_thread(by_constraints, constraints)
+    filtered = not constraints.is_empty()
+
+    # The three reads are independent, so they run at once rather than one
+    # after another: the SQL filter, the vector search (a BGE embedding on
+    # CPU, ~60ms warm) and the research ledger's age. Each is blocking work
+    # with no await inside, so each goes to a thread -- see the note in
+    # cricket_advisor.advise about what a blocked loop costs the auction.
+    # The vector search is skipped outright when filters are present and no
+    # research collection could add anything (see below), but it is cheap
+    # enough that running it alongside the SQL costs nothing in wall time.
+    async def _none() -> None:
+        return None
+
+    structured, semantic_refs, age = await asyncio.gather(
+        asyncio.to_thread(by_constraints, constraints) if filtered else _none(),
+        asyncio.to_thread(semantic, question, n_results=semantic_results),
+        asyncio.to_thread(research_age_days),
+    )
+
+    # Gate before any rerank: the cross-encoder rescores on its own scale.
+    semantic_refs, dropped = gate_by_similarity(semantic_refs)
+    result.dropped_by_similarity = dropped
+
+    if filtered:
+        refs, sql, matched = structured
         result.sql = sql
         result.matched_by_constraints = matched
         add(refs)
         if matched == 0:
+            # No fallback to "the nearest vector matches" any more. Those were
+            # players who did NOT meet the criteria, presented to the advisor
+            # as candidates -- and it wrote cards for them. With filters in the
+            # question, an empty result is the answer.
+            result.no_match = True
+            result.notes.append("No player in the pool satisfies every filter in the question.")
+        else:
+            # A filtered question is answered by the rows that pass the filter.
+            # Vector matches are kept only where they add research about one of
+            # those same players; a vector match for anyone else is a player
+            # who failed the filter.
+            matched_ids = {r.player_id for r in refs}
+            add([r for r in semantic_refs if r.from_research and r.player_id in matched_ids])
+    else:
+        if use_reranker and semantic_refs:
+            semantic_refs = await asyncio.to_thread(rerank, question, semantic_refs)
+            result.notes.append("Reranked with the cross-encoder (adds roughly 14s).")
+        add(semantic_refs)
+        if dropped:
             result.notes.append(
-                "No player satisfies every constraint; falling back to semantic "
-                "matches, which may not meet all of them."
+                f"Dropped {dropped} weak similarity match(es) below the relevance threshold."
             )
+        if not result.refs:
+            result.no_match = True
 
-    semantic_refs = await asyncio.to_thread(
-        semantic, question, n_results=semantic_results
-    )
-    if use_reranker and semantic_refs:
-        semantic_refs = await asyncio.to_thread(rerank, question, semantic_refs)
-        result.notes.append("Reranked with the cross-encoder (adds roughly 14s).")
-    add(semantic_refs)
-
-    result.research_age_days = await asyncio.to_thread(research_age_days)
+    result.research_age_days = age
     if result.research_age_days is None:
         result.notes.append("No research recorded yet; answering from the spreadsheet alone.")
     elif result.is_stale:

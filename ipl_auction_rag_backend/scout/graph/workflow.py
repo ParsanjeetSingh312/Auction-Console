@@ -50,7 +50,11 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 
 from config.settings import get_settings
-from scout.agents.cricket_advisor import cricket_advisor_node, parse_constraints
+from scout.agents.cricket_advisor import (
+    cricket_advisor_node,
+    no_match_recommendation,
+    parse_constraints,
+)
 from scout.agents.data_researcher import data_researcher_node
 from scout.agents.live_context import live_context_node
 from scout.graph.state import (
@@ -65,7 +69,7 @@ from scout.graph.state import (
     open_turn,
     seconds_left,
 )
-from scout.schemas.queries import TeamContext
+from scout.schemas.queries import AdvisorQuery, Constraints, TeamContext
 
 logger = logging.getLogger(__name__)
 
@@ -138,28 +142,79 @@ async def supervisor_node(state: ScoutState) -> dict:
     # NOTES_RESET first: this node opens the turn, so anything the thread
     # accumulated on a previous question stops here.
     notes = [NOTES_RESET, f"intent: {intent}"]
+
+    # Flush EVERYTHING that belongs to one question before reading this one.
+    #
+    # The console asks every question on one thread (`ScoutDrawer` keeps one
+    # thread id per session) and the checkpointer resumes that thread's state,
+    # so any per-turn field not reset here is inherited by the next question.
+    # This used to reset three fields and leave the rest: a research turn kept
+    # the previous advise turn's constraints, and `research`, `retrieved` and
+    # `engine_used` rode along into answers they had nothing to do with. The
+    # list is now every per-turn field ScoutState declares; `notes` has its own
+    # sentinel (NOTES_RESET) and the input fields are overwritten by the
+    # payload itself.
+    #
+    # `recommendation` in particular is load-bearing. `researcher_node` reads
+    # it to tell a mandatory first pass from a genuine refresh, and one left
+    # over from last turn makes every later turn look like a refresh -- which
+    # spends SCOUT_MAX_REFRESH_CYCLES before the cycle it guards can be taken.
+    update.update({
+        "constraints": Constraints(),
+        "research": None,
+        "research_context": None,
+        "retrieved": [],
+        "recommendation": None,
+        "engine_used": None,
+        "refresh_cycles": 0,
+    })
+
     if intent == "advise":
+        # Parsed from THIS question only; `parse_constraints` holds no state.
         constraints, recognised = parse_constraints(state.get("question", ""))
         update["constraints"] = constraints
         notes.append("understood as: " + (", ".join(recognised) or "no filters, semantic only"))
 
-    # Clear what belonged to the PREVIOUS question on this thread. `notes` has
-    # its own sentinel for this (see `merge_notes`), and these two need the
-    # same treatment for the same reason: a thread resumes from its checkpoint,
-    # so without this the second question on a thread starts holding the first
-    # question's answer.
-    #
-    # `recommendation` in particular is load-bearing now. `researcher_node`
-    # reads it to tell a mandatory first pass from a genuine refresh, and a
-    # recommendation left over from last turn makes every turn after the first
-    # look like a refresh -- which spends SCOUT_MAX_REFRESH_CYCLES before the
-    # cycle it guards can ever be taken.
-    update["recommendation"] = None
-    update["research_context"] = None
-    update["refresh_cycles"] = 0
+        # Empty-state short-circuit, before any research is paid for. With
+        # filters in the question, one cheap COUNT says whether anybody in the
+        # pool can answer it. If nobody can, the turn ends here with the fixed
+        # answer: no web search, no model call, nothing for either to invent.
+        if not constraints.is_empty():
+            matched = await _count_matches(constraints)
+            if matched == 0:
+                team = state.get("team")
+                if isinstance(team, dict):
+                    team = TeamContext.model_validate(team)
+                query = AdvisorQuery(
+                    question=state.get("question") or "?", constraints=constraints, team=team
+                )
+                recommendation = no_match_recommendation(
+                    query, ["Understood as: " + ", ".join(recognised)]
+                )
+                update["recommendation"] = recommendation
+                update["engine_used"] = recommendation.engine_used
+                notes.append("no player in the pool matches these filters; answered without research")
 
     update["notes"] = notes
     return update
+
+
+async def _count_matches(constraints: Constraints) -> int | None:
+    """
+    How many pool rows pass the filters. None if the count could not be taken.
+
+    None is not zero: a database that cannot be reached must not be reported to
+    a bidder as "nobody matches", so the turn carries on and the advisor's own
+    retrieval surfaces the real error.
+    """
+    from scout.tools.search_engine import by_constraints
+
+    try:
+        _, _, matched = await asyncio.to_thread(by_constraints, constraints)
+    except Exception as exc:  # noqa: BLE001 - see the docstring
+        logger.warning("match count failed (%s); continuing the turn", exc)
+        return None
+    return matched
 
 
 async def researcher_node(state: ScoutState) -> dict:
@@ -267,6 +322,18 @@ def route_from_advisor(state: ScoutState) -> str:
     return "refresh"
 
 
+def route_from_supervisor(state: ScoutState) -> str:
+    """
+    To the researcher, unless the supervisor has already answered.
+
+    It answers only one kind of question itself: one whose filters match
+    nobody (see `supervisor_node`). Everything else goes on as before.
+    """
+    if state.get("intent") == "advise" and state.get("recommendation") is not None:
+        return "answered"
+    return "research"
+
+
 def route_from_researcher(state: ScoutState) -> str:
     """Back to the advisor if this was an advise turn; otherwise finish."""
     return "advise" if state.get("intent") == "advise" else "done"
@@ -290,7 +357,13 @@ def build() -> StateGraph:
     # turn to ingest, an advise turn to pick up live context -- and the edge
     # OUT of the researcher is what still differs between them. This is the
     # edge whose absence left the Data Researcher on "Waiting".
-    graph.add_edge("supervisor", "researcher")
+    #
+    # The one exception: a question whose filters match nobody in the pool is
+    # answered by the supervisor and ends there (`route_from_supervisor`).
+    graph.add_conditional_edges(
+        "supervisor", route_from_supervisor,
+        {"research": "researcher", "answered": END},
+    )
     graph.add_conditional_edges(
         "advisor", route_from_advisor,
         {"refresh": "researcher", "done": END},

@@ -404,6 +404,19 @@ class Settings(BaseSettings):
     # there would vanish on the next ingest, silently and without error.
     SCOUT_COLLECTION_NAME: str = "scout_research"
 
+    # --- Vector similarity gate ---
+    # Calibrated on this pool's BGE-small embeddings, not borrowed from a
+    # tutorial. Measured 2026-10-14: on-topic questions score 0.60-0.77 cosine
+    # similarity and an off-topic one ("cooking recipes for pasta") 0.43-0.46,
+    # so a flat 0.80 cut would have dropped every match for every question.
+    #   SCOUT_MIN_SIMILARITY  - absolute floor; below it a match is unrelated.
+    #   SCOUT_SIMILARITY_BAND - a match must also be within this much of the
+    #                           best one for the same question. Scores here are
+    #                           flat (eight results inside 0.02 is normal), so
+    #                           the band mostly trims the tail of weak ones.
+    SCOUT_MIN_SIMILARITY: float = 0.55
+    SCOUT_SIMILARITY_BAND: float = 0.06
+
     # --- Graph ---
     # Named .db rather than .sqlite so the existing .gitignore rule for
     # data/database/*.db already covers it. Checkpoints are state, not source.

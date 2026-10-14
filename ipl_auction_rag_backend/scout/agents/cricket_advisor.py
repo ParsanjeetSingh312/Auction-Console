@@ -42,6 +42,7 @@ from scout.graph.state import RetrievedRef, ScoutState, seconds_left
 from scout.schemas.queries import (
     AdvisorQuery,
     AdvisorRecommendation,
+    NO_MATCH_ANSWER,
     Candidate,
     Constraints,
     Engine,
@@ -68,6 +69,24 @@ _ROLE_WORDS: tuple[tuple[str, str], ...] = (
 
 _NUM = r"(\d+(?:\.\d+)?)"
 
+#: Who a player is being measured AGAINST: "against fast bowlers", "vs spin",
+#: "facing pace", "to left-handers". Everything this matches is about the
+#: opposition, so it is cut out of the text before the role is read -- it was
+#: "bowlers" in "a batter ... against fast bowlers" that made the old parser
+#: answer role=Bowler, because it tested its word list in a fixed order
+#: (bowler before batter) rather than reading the question.
+_OPPOSITION = re.compile(
+    r"\b(?:against|vs\.?|versus|facing|v)\s+(?:the\s+)?"
+    r"(?P<who>(?:(?:left|right)[- ]arm\s+)?"
+    r"(?:fast|pace|pacers?|seam(?:ers?)?|quicks?|spin(?:ners?)?|leg[- ]?spin(?:ners?)?|"
+    r"off[- ]?spin(?:ners?)?|wrist[- ]?spin(?:ners?)?|finger[- ]?spin(?:ners?)?)"
+    r"(?:\s+(?:bowl(?:ers?|ing)|attacks?))?"
+    r"|(?:left|right)[- ]hand(?:ed|ers)?(?:\s+(?:batters?|batsmen|batting))?)"
+)
+
+#: Phases of an innings people ask about, which the pool has no split for.
+_UNSUPPORTED_PHASES = re.compile(r"\b(death overs?|at the death|powerplay|middle overs|slog overs)\b")
+
 
 def parse_constraints(question: str) -> tuple[Constraints, list[str]]:
     """
@@ -75,16 +94,51 @@ def parse_constraints(question: str) -> tuple[Constraints, list[str]]:
 
     Returns the constraints and a list of what was recognised, which is what
     lets a user see that "under 15 Cr" became 1,500 lakh rather than 15.
+
+    Two passes, in this order:
+
+    1. **The opposition is read and removed.** "Against fast bowlers" says what
+       kind of split a strike rate is measured on; it says nothing about the
+       role of the player being asked for. Taken out first, so it can neither
+       set the role nor be mistaken for one.
+    2. **The role is the earliest role word left in the question**, not the
+       first one in `_ROLE_WORDS`. People name what they want first ("a batter
+       who ..."), and the list order was an implementation detail that decided
+       the answer whenever a question mentioned two roles.
+
+    Each call starts from nothing. No constraint survives from a previous
+    question -- the graph's supervisor clears the stored copy every turn, and
+    this function holds no state of its own.
     """
     text = question.lower()
     found: list[str] = []
     fields: dict[str, Any] = {}
+    #: Where each stat filter's label sits in `found`, so a split can relabel it.
+    label_at: dict[str, int] = {}
 
+    # --- pass 1: who the player is measured against ---------------------
+    versus: str | None = None  # "fast" | "spin" | "lhb" | "rhb"
+    opposition = _OPPOSITION.search(text)
+    if opposition:
+        who = opposition.group("who")
+        if "hand" in who:
+            versus = "lhb" if who.startswith("left") else "rhb"
+        elif "spin" in who:
+            versus = "spin"
+        else:
+            versus = "fast"
+        text = _OPPOSITION.sub(" ", text)
+    role_text = text
+
+    # --- pass 2: the role, by position --------------------------------------
+    earliest: tuple[int, str] | None = None
     for word, role in _ROLE_WORDS:
-        if word in text:
-            fields["role"] = role
-            found.append(f"role={role}")
-            break
+        at = role_text.find(word)
+        if at >= 0 and (earliest is None or at < earliest[0]):
+            earliest = (at, role)
+    if earliest:
+        fields["role"] = earliest[1]
+        found.append(f"role={earliest[1]}")
 
     # Crore before lakh: "15 cr" must not be read as the bare number 15.
     crore = re.search(rf"(?:under|below|less than|upto|up to|max)\s*(?:rs\.?\s*)?{_NUM}\s*(?:cr|crore)", text)
@@ -115,7 +169,44 @@ def parse_constraints(question: str) -> tuple[Constraints, list[str]]:
         match = re.search(pattern, text)
         if match:
             fields[key] = float(match.group(1))
+            label_at[key] = len(found)
             found.append(f"{label}{'<=' if key.startswith('max') else '>='}{match.group(1)}")
+
+    # --- splits: move a figure onto the split it was asked about -----------
+    # Moved, not copied. Keeping the career filter as well would demand both
+    # numbers, which is the bug this exists to fix: a batter brutal against
+    # pace and ordinary against spin has a modest career strike rate.
+    def _move(old_key: str, new_key: str, label: str) -> None:
+        value = fields.pop(old_key)
+        fields[new_key] = value
+        op = "<=" if new_key.startswith("max") else ">="
+        found[label_at.pop(old_key)] = f"{label}{op}{value:g}"
+
+    if versus in ("fast", "spin") and "min_bat_sr" in fields:
+        _move("min_bat_sr", f"min_sr_vs_{versus}", f"strike rate vs {'pace' if versus == 'fast' else 'spin'}")
+    if versus in ("lhb", "rhb") and "max_economy" in fields:
+        _move("max_economy", f"max_econ_vs_{versus}",
+              f"economy vs {'left' if versus == 'lhb' else 'right'}-handers")
+
+    boundary = re.search(
+        rf"boundar(?:y|ies)\s*(?:percentage|%|pct|percent)\s*(?:of\s*)?(?:above|over|>|at least)?\s*{_NUM}",
+        text,
+    )
+    if boundary and versus in ("fast", "spin"):
+        key = f"min_boundary_pct_{versus}"
+        fields[key] = float(boundary.group(1))
+        found.append(f"boundary % vs {'pace' if versus == 'fast' else 'spin'}>={boundary.group(1)}")
+
+    if versus and not any(k.startswith(("min_sr_vs", "max_econ_vs", "min_boundary_pct")) for k in fields):
+        # The opposition was named but no figure was tied to it ("scores
+        # quickly against pace"). Said, rather than silently ignored.
+        found.append(f"measured against {'pace' if versus == 'fast' else 'spin' if versus == 'spin' else 'left-handers' if versus == 'lhb' else 'right-handers'} (no figure given, so no split filter)")
+
+    phase = _UNSUPPORTED_PHASES.search(text)
+    if phase and any(k in fields for k in ("min_bat_sr", "max_economy", "min_bat_avg")):
+        # The pool holds no phase-of-innings splits. The career figure is the
+        # closest thing it has, and the user is told that is what was used.
+        found.append(f"no '{phase.group(1)}' split in the pool, so the career figure was used")
 
     if re.search(r"\boverseas\b|\bforeign\b", text):
         fields["overseas"] = True
@@ -142,22 +233,46 @@ def parse_constraints(question: str) -> tuple[Constraints, list[str]]:
 # Reasoning
 # ---------------------------------------------------------------------------
 
+#: The advisor's instructions.
+#:
+#: **`candidates` is a list and the prompt says so in as many words.** The old
+#: wording ("return fewer candidates rather than padding the list") was read as
+#: "pick the best one": handed four players who all met the filters, the model
+#: returned one card and mentioned the other three in prose, where the console
+#: cannot render them. Every CANDIDATES row marked [match] has already passed
+#: the user's filters in SQL, so the model's job for those is to rank and
+#: explain them, not to decide whether they qualify.
 _SYSTEM = """You are SCOUT, an IPL auction advisor. You answer with JSON only.
 
 Rules you must not break:
-- Recommend only players that appear in the CANDIDATES block. Never invent one.
+- `candidates` is an ARRAY. Return one entry for EVERY player in the CANDIDATES
+  block marked [match], up to the stated limit, best first. Those players have
+  already passed the user's filters in the database; do not drop one because
+  another looks better. Never return a single "best fit" when several match.
+- Recommend only players that appear in the CANDIDATES block, using their exact
+  `id` as `player_id` and their exact name. Never invent a player or an id.
+- Use only the keys in the schema. Do not add keys of your own.
 - Every candidate needs `evidence`: the actual figures your rationale rests on.
 - `suggested_max_bid_lakh` is in LAKH and must never exceed the stated ceiling.
-- If the candidates do not satisfy the question, say so in `answer` and return
-  fewer candidates rather than padding the list.
+- Players marked [pool] or [research] are context: include them only if they
+  genuinely answer the question.
 """
 
 
-def _context_block(refs: list[RetrievedRef], team: TeamContext | None, limit: int = 12) -> str:
+def _context_block(
+    refs: list[RetrievedRef], team: TeamContext | None, limit: int = 12, *, wanted: int = 5,
+) -> str:
     """The retrieved rows and the team's position, as a model reads them."""
-    lines = ["CANDIDATES (recommend only from these):"]
+    lines = [f"CANDIDATES (recommend only from these; return up to {wanted}):"]
     for ref in refs[:limit]:
-        tag = "[research]" if ref.from_research else "[pool]"
+        # [match] = passed every SQL filter in the question. The prompt tells the
+        # model to return a card for each of these, which is what fixes the
+        # one-card answers.
+        tag = (
+            "[research]" if ref.from_research
+            else "[match]" if ref.scored_by == "keyword"
+            else "[pool]"
+        )
         pid = f"id={ref.player_id}" if ref.player_id else "id=unknown"
         lines.append(f"- {tag} {pid} {ref.player_name}: {' '.join(ref.text.split())[:300]}")
 
@@ -219,7 +334,11 @@ def _clamp(payload: dict[str, Any], team: TeamContext | None, notes: list[str]) 
 
 
 def _deterministic(
-    query: AdvisorQuery, retrieval: RetrievalResult, notes: list[str]
+    query: AdvisorQuery,
+    retrieval: RetrievalResult,
+    notes: list[str],
+    *,
+    why: str = "No model was available, so this is a data match rather than an assessment.",
 ) -> AdvisorRecommendation:
     """
     A recommendation built by rule, when no model will answer.
@@ -243,8 +362,7 @@ def _deterministic(
                 role=role_match.group(1) if role_match else "Batter",  # type: ignore[arg-type]
                 rationale=(
                     f"{ref.player_name} satisfies the filters that were understood from "
-                    f"your question. No model was available, so this is a data match "
-                    f"rather than an assessment."
+                    f"your question. {why}"
                 ),
                 evidence=facts or [f"matched by {ref.scored_by}"],
                 suggested_max_bid_lakh=None,
@@ -260,9 +378,42 @@ def _deterministic(
         ),
         candidates=candidates,
         engine_used="local_analyst",
-        notes=notes,
+        notes=notes[:12],
         max_bid_lakh=team.max_bid_lakh if team else None,
     )
+
+
+def no_match_recommendation(query: AdvisorQuery, notes: list[str]) -> AdvisorRecommendation:
+    """
+    The fixed answer for "nobody matches".
+
+    Shared by the advisor and the graph's supervisor, which checks the filters
+    before spending a web search on a question nobody can answer. Written by
+    rule and labelled as such: `engine_used="local_analyst"` says no model was
+    involved, because none was.
+    """
+    return AdvisorRecommendation(
+        answer=NO_MATCH_ANSWER,
+        candidates=[],
+        engine_used="local_analyst",
+        notes=list(dict.fromkeys(notes))[:12],
+        max_bid_lakh=query.team.max_bid_lakh if query.team else None,
+    )
+
+
+#: The keys a model may put on a candidate and on the reply. Anything else is a
+#: hallucinated key: stripped before validation and reported in the notes, so
+#: it never reaches the console and never silently changes meaning later.
+_CANDIDATE_KEYS = frozenset(Candidate.model_fields)
+_REPLY_KEYS = frozenset(AdvisorRecommendation.model_fields)
+
+
+def _strip_unknown(item: dict[str, Any], allowed: frozenset[str], where: str, notes: list[str]) -> dict[str, Any]:
+    """`item` without keys the schema does not define; each one dropped is noted."""
+    extra = sorted(k for k in item if k not in allowed)
+    if extra:
+        notes.append(f"Ignored unexpected key(s) {', '.join(extra)} on {where}.")
+    return {k: v for k, v in item.items() if k in allowed}
 
 
 def _why(exc: Exception) -> str:
@@ -321,9 +472,28 @@ async def advise(
     settings = get_settings()
     notes: list[str] = []
 
-    retrieval = await retrieve_for(
-        query.question, query.constraints, use_reranker=use_reranker, use_web=False
+    from scout.tools.search_engine import refs_for_mentioned
+
+    async def _no_mentions() -> tuple[list[RetrievedRef], list[str]]:
+        return [], []
+
+    # Retrieval and the research-name lookup are independent, so they run
+    # together instead of one after the other.
+    retrieval, (named_refs, named_notes) = await asyncio.gather(
+        retrieve_for(query.question, query.constraints, use_reranker=use_reranker, use_web=False),
+        asyncio.to_thread(refs_for_mentioned, research_context) if research_context else _no_mentions(),
     )
+
+    # Empty-state short-circuit. Nobody in the pool passed the question's
+    # filters (or, for an unfiltered question, nothing cleared the similarity
+    # gate), so there is nothing to recommend and no model is asked to. This
+    # is the case that used to produce cards for players who did not meet the
+    # criteria: retrieval fell back to the nearest vector matches, and the
+    # model dutifully explained why each was a fit. Checked before the web
+    # search too -- news about other players cannot make a filter match.
+    if retrieval.no_match:
+        return no_match_recommendation(query, notes + retrieval.notes)
+
     if use_web is None:
         # The researcher already searched for this turn, so its context stands
         # in for the staleness check that would otherwise trigger one here.
@@ -339,13 +509,15 @@ async def advise(
     # players and is offered a different set to choose from -- see
     # `refs_for_mentioned` for the measurement.
     if research_context:
-        from scout.tools.search_engine import refs_for_mentioned
-
-        named_refs, named_notes = await asyncio.to_thread(
-            refs_for_mentioned, research_context
-        )
         known = {r.player_id for r in retrieval.refs if r.player_id is not None}
-        fresh = [r for r in named_refs if r.player_id not in known]
+        # With filters in the question, a player the news names is only added
+        # if they passed those filters -- and every such player is already in
+        # `known`. Adding the rest would hand the advisor candidates who fail
+        # the criteria, which is the leak the similarity gate exists to close.
+        fresh = (
+            [] if not query.constraints.is_empty()
+            else [r for r in named_refs if r.player_id not in known]
+        )
         # Prepended, not appended. `_context_block` truncates at twelve rows,
         # and the players the news is discussing are the ones that must survive
         # that cut.
@@ -419,7 +591,7 @@ async def advise(
     )
 
     prompt = (
-        f"{live_block}{_context_block(retrieval.refs, query.team)}\n\n"
+        f"{live_block}{_context_block(retrieval.refs, query.team, wanted=query.constraints.limit)}\n\n"
         f"QUESTION: {query.question}\n\n"
         f"Reply with JSON matching this schema:\n"
         f"{json.dumps(AdvisorRecommendation.model_json_schema())}"
@@ -500,13 +672,61 @@ async def advise(
     # the next. A candidate that does not satisfy the contract is dropped and
     # named; the rest are kept.
     raw_candidates = list(payload.pop("candidates", None) or [])
+    payload = _strip_unknown(payload, _REPLY_KEYS | {"candidates"}, "the reply", notes)
+
+    # The players the model was actually shown, by id. A candidate whose id is
+    # not here is a hallucination however well-formed it is -- schema
+    # validation alone cannot catch an invented `player_id: 9001`.
+    offered = {r.player_id: r for r in retrieval.refs if r.player_id is not None}
+
     kept: list[Candidate] = []
     for item in raw_candidates:
+        if not isinstance(item, dict):
+            notes.append("Dropped a candidate that was not an object.")
+            continue
+        name = item.get("player_name", "an unnamed candidate")
+        item = _strip_unknown(item, _CANDIDATE_KEYS, str(name), notes)
+        # The contract first, so a malformed candidate is dropped with the
+        # reason it is malformed ("role: Input should be ...").
         try:
-            kept.append(Candidate.model_validate(item))
+            candidate = Candidate.model_validate(item)
         except Exception as exc:  # noqa: BLE001 - one bad candidate, not a bad reply
-            name = item.get("player_name", "an unnamed candidate") if isinstance(item, dict) else "?"
             notes.append(f"Dropped {name}: {_why(exc)}")
+            continue
+        # Then membership: well-formed is not the same as real.
+        ref = offered.get(candidate.player_id)
+        if ref is None:
+            notes.append(f"Dropped {name}: not one of the players retrieved for this question.")
+            continue
+        if any(c.player_id == ref.player_id for c in kept):
+            continue
+        # The pool's spelling, not the model's: a card titled with a near-miss
+        # name ("V Kohli", "Virat Kholi") for a correct id is still wrong.
+        kept.append(candidate.model_copy(update={"player_name": ref.player_name}))
+
+    # Every exact match gets a card. The prompt asks for this; this makes it
+    # true when the model ignores the prompt. A player who passed every SQL
+    # filter and was left out of the reply is added after the model's own
+    # picks, built by rule from the data and saying so in its rationale -- the
+    # alternative is the old behaviour, four matches and one card.
+    if kept:
+        missing = [
+            r for r in retrieval.refs
+            if r.scored_by == "keyword" and not r.from_research and r.player_id is not None
+            and all(c.player_id != r.player_id for c in kept)
+        ]
+        room = max(0, query.constraints.limit - len(kept))
+        if missing and room:
+            filler = _deterministic(
+                query, RetrievalResult(refs=missing[:room]), [],
+                why="The model's reply left this player out, so this card is the data match, "
+                    "not a written assessment.",
+            ).candidates
+            kept.extend(filler)
+            notes.append(
+                f"Added {len(filler)} more player(s) who match every filter but were "
+                "left out of the model's reply."
+            )
 
     payload["candidates"] = kept
 
@@ -535,7 +755,9 @@ async def advise(
                 "rating. The written answer is still the model's."
             )
 
-    payload["notes"] = notes + [n for n in (payload.get("notes") or []) if n not in notes]
+    # Capped at the schema's twelve. More notes than that would fail the final
+    # validation and throw away a good reply over its own commentary.
+    payload["notes"] = (notes + [n for n in (payload.get("notes") or []) if n not in notes])[:12]
 
     try:
         return AdvisorRecommendation.model_validate(payload)

@@ -78,6 +78,13 @@ def money_lakh(lakh: int | float | None) -> str:
     return f"\u20b9{lakh} L"
 
 
+#: The answer when the pool holds nobody who satisfies the question's filters.
+#: Fixed text, never model-written: with nothing to recommend, anything a model
+#: adds is invented, and this is the case where it used to invent the most --
+#: cards for the nearest vector matches, none of which met the criteria.
+NO_MATCH_ANSWER = "No players in the current pool match these statistical criteria."
+
+
 def crore_to_lakh(crore: float) -> int:
     """
     Convert a spoken figure to the unit the backend counts in.
@@ -122,6 +129,21 @@ class Constraints(BaseModel):
     max_economy: float | None = Field(default=None, ge=0, le=30)
     min_wickets: int | None = Field(default=None, ge=0, le=500)
     min_matches: int | None = Field(default=None, ge=0, le=500)
+
+    # --- situational splits ------------------------------------------------
+    #: "Strike rate above 180 against fast bowlers" is a claim about
+    #: `sr_vs_fast`, not about the career `bat_sr`. Filtering the career figure
+    #: instead answers a different question: it keeps a player who is merely
+    #: quick overall and drops one who is brutal against pace specifically.
+    #: When one of these is set, the matching career filter is not applied --
+    #: see `parse_constraints`, which moves the number rather than copying it.
+    min_sr_vs_fast: float | None = Field(default=None, ge=0, le=400)
+    min_sr_vs_spin: float | None = Field(default=None, ge=0, le=400)
+    min_boundary_pct_fast: float | None = Field(default=None, ge=0, le=100)
+    min_boundary_pct_spin: float | None = Field(default=None, ge=0, le=100)
+    #: Bowling splits read like economy: lower is better, so these are ceilings.
+    max_econ_vs_lhb: float | None = Field(default=None, ge=0, le=30)
+    max_econ_vs_rhb: float | None = Field(default=None, ge=0, le=30)
 
     #: Players already sold, already on the asking squad, or explicitly ruled
     #: out. Recommending someone another franchise bought twenty minutes ago is
