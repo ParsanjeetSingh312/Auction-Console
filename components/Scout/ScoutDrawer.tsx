@@ -59,16 +59,16 @@ gsap.registerPlugin(useGSAP);
 /**
  * The quick actions, phrased as a user would type them.
  *
- * Deliberately four, and deliberately spread across things the graph answers
- * well — a metric filter, a purse question, a scarcity question and a value
- * question. A chip that returns a shrug teaches the user the assistant is weak
- * at exactly the moment they are deciding whether to trust it.
+ * Three questions an auction room actually asks: a split against a kind of
+ * bowling, a split against a kind of batter, and a bar nobody clears -- which
+ * shows the honest "no players match" answer rather than a shortlist of near
+ * misses. The earlier generic chips (economy under 5.0, purse, uncapped, value
+ * picks) were removed at Parsanjeet's request.
  */
 const QUICK_ACTIONS = [
-  "Suggest a bowler with economy under 5.0",
-  "Which team has the most purse left?",
-  "Best uncapped batter still available",
-  "Value picks under 2 Cr",
+  "Batter with strike rate above 180 against fast bowlers",
+  "Bowler with economy under 8 against left-handed batters",
+  "Batter with strike rate above 300 against fast bowlers",
 ];
 
 /** One finished turn, kept in the transcript. */
