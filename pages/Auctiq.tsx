@@ -14,8 +14,9 @@
  * everywhere, would mean editing thirty-odd existing components to describe a
  * theme none of them will ever be shown in.
  */
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import StadiumIntro from "../components/Intro/StadiumIntro";
 import CricketCursor from "../components/UI/CricketCursor";
 import AuctiqFooter from "../components/Global/AuctiqFooter";
 import AuctiqNav from "../components/Global/AuctiqNav";
@@ -27,8 +28,58 @@ import PlayerSelect from "../components/UI/PlayerSelect";
 import { SHOWCASE_PLAYERS } from "../utils/players";
 import { PLAYER_STATS } from "../utils/playerStats";
 
+/** Set once the opening has played, so it greets a visitor once per session. */
+const INTRO_SEEN = "auctoniq:intro-seen";
+
+/** `?intro=1` always plays the opening; otherwise once per browser session. */
+function introAlreadySeen(): boolean {
+  try {
+    if (new URLSearchParams(window.location.search).get("intro") === "1") return false;
+    return window.sessionStorage.getItem(INTRO_SEEN) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export default function Auctiq() {
   const page = useRef<HTMLDivElement>(null);
+
+  /*
+    The stadium opening, then the landing on top of the same stadium.
+
+    A first visit this session gets the black "Enter the auction" screen and
+    the film, which runs from the broken stumps straight into the site: the
+    landing starts fading in while the camera is still craning out, and the
+    stadium freezes into a still behind it once the camera comes to rest.
+    The film lands no wordmark or trophy of its own here — the hero has them.
+    A returning visitor gets that still straight away. Frozen, the stadium
+    draws nothing per frame, which is why it can sit behind a scrolling page
+    where the old live arena made scrolling lag.
+
+    The landing mounts at once, invisible and inert under the black gate, so
+    its start-up work (the hero trophy's WebGL context, the showcase) is done
+    while the visitor is still reading the button. Mounting it at the handoff
+    instead stalled the crane for half a second on a laptop GPU. The handoff
+    is then only a fade.
+  */
+  const [seen] = useState(introAlreadySeen);
+  const [landed, setLanded] = useState(false);
+  const content = useRef<HTMLDivElement>(null);
+  // `inert` until the handoff: hidden content must not take focus or clicks.
+  useEffect(() => {
+    const el = content.current;
+    if (!el) return;
+    if (landed) el.removeAttribute("inert");
+    else el.setAttribute("inert", "");
+  }, [landed]);
+  const handOff = useCallback(() => {
+    try {
+      window.sessionStorage.setItem(INTRO_SEEN, "1");
+    } catch {
+      /* private mode: the opening simply plays again next time */
+    }
+    setLanded(true);
+  }, []);
 
   /*
     No scroll journey on this page any more. The 3D arena that took over from
@@ -66,17 +117,35 @@ export default function Auctiq() {
           own light, and they still do that job over a picture. Static: no
           `live3d`, so it never hands over to the 3D arena (see above). */}
       <StadiumBackdrop />
+      {/* The rendered stadium over the photograph, which stays underneath as
+          the fallback for a machine without WebGL. Above everything while the
+          opening plays; behind everything, frozen, once the landing is up. */}
+      <StadiumIntro
+        instant={seen}
+        backdrop={landed}
+        mark={false}
+        onComplete={handOff}
+        className={landed ? "!fixed inset-0 z-0 pointer-events-none" : "!fixed inset-0 z-[200]"}
+      />
       <div className="auctiq-stadium" aria-hidden />
       <div className="auctiq-grid" aria-hidden />
+
+      <div
+        ref={content}
+        aria-hidden={!landed || undefined}
+        style={{ opacity: landed ? 1 : 0, transition: "opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1)" }}
+      >
 
       {/* The mark is part of the header bar now — AuctiqNav renders it with
           `inline`, so mounting it separately here would put two of them on the
           page, one in the bar and one floating in the opposite corner. */}
       {/* The pointer, as a cricket ball. Landing only — a ball bouncing over
           a live auction grid during bidding would be a distraction. */}
-      <CricketCursor />
+          {/* Only after the handoff: it hides the system pointer, and the gate
+              needs a visible one. */}
+          {landed && <CricketCursor />}
 
-      <AuctiqNav />
+          <AuctiqNav />
 
       {/*
         The mockup's front page.
@@ -94,10 +163,11 @@ export default function Auctiq() {
         its two calls to action are covered by the JOIN NOW controls in the
         header and the footer, both of which reach the auction room.
       */}
-      <BroadcastHero />
-      <PlayerSelect players={SHOWCASE_PLAYERS} stats={PLAYER_STATS} />
+          <BroadcastHero />
+          <PlayerSelect players={SHOWCASE_PLAYERS} stats={PLAYER_STATS} />
 
-      <AuctiqFooter />
+          <AuctiqFooter />
+      </div>
     </div>
   );
 }

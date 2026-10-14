@@ -1,0 +1,113 @@
+/*
+ * stadiumIntro.css
+ * Layout for the opening (StadiumIntro.tsx). Motion lives in the timeline;
+ * this file only places things and sets their resting look.
+ */
+
+.stadium-intro .intro-word {
+  perspective: 700px;
+}
+
+.stadium-intro .intro-letter {
+  transform-origin: 50% 100%;
+  will-change: transform, opacity;
+}
+
+/* Cinema bars for the strike, opened as the camera cranes out. */
+.stadium-intro .intro-bar {
+  height: 11svh;
+  transform-origin: top;
+}
+.stadium-intro .intro-bar--bottom {
+  transform-origin: bottom;
+}
+
+/* A neutral pool of shade behind the mark, so the type reads over the lit
+ * stands without dimming the floodlights at the corners. */
+.stadium-intro .intro-scrim {
+  background: radial-gradient(60vw 52vh at 50% 50%, rgba(2, 4, 11, 0.62), rgba(2, 4, 11, 0) 70%),
+    linear-gradient(to top, rgba(2, 4, 11, 0.7), rgba(2, 4, 11, 0) 34%);
+}
+
+/* Behind the landing: a floor under the content at the bottom, some weight on
+ * the right under the panel column, and a flat cool tint so the stadium
+ * belongs to the same page as everything scrolled past it. Lighter than the
+ * photograph's scrim — the rendered ground is already dark everywhere but the
+ * lamps and the turf. */
+.stadium-intro .intro-site-scrim {
+  background: linear-gradient(to top, rgba(2, 6, 23, 0.9) 0%, rgba(2, 6, 23, 0.55) 26%, rgba(2, 6, 23, 0.18) 60%, rgba(2, 6, 23, 0.12) 100%),
+    linear-gradient(to left, rgba(2, 6, 23, 0.5) 0%, rgba(2, 6, 23, 0.12) 46%, rgba(2, 6, 23, 0) 70%),
+    linear-gradient(rgba(2, 6, 23, 0.22), rgba(2, 6, 23, 0.22));
+}
+
+/* The trophy, sized for the middle of the frame rather than the hero column. */
+.trophy-stage.trophy-stage--intro {
+  height: clamp(240px, 44svh, 520px);
+  max-width: 560px;
+  margin: -1.5rem auto 0;
+}
+
+.stadium-intro .intro-button {
+  min-height: 44px;
+  padding: 0 1.4rem;
+  border-radius: 999px;
+  font-family: "Chakra Petch", Inter, system-ui, sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s, color 0.2s;
+}
+.stadium-intro .intro-button:active {
+  transform: scale(0.96);
+}
+.stadium-intro .intro-button--primary {
+  background: #fb923c;
+  color: #140803;
+}
+.stadium-intro .intro-button--primary:hover {
+  background: #fdba74;
+}
+.stadium-intro .intro-button--gate {
+  min-height: 56px;
+  padding: 0 2.4rem;
+  font-size: 1.1rem;
+}
+.stadium-intro .intro-button--gate:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+.stadium-intro .intro-button:disabled {
+  opacity: 0.45;
+  cursor: progress;
+}
+.stadium-intro .intro-button--quiet {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+}
+.stadium-intro .intro-button--quiet:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+.stadium-intro .intro-button:focus-visible {
+  outline: 2px solid #f6c45a;
+  outline-offset: 3px;
+}
+
+/* ---- The gate ---- */
+
+.intro-gate-card .gate-word {
+  perspective: 700px;
+}
+.intro-gate-card .gate-char {
+  transform-origin: 50% 100%;
+}
+
+@media (max-width: 640px) {
+  .trophy-stage.trophy-stage--intro {
+    height: clamp(220px, 38svh, 360px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stadium-intro .intro-button {
+    transition: none;
+  }
+}
