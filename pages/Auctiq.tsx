@@ -16,7 +16,11 @@
  */
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
-import StadiumIntro from "../components/Intro/StadiumIntro";
+// The opening runs on the refined copy of the Intro modules (detailed crowd,
+// turf, boards, floodlights, depth of field and grade) built at /lab/prototype.
+// The original modules are untouched in components/Intro: switching back is
+// this import and the stylesheet below.
+import StadiumIntro from "../components/Prototype/intro/StadiumIntro";
 import CricketCursor from "../components/UI/CricketCursor";
 import AuctiqFooter from "../components/Global/AuctiqFooter";
 import AuctiqNav from "../components/Global/AuctiqNav";
@@ -27,6 +31,8 @@ import StadiumBackdrop from "../components/Sections/StadiumBackdrop";
 import PlayerSelect from "../components/UI/PlayerSelect";
 import { SHOWCASE_PLAYERS } from "../utils/players";
 import { PLAYER_STATS } from "../utils/playerStats";
+// The landing's refined finish, scoped to `.proto` on the wrapper below.
+import "../components/Prototype/protoLanding.css";
 
 /** Set once the opening has played, so it greets a visitor once per session. */
 const INTRO_SEEN = "auctoniq:intro-seen";
@@ -152,7 +158,7 @@ export default function Auctiq({ opening = "delivery", alwaysPlay = false }: Auc
     working.
   */
   return (
-    <div ref={page} className="auctiq relative min-h-screen overflow-x-clip">
+    <div ref={page} className="auctiq proto relative min-h-screen overflow-x-clip">
       {/*
         Fixed atmospheric layers, behind everything and ignoring the pointer.
         Fixed rather than scrolled so they read as the room the content is in,
@@ -176,11 +182,14 @@ export default function Auctiq({ opening = "delivery", alwaysPlay = false }: Auc
       />
       <div className="auctiq-stadium" aria-hidden />
       <div className="auctiq-grid" aria-hidden />
+      {/* Film grain over the whole page, so the landing is shot on the same
+          stock as the film it comes out of. */}
+      <div className="proto-grain" aria-hidden />
 
       <div
         ref={content}
         aria-hidden={!landed || undefined}
-        style={{ opacity: landed ? 1 : 0.001, willChange: "opacity", transition: "opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1)" }}
+        style={{ opacity: landed ? 1 : 0.001, willChange: "opacity", transition: "opacity 1.1s cubic-bezier(0.22, 1, 0.36, 1)" }}
       >
 
       {/* The mark is part of the header bar now — AuctiqNav renders it with

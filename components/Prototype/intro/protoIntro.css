@@ -1,0 +1,94 @@
+/*
+ * protoIntro.css
+ * The prototype's refinements to the opening's overlays. Scoped to
+ * `.proto-film`, which only the prototype's StadiumIntro carries, so the
+ * shared stadiumIntro.css underneath stays exactly what `/` gets.
+ */
+
+/* PRESENTING TO YOU, set as a title card rather than a HUD readout: a
+ * lighter weight in a neutral face, slightly smaller, and a plain hairline
+ * instead of the two-colour neon rule. */
+.proto-film .intro-present {
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  font-weight: 500;
+  font-size: clamp(0.95rem, 2.1vw, 1.75rem);
+  letter-spacing: 0.4em;
+  color: #f3f1ea;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45), 0 6px 30px rgba(0, 0, 0, 0.55);
+  gap: 1.1rem;
+}
+.proto-film .intro-present::before {
+  background: radial-gradient(closest-side, rgba(2, 4, 11, 0.5), rgba(2, 4, 11, 0.26) 55%, rgba(2, 4, 11, 0));
+}
+.proto-film .intro-present-rule {
+  width: min(30vw, 380px);
+  background: linear-gradient(90deg, rgba(243, 241, 234, 0), rgba(243, 241, 234, 0.7) 50%, rgba(243, 241, 234, 0));
+}
+
+/* A softer edge on the hanging-ball vignette: a lens, not a spotlight. */
+.proto-film .intro-vignette {
+  background: radial-gradient(ellipse 80% 74% at 42% 46%, rgba(2, 4, 11, 0) 42%, rgba(2, 4, 11, 0.5) 100%);
+}
+
+/* The letterbox ends in a feathered edge rather than a hard cut. */
+.proto-film .intro-bar--top {
+  box-shadow: 0 8px 18px -6px rgba(0, 0, 0, 0.9);
+}
+.proto-film .intro-bar--bottom {
+  box-shadow: 0 -8px 18px -6px rgba(0, 0, 0, 0.9);
+}
+
+/* Skip: a quiet glass pill. */
+.proto-film .intro-skip {
+  min-height: 36px;
+  padding: 0 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(10, 12, 18, 0.45);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: rgba(243, 241, 234, 0.78);
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  transition: color 0.3s, border-color 0.3s, background-color 0.3s;
+}
+.proto-film .intro-skip:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.32);
+}
+
+/* The gate: the wordmark as lit metal rather than a neon sign, and a button
+ * that reads as the product's, not a game's. */
+.proto-film .intro-gate-card {
+  background: radial-gradient(70vw 60vh at 50% 46%, #070a12 0%, #02040b 70%);
+}
+.proto-film .gate-word {
+  text-shadow: none;
+  filter: drop-shadow(0 10px 40px rgba(251, 146, 60, 0.16));
+}
+.proto-film .gate-char {
+  background: linear-gradient(180deg, #ffd3a6 0%, #fb9a4b 46%, #d4651f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.proto-film .intro-button--gate {
+  min-height: 52px;
+  padding: 0 2.2rem;
+  background: #f3f1ea;
+  color: #0b0d12;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 0.86rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  box-shadow: 0 10px 30px -12px rgba(243, 241, 234, 0.35);
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.3s, box-shadow 0.45s;
+}
+.proto-film .intro-button--gate:hover:not(:disabled) {
+  background: #ffffff;
+  transform: translateY(-2px);
+  box-shadow: 0 16px 40px -14px rgba(243, 241, 234, 0.5);
+}

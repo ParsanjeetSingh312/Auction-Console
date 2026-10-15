@@ -61,6 +61,8 @@ const IntroLab = lazy(() => import("./pages/IntroLab"));
 const MarqueeLab = lazy(() => import("./pages/MarqueeLab"));
 // Prototype of the landing with the ball's delivery opening. Not linked.
 const OpeningLab = lazy(() => import("./pages/OpeningLab"));
+// Prototype of a reworked opening and landing. Not linked from anywhere.
+const PrototypeLab = lazy(() => import("./pages/PrototypeLab"));
 
 export default function App() {
   return (
@@ -99,6 +101,7 @@ export default function App() {
           <Route path="/lab/intro" element={<IntroLab />} />
           <Route path="/lab/marquee" element={<MarqueeLab />} />
           <Route path="/lab/opening" element={<OpeningLab />} />
+          <Route path="/lab/prototype" element={<PrototypeLab />} />
           <Route path="/about" element={<About />} />
           <Route path="/console" element={<AuctionConsole />} />
           <Route path="*" element={<NotFound />} />
@@ -157,7 +160,7 @@ function GlobalScout() {
 
   // The opening is a full-screen film; the assistant has nothing to do there
   // and its drawer would sit on top of the Enter button.
-  if (pathname.startsWith("/lab/intro") || pathname.startsWith("/lab/marquee")) return null;
+  if (pathname.startsWith("/lab/intro") || pathname.startsWith("/lab/marquee") || pathname.startsWith("/lab/prototype")) return null;
 
   return (
     <>
@@ -228,7 +231,7 @@ function RouteFallback() {
     flash before the dark; the same black as the gate instead, which the gate
     then rises out of. Every other route keeps the light card.
   */
-  if (pathname === "/" || pathname.startsWith("/lab/opening")) {
+  if (pathname === "/" || pathname.startsWith("/lab/opening") || pathname.startsWith("/lab/prototype")) {
     return <div className="min-h-screen bg-[#02040b]" aria-busy="true" aria-label="Loading AUCTONIQ" />;
   }
   return (

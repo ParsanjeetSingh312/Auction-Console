@@ -28,6 +28,7 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 
 import { createMatchBall, createWoodenWicket } from "./cricketGear";
@@ -449,10 +450,15 @@ const BEAM_VERT = /* glsl */ `
   varying float vAlong;
   varying float vFacing;
   void main() {
-    vAlong = uv.y;
-    vec3 n = normalize(normalMatrix * normal);
+    vAlong = clamp(uv.y, 0.0, 1.0);
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
-    vFacing = abs(dot(n, normalize(-mv.xyz)));
+    // Guarded: when the camera climbs through a beam, a vertex can sit right
+    // at the lens, and normalize() of a zero vector is NaN. One NaN pixel is
+    // enough for the bloom to smear it across the frame as a black flash.
+    vec3 nv = normalMatrix * normal;
+    vec3 n = nv / max(length(nv), 1e-5);
+    vec3 eye = -mv.xyz;
+    vFacing = clamp(abs(dot(n, eye / max(length(eye), 1e-4))), 0.0, 1.0);
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -463,7 +469,9 @@ const BEAM_FRAG = /* glsl */ `
   varying float vAlong;
   varying float vFacing;
   void main() {
-    float a = uOpacity * pow(vAlong, 2.2) * pow(vFacing, 1.6);
+    float a = uOpacity * pow(clamp(vAlong, 0.0, 1.0), 2.2) * pow(clamp(vFacing, 0.0, 1.0), 1.6);
+    // Never hand the bloom a NaN, whatever the interpolation does.
+    if (!(a >= 0.0)) a = 0.0;
     gl_FragColor = vec4(uColor * a, a);
   }
 `;
@@ -485,6 +493,30 @@ const STREAK_VERT = /* glsl */ `
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
+
+/**
+ * Between the scene and the bloom: any pixel the scene wrote as NaN or
+ * infinity becomes black, and anything brighter than the bloom can use is
+ * capped. A single bad pixel (a normalize() of a zero vector in some shader,
+ * with the camera right up against an object) is otherwise spread by the
+ * bloom's blur across the whole frame, and the frame goes black.
+ */
+const SanitizeShader = {
+  uniforms: { tDiffuse: { value: null as THREE.Texture | null } },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      if (any(isnan(c)) || any(isinf(c))) c = vec4(0.0, 0.0, 0.0, 1.0);
+      gl_FragColor = min(c, vec4(64.0));
+    }
+  `,
+};
 
 /* --------------------------------------------------------------- physics -- */
 
@@ -1293,6 +1325,7 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
   // under ANGLE/D3D11, which is most Windows laptops. SMAA does the edges.
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
+  composer.addPass(new ShaderPass(SanitizeShader));
   const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.5, 0.9);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
