@@ -159,6 +159,27 @@
   transform-origin: 50% 100%;
 }
 
+/* A pass of light across a wordmark: a copy of the word laid exactly over
+ * it, its own colour transparent and a bright band of gradient clipped to its
+ * glyphs, so only the letters catch the light, never the page behind them.
+ * The band is moved by animating background-position. Kerning off, to match
+ * the one-span-per-letter word underneath. Shared by the gate and the
+ * landing's wordmark. */
+.wordmark-sheen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: transparent;
+  text-shadow: none;
+  font-kerning: none;
+  background-image: linear-gradient(100deg, rgba(255, 246, 228, 0) 42%, rgba(255, 251, 238, 0.95) 50%, rgba(255, 246, 228, 0) 58%);
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  background-position: 150% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
 @media (max-width: 640px) {
   .trophy-stage.trophy-stage--intro {
     height: clamp(220px, 38svh, 360px);

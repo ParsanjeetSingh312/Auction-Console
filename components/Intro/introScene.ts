@@ -30,6 +30,10 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 
+import { createMatchBall, createWoodenWicket } from "./cricketGear";
+import { createStadiumDetail, standTexture } from "./stadiumDetail";
+import { createStrikeSparks } from "./strikeSparks";
+
 
 export type IntroTier = 1 | 2 | 3;
 
@@ -670,7 +674,11 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
     [110, 27.4],
     [110.5, 31],
   ].map(([r, y]) => new THREE.Vector2(r, y));
-  const standMat = track(new THREE.MeshStandardMaterial({ color: "#0d111b", roughness: 0.95, side: THREE.DoubleSide }));
+  // Seat rows, aisles, the concourse and the lit entrances, one band of the
+  // texture per segment of the profile.
+  const standMat = track(
+    new THREE.MeshStandardMaterial({ map: track(standTexture(profile.length - 1)), roughness: 0.92, side: THREE.DoubleSide }),
+  );
   const stands = new THREE.Mesh(track(new THREE.LatheGeometry(profile, 192)), standMat);
   stands.position.z = PITCH_Z;
   scene.add(stands);
@@ -735,7 +743,7 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
       crowdFlash[i] = flash ? 1 : 0;
       crowdPhase[i] = rand();
       if (flash) c.set("#dfe9ff");
-      else c.copy(shirts[Math.floor(rand() * shirts.length)]).multiplyScalar(0.16 + rand() * 0.2);
+      else c.copy(shirts[Math.floor(rand() * shirts.length)]).multiplyScalar(0.2 + rand() * 0.26);
       crowdCol[i * 3] = c.r;
       crowdCol[i * 3 + 1] = c.g;
       crowdCol[i * 3 + 2] = c.b;
@@ -795,7 +803,7 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
             depthWrite: false,
             blending: THREE.AdditiveBlending,
             side: THREE.DoubleSide,
-            uniforms: { uColor: { value: new THREE.Color("#86a8ff") }, uOpacity: { value: tier === 3 ? 0.05 : 0.035 } },
+            uniforms: { uColor: { value: new THREE.Color("#86a8ff") }, uOpacity: { value: tier === 3 ? 0.065 : 0.045 } },
           }),
         )
       : null;
@@ -858,6 +866,23 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
   lamps.instanceMatrix.needsUpdate = true;
   scene.add(lamps);
 
+  // The finish: seats' LED edges, roof trusses and downlights, sightscreens,
+  // lamp glare and a pool of light on the middle.
+  const detail = createStadiumDetail({
+    tier,
+    centre: new THREE.Vector3(0, 0, PITCH_Z),
+    wall: { r: STAND_INNER, top: 1.4 },
+    concourse: { r: 88.2, bottom: 10.6, top: 12.8 },
+    roof: { front: 86, frontY: 34.6, back: 111, backY: 30.5 },
+    towerAngles: TOWER_ANGLES,
+    roofArc: { from: THREE.MathUtils.degToRad(7), span: THREE.MathUtils.degToRad(46) },
+    lampHeads: towerHeads,
+    boundary: FIELD_RADIUS,
+    glow,
+  });
+  track(detail);
+  scene.add(detail.group);
+
   /* ---- light that actually falls on the ground: neutral, slightly warm ---- */
   scene.add(new THREE.HemisphereLight("#a9bde0", "#0d1a0c", 0.55));
   const key = new THREE.DirectionalLight("#fff3e2", 2.1);
@@ -904,21 +929,29 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
 
   const wicket = new THREE.Group();
   scene.add(wicket);
+  // The delivery opening holds the camera on the wicket close up: turned ash
+  // stumps and bails, not the LED set the strike opening and the marquee use.
+  const gear = cast ? createWoodenWicket(STUMP_HEIGHT, STUMP_RADIUS) : null;
+  if (gear) track(gear);
 
   [-1, 0, 1].forEach((i) => {
-    const g = new THREE.Group();
-    const shaft = new THREE.Mesh(shaftGeo, stumpMat);
-    shaft.position.y = -0.06;
-    const cap = new THREE.Mesh(capGeo, ledMat);
-    cap.position.y = STUMP_HEIGHT / 2 - 0.06;
-    const dome = new THREE.Mesh(domeGeo, ledMat);
-    dome.position.y = STUMP_HEIGHT / 2;
-    const spike = new THREE.Mesh(spikeGeo, stumpMat);
-    spike.rotation.x = Math.PI;
-    spike.position.y = -STUMP_HEIGHT / 2 - 0.07;
-    for (const part of [shaft, cap, dome, spike]) {
-      part.castShadow = true;
-      g.add(part);
+    let g: THREE.Group;
+    if (gear) g = gear.stump();
+    else {
+      g = new THREE.Group();
+      const shaft = new THREE.Mesh(shaftGeo, stumpMat);
+      shaft.position.y = -0.06;
+      const cap = new THREE.Mesh(capGeo, ledMat);
+      cap.position.y = STUMP_HEIGHT / 2 - 0.06;
+      const dome = new THREE.Mesh(domeGeo, ledMat);
+      dome.position.y = STUMP_HEIGHT / 2;
+      const spike = new THREE.Mesh(spikeGeo, stumpMat);
+      spike.rotation.x = Math.PI;
+      spike.position.y = -STUMP_HEIGHT / 2 - 0.07;
+      for (const part of [shaft, cap, dome, spike]) {
+        part.castShadow = true;
+        g.add(part);
+      }
     }
     g.position.set(i * STUMP_SPACING, STUMP_HEIGHT / 2, 0);
     wicket.add(g);
@@ -937,9 +970,11 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
   const bailGeo = track(new THREE.CapsuleGeometry(0.0085, 0.092, 4, 12));
   bailGeo.rotateZ(Math.PI / 2);
   [-1, 1].forEach((side) => {
-    const bail = new THREE.Mesh(bailGeo, ledMat);
+    const bail = gear ? gear.bail() : new THREE.Mesh(bailGeo, ledMat);
     bail.castShadow = true;
     bail.position.set((side * STUMP_SPACING) / 2, STUMP_HEIGHT + 0.009, 0);
+    // Long spigot outwards, barrels meeting over the middle stump.
+    if (gear && side > 0) bail.rotation.y = Math.PI;
     wicket.add(bail);
     bodies.push({
       obj: bail,
@@ -960,27 +995,16 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
   // The bowler's end, for the delivery opening: the same wicket, standing
   // still, its LEDs dark.
   if (cast) {
-    const idleLed = track(ledMat.clone());
     const far = new THREE.Group();
     [-1, 0, 1].forEach((i) => {
-      const g = new THREE.Group();
-      const shaft = new THREE.Mesh(shaftGeo, stumpMat);
-      shaft.position.y = -0.06;
-      const cap = new THREE.Mesh(capGeo, idleLed);
-      cap.position.y = STUMP_HEIGHT / 2 - 0.06;
-      const dome = new THREE.Mesh(domeGeo, idleLed);
-      dome.position.y = STUMP_HEIGHT / 2;
-      for (const part of [shaft, cap, dome]) {
-        part.castShadow = true;
-        g.add(part);
-      }
+      const g = gear!.stump();
       g.position.set(i * STUMP_SPACING, STUMP_HEIGHT / 2, 0);
       far.add(g);
     });
     [-1, 1].forEach((side) => {
-      const bail = new THREE.Mesh(bailGeo, idleLed);
-      bail.castShadow = true;
+      const bail = gear!.bail();
       bail.position.set((side * STUMP_SPACING) / 2, STUMP_HEIGHT + 0.009, 0);
+      if (side > 0) bail.rotation.y = Math.PI;
       far.add(bail);
     });
     far.position.z = -PITCH_LENGTH;
@@ -997,7 +1021,18 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
     track(new THREE.TorusGeometry(BALL_RADIUS * 1.001, 0.0022, 6, 48)),
     track(new THREE.MeshStandardMaterial({ color: "#9aa0a8", roughness: 0.5 })),
   );
-  ball.add(ballMesh, seam);
+  // The delivery opening shows the ball close up, hanging in the air: the
+  // stitched match ball in place of the plain sphere.
+  const match = cast ? createMatchBall(BALL_RADIUS, tier) : null;
+  if (match) {
+    track(match);
+    // Seam upright, angled a touch towards the slips.
+    match.group.rotation.y = 0.26;
+    ball.add(match.group);
+  } else ball.add(ballMesh, seam);
+  /** The ball's surface, lit a little from within while it falls to the trophy. */
+  const ballSkin = match ? match.leather : ballMat;
+  const skinGlow = ballSkin.emissiveIntensity;
   ball.visible = false;
   scene.add(ball);
 
@@ -1126,6 +1161,9 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
   const star = new THREE.Sprite(starMat);
   star.visible = false;
   scene.add(star);
+  // The strike's sparks, streaks of cooling metal, for the delivery opening.
+  const strikeSparks = cast ? track(createStrikeSparks(tier, glow, starMat.map!)) : null;
+  if (strikeSparks) scene.add(strikeSparks.group);
   // The arc it climbs on, drawn behind it as a tapering ribbon of light, so
   // the parabola reads as a shape and not just a moving point.
   const TRAIL = 28;
@@ -1223,9 +1261,29 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
   // appear on while the GPU built their shaders, and on a cold shader cache
   // that is hundreds of milliseconds, right on the press of Enter.
   {
-    const hidden = [ball, streak, ballGlow, star, trail, puff].filter((o) => !o.visible);
+    const parts: THREE.Object3D[] = [ball, streak, ballGlow, star, trail, puff];
+    if (strikeSparks) parts.push(strikeSparks.group);
+    const hidden = parts.filter((o) => !o.visible);
     for (const o of hidden) o.visible = true;
     renderer.compile(scene, camera);
+    // compile() also assumes drawing to the screen, which builds different
+    // programs from the ones the composer's render target needs. So draw the
+    // film's pieces once, for real, into a small offscreen target, in front
+    // of a camera aimed at them and inside the key light's shadow.
+    {
+      const moved = [ball, ballGlow, star, streak].map((o) => [o, o.position.clone()] as const);
+      for (const [o] of moved) o.position.set(0, 0.4, 0);
+      const cam = camera.clone();
+      cam.position.set(0, 0.6, 2.5);
+      cam.lookAt(0, 0.4, 0);
+      cam.updateMatrixWorld();
+      const probe = new THREE.WebGLRenderTarget(16, 16, { type: THREE.HalfFloatType });
+      renderer.setRenderTarget(probe);
+      renderer.render(scene, cam);
+      renderer.setRenderTarget(null);
+      probe.dispose();
+      for (const [o, at] of moved) o.position.copy(at);
+    }
     for (const o of hidden) o.visible = false;
   }
 
@@ -1300,6 +1358,7 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
     // Crowd points are sized in metres.
     const bufferH = height * renderer.getPixelRatio();
     crowdMat.uniforms.uScale.value = (0.4 * bufferH) / (2 * Math.tan(THREE.MathUtils.degToRad(fov) / 2));
+    strikeSparks?.resize(bufferH, fov);
     fovApplied = state.fov;
   };
 
@@ -1381,7 +1440,7 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
     ball.visible = true;
     // Lit a little from within: it falls behind the landing's scrim and
     // must still arrive as white as the ball the trophy takes from it.
-    ballMat.emissiveIntensity = 0.62;
+    ballSkin.emissiveIntensity = 0.62;
     ball.rotation.x -= dt * 9;
     // The trail points back up the way it came.
     const eb = Math.max(0, e - 0.03);
@@ -1400,7 +1459,7 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
   function endDrop() {
     const done = drop;
     drop = null;
-    ballMat.emissiveIntensity = 0.18;
+    ballSkin.emissiveIntensity = skinGlow;
     ball.visible = false;
     streak.visible = false;
     ballGlow.visible = false;
@@ -1505,7 +1564,7 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
       const since = simTime - struckAt;
       const flashing = since < 2.6 ? (Math.floor(since * 7) % 2 === 0 ? 1 : 0.15) : 0.55;
       ledMat.emissiveIntensity = 3.2 * flashing;
-      zingLight.intensity = 2.2 * flashing;
+      zingLight.intensity = cast ? 0 : 2.2 * flashing;
       zingLight.position.copy(bodies[1].obj.position).setY(Math.max(bodies[1].obj.position.y, 0.2));
     }
 
@@ -1538,8 +1597,11 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
         for (let k = 0; k < 3; k++) sparkPos[i * 3 + k] += sparkVel[i * 3 + k] * sdt;
       }
       (sparkGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
-      sparkMat.opacity = Math.max(0, 1 - sparkAge / 1.4);
-      burstLight.intensity = burstPeak * Math.max(0, 1 - sparkAge / 0.5);
+      // The delivery opening has its own sparks; this burst only lights them.
+      sparkMat.opacity = strikeSparks ? 0 : Math.max(0, 1 - sparkAge / 1.4);
+      // The delivery opening's light follows its flash, in real time; the
+      // stumps would otherwise glow on through the slow motion.
+      burstLight.intensity = strikeSparks ? 1.4 * strikeSparks.flash() : burstPeak * Math.max(0, 1 - sparkAge / 0.5);
     }
 
     // Camera: the tweened shot, a decaying shake, and the slow drift round the ground.
@@ -1591,7 +1653,10 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
         ballGlow.visible = state.clip >= DELIVERY.release || !!drop;
         ballGlow.position.copy(ball.position);
         ballGlow.scale.setScalar(BALL_RADIUS * ballScale * (climbing ? 16 : 7));
-        (ballGlow.material as THREE.SpriteMaterial).opacity = climbing ? 0.55 : 0.28;
+        // Close to the lens the halo only hides the leather and the seam.
+        const near = THREE.MathUtils.smoothstep(dist, 1.6, 5);
+        (ballGlow.material as THREE.SpriteMaterial).opacity = climbing ? 0.55 : 0.28 * near;
+        if (!drop && struckClip < 0) streakMat.uniforms.uOpacity.value = 0.9 * (0.45 + 0.55 * near);
       } else ballGlow.visible = false;
       // The puff where it pitched.
       const sincePitch = state.clip - (DELIVERY.release + BOUNCE_AT * DELIVERY.flight);
@@ -1653,6 +1718,7 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
         starMat.opacity = Math.min(1, state.glint * 1.4);
         starMat.rotation = 0.35 * state.glint;
       } else star.visible = false;
+      strikeSparks?.update(sdt, dt, camera);
     }
 
     composer.render(dt);
@@ -1718,6 +1784,7 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
     debrisAge = 0;
     debrisMat.opacity = 1;
 
+    if (strikeSparks) strikeSparks.burst(IMPACT, new THREE.Vector3(0, 0.15, 1));
     if (sparksOn) {
       for (let i = 0; i < SPARKS; i++) {
         sparkPos.set([IMPACT.x, IMPACT.y, IMPACT.z], i * 3);
@@ -1742,6 +1809,7 @@ export function createIntroStage(host: HTMLElement, { tier, onReady, opening = "
     drop = null;
     lastSeen = null;
     puff.visible = false;
+    strikeSparks?.reset();
     ballGlow.visible = false;
     trail.visible = false;
     ball.scale.setScalar(1);

@@ -221,6 +221,16 @@ function BlockDemo() {
  * wordmark that matches the landing reads as the page still being itself.
  */
 function RouteFallback() {
+  const { pathname } = useLocation();
+  /*
+    The landing opens on a black gate, and its chunk (the stadium, three.js)
+    takes a moment on a first visit. A white loading card in that moment is a
+    flash before the dark; the same black as the gate instead, which the gate
+    then rises out of. Every other route keeps the light card.
+  */
+  if (pathname === "/" || pathname.startsWith("/lab/opening")) {
+    return <div className="min-h-screen bg-[#02040b]" aria-busy="true" aria-label="Loading AUCTONIQ" />;
+  }
   return (
     <div className="grid min-h-screen place-items-center bg-surface bg-dots">
       <div className="text-center">

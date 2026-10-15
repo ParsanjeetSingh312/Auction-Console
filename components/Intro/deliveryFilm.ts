@@ -25,6 +25,7 @@
  * freeze and the launch are found from the plan rather than guessed, so
  * retiming a ramp moves every beat that depends on it.
  */
+import { createTimeline, stagger, utils } from "animejs";
 import gsap from "gsap";
 import * as THREE from "three";
 
@@ -130,6 +131,68 @@ export const BEATS = {
 
 // For scrubbing beats from the console while tuning.
 if (import.meta.env.DEV && typeof window !== "undefined") (window as unknown as { __beats?: unknown }).__beats = { ...BEATS, end: PLAN.end };
+
+/* ---------------------------------------------------------- the caption -- */
+
+const GLYPHS = "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789#%&*";
+
+/**
+ * PRESENTING TO YOU, as a paused anime.js timeline the film seeks: each
+ * letter decodes out of scrambled glyphs, rising into place and coming into
+ * focus from the middle outwards; the rule draws out under it; at `outAt` (ms)
+ * the letters lift away. Everything is a function of the seek time, the
+ * scramble included, so scrubbing the film lands on the same frame as playing.
+ */
+function presentingCaption(el: FilmElements, outAt: number) {
+  const chars = el.presentChars as HTMLElement[];
+  const finals = chars.map((c) => c.textContent ?? "");
+  const n = chars.length;
+  const centre = (n - 1) / 2;
+  const STEP = 42;
+  const SCRAMBLE = 420;
+  const start = chars.map((_, i) => Math.abs(i - centre) * STEP);
+  utils.set(chars, { opacity: 0 });
+  utils.set(el.presentRule, { scaleX: 0 });
+
+  const at = createTimeline({ autoplay: false, defaults: { ease: "outExpo" } })
+    .add(
+      chars,
+      {
+        translateY: ["90%", "0%"],
+        opacity: [0, 1],
+        filter: ["blur(7px)", "blur(0px)"],
+        duration: 760,
+        delay: stagger(STEP, { from: "center" }),
+      },
+      0,
+    )
+    .add(el.present, { letterSpacing: ["0.62em", "0.38em"], duration: 1700 }, 0)
+    .add(el.presentRule, { scaleX: [0, 1], duration: 950 }, 260)
+    .add(
+      chars,
+      { translateY: "-70%", opacity: 0, filter: "blur(5px)", duration: 320, ease: "inQuad", delay: stagger(12, { from: "center" }) },
+      outAt,
+    )
+    .add(el.presentRule, { scaleX: 0, opacity: 0, duration: 300, ease: "inQuad" }, outAt);
+  at.seek(0);
+
+  return {
+    seek(ms: number) {
+      at.seek(ms);
+      chars.forEach((c, i) => {
+        const real = finals[i];
+        const local = ms - start[i];
+        let shown = real;
+        if (real.trim() && local >= 0 && local < SCRAMBLE) {
+          // A new glyph every 45ms, the same ones every time.
+          const k = Math.floor(local / 45);
+          shown = GLYPHS[(i * 7 + k * 13 + (k * k) % 11) % GLYPHS.length];
+        }
+        if (c.textContent !== shown) c.textContent = shown;
+      });
+    },
+  };
+}
 
 /* ------------------------------------------------------------- the film -- */
 
@@ -253,18 +316,18 @@ export function buildDeliveryFilm(tl: gsap.core.Timeline, stage: IntroStage, el:
 
   const hang = orbitEnd - 0.2;
 
-  // PRESENTING TO YOU, while the ball hangs.
+  // PRESENTING TO YOU, while the ball hangs: an anime.js timeline, decoded
+  // out of scrambled glyphs from the middle outwards, seeked by this one.
+  const caption = presentingCaption(el, (BEATS.resume - 0.3 - hang) * 1000);
+  const words = { t: 0 };
+  const captionSpan = BEATS.resume + 0.1 - hang;
   tl.set(el.present, { autoAlpha: 1 }, hang)
     .fromTo(
-      el.presentChars,
-      { yPercent: 110, autoAlpha: 0 },
-      { yPercent: 0, autoAlpha: 1, duration: 0.7, ease: "expo.out", stagger: 0.032, immediateRender: false },
-      hang + 0.05,
+      words,
+      { t: 0 },
+      { t: captionSpan, duration: captionSpan, ease: "none", immediateRender: false, onUpdate: () => caption.seek(words.t * 1000) },
+      hang,
     )
-    .fromTo(el.present, { letterSpacing: "0.62em" }, { letterSpacing: "0.38em", duration: 1.6, ease: "expo.out", immediateRender: false }, hang + 0.05)
-    .fromTo(el.presentRule, { scaleX: 0 }, { scaleX: 1, duration: 0.9, ease: "expo.out", immediateRender: false }, hang + 0.3)
-    .to(el.presentChars, { yPercent: -70, autoAlpha: 0, duration: 0.3, ease: "power2.in", stagger: 0.012 }, BEATS.resume - 0.3)
-    .to(el.presentRule, { scaleX: 0, autoAlpha: 0, duration: 0.3, ease: "power2.in" }, BEATS.resume - 0.3)
     .set(el.present, { autoAlpha: 0 }, BEATS.resume + 0.1);
 
   /* Shot 5: off the ball and out to the side of the line, low, the ball
@@ -285,7 +348,7 @@ export function buildDeliveryFilm(tl: gsap.core.Timeline, stage: IntroStage, el:
   // The strike.
   tl.call(() => stage.strike(), undefined, BEATS.strike)
     .fromTo(s, { shake: 1 }, { shake: 0, duration: 0.9, immediateRender: false }, BEATS.strike)
-    .fromTo(el.flash, { autoAlpha: 0.22 }, { autoAlpha: 0, duration: 0.4, ease: "power2.out", immediateRender: false }, BEATS.strike);
+    .fromTo(el.flash, { autoAlpha: 0.14 }, { autoAlpha: 0, duration: 0.35, ease: "power2.out", immediateRender: false }, BEATS.strike);
 
   /* Shot 6: in slow motion at the broken wicket. The ball pops up out of
      the top of frame; the camera, still on the wicket, starts to ease back

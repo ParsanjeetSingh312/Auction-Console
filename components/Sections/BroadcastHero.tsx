@@ -32,7 +32,7 @@
  */
 import { Suspense, lazy, useLayoutEffect, useRef } from "react";
 
-import gsap from "gsap";
+import { createTimeline, splitText, stagger, utils } from "animejs";
 
 import { AuctiqMark } from "../Global/AuctiqLogo";
 import { useHandoffPhase } from "../Intro/ballHandoff";
@@ -77,15 +77,39 @@ export default function BroadcastHero() {
     // Reduced motion: the readable final state, at once.
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const letters = wordRef.current.querySelectorAll(".hero-letter");
+    const band = wordRef.current.parentElement?.querySelector(".wordmark-sheen");
+    const tagline = splitText(taglineRef.current, { words: true });
+    // Hidden from the first paint, not from whenever each tween starts.
+    utils.set(letters, { opacity: 0 });
+    utils.set(tagline.words, { opacity: 0 });
     // One thing at a time: the ball settles into the cradle first (about half
-    // a second), then the name rises over it, then the line under it.
-    const tl = gsap
-      .timeline({ defaults: { ease: "expo.out" } })
-      .fromTo(letters, { yPercent: 105, rotateX: -80, autoAlpha: 0 }, { yPercent: 0, rotateX: 0, autoAlpha: 1, duration: 1, stagger: 0.05 }, 0.55)
-      .fromTo(wordRef.current, { letterSpacing: "0.3em" }, { letterSpacing: "0.06em", duration: 1.4 }, 0.55)
-      .fromTo(taglineRef.current, { y: 14, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.9, ease: "power2.out" }, 1.3);
+    // a second), then the name rises over it from the middle out, coming into
+    // focus; one pass of light crosses it; then the line under it, word by
+    // word.
+    const tl = createTimeline({ defaults: { ease: "outExpo" } })
+      .add(
+        letters,
+        {
+          translateY: ["105%", "0%"],
+          rotateX: [-80, 0],
+          opacity: [0, 1],
+          filter: ["blur(10px)", "blur(0px)"],
+          duration: 1050,
+          delay: stagger(50, { from: "center" }),
+        },
+        550,
+      )
+      .add(wordRef.current, { letterSpacing: ["0.3em", "0.06em"], duration: 1400 }, 550)
+      .add(
+        tagline.words,
+        { translateY: [10, 0], opacity: [0, 1], filter: ["blur(6px)", "blur(0px)"], duration: 800, ease: "outQuart", delay: stagger(80) },
+        1300,
+      );
+    // After every letter has landed, so the copy lines up with the word.
+    if (band) tl.add(band, { backgroundPosition: ["150% 0%", "-50% 0%"], duration: 1100, ease: "inOutSine" }, 2050);
     return () => {
-      tl.progress(1).kill();
+      tl.complete();
+      tagline.revert();
     };
   }, [holding]);
 
@@ -116,18 +140,27 @@ export default function BroadcastHero() {
           the showcase heading's 0.02em because this is one word standing alone
           rather than a line of them.
         */}
-        <h1
-          ref={wordRef}
-          aria-label="AUCTONIQ"
-          className="font-auctiq text-[clamp(2.75rem,7.5vw,6rem)] uppercase leading-none tracking-[0.06em] text-neon-orange text-glow-orange [perspective:700px]"
-          style={holding ? { visibility: "hidden" } : undefined}
-        >
-          {WORD.map((ch, i) => (
-            <span key={i} aria-hidden className="hero-letter inline-block origin-bottom">
-              {ch}
-            </span>
-          ))}
-        </h1>
+        <div className="relative">
+          <h1
+            ref={wordRef}
+            aria-label="AUCTONIQ"
+            className="font-auctiq text-[clamp(2.75rem,7.5vw,6rem)] uppercase leading-none tracking-[0.06em] text-neon-orange text-glow-orange [perspective:700px]"
+            style={holding ? { visibility: "hidden" } : undefined}
+          >
+            {WORD.map((ch, i) => (
+              <span key={i} aria-hidden className="hero-letter inline-block origin-bottom">
+                {ch}
+              </span>
+            ))}
+          </h1>
+          {/* A pass of light across the word as it lands (stadiumIntro.css). */}
+          <span
+            aria-hidden
+            className="wordmark-sheen font-auctiq text-[clamp(2.75rem,7.5vw,6rem)] uppercase leading-none tracking-[0.06em]"
+          >
+            AUCTONIQ
+          </span>
+        </div>
 
         {/*
           A negative TOP margin only.
