@@ -1,0 +1,712 @@
+/* ==========================================================================
+   AUCTEAM
+   Scoped to `.aucteam`, which sits inside `.auctiq`, so nothing here can
+   reach the console, the live room or the landing.
+
+   Colour carries tier and nothing else. The page is quiet -- night navy,
+   floodlight white, one hairline -- so that the three neons read instantly:
+   gold is Marquee, cyan is Prime, orchid is Emerging. Green appears only when
+   the XI is legal and complete; red only when a pick is refused.
+   ========================================================================== */
+
+.aucteam {
+  --aq-ink: #f3f6fb;
+  --aq-dim: #9aa6bd;
+  --aq-faint: #66718a;
+  --aq-panel: rgba(8, 13, 28, 0.82);
+  --aq-panel-2: rgba(14, 21, 42, 0.9);
+  --aq-line: rgba(255, 255, 255, 0.09);
+  --aq-line-2: rgba(255, 255, 255, 0.16);
+  --aq-mq: #ffc53d;
+  --aq-pr: #38e1ff;
+  --aq-em: #d17bff;
+  --aq-turf: #34d27b;
+  --aq-alarm: #ff5a5f;
+  --aq-display: "Clash Display", "Outfit", "Segoe UI", sans-serif;
+  --aq-num: "Rajdhani", "Arial Narrow", sans-serif;
+  --aq-ui: "Inter", "Segoe UI", system-ui, sans-serif;
+
+  position: relative;
+  z-index: 1;
+  color: var(--aq-ink);
+  font-family: var(--aq-ui);
+  padding: 96px clamp(16px, 3vw, 40px) 120px;
+  max-width: 1560px;
+  margin: 0 auto;
+}
+
+.aucteam [data-tier="MQ"] { --tier: var(--aq-mq); }
+.aucteam [data-tier="PR"] { --tier: var(--aq-pr); }
+.aucteam [data-tier="EM"] { --tier: var(--aq-em); }
+
+/* --- Masthead ----------------------------------------------------------- */
+
+.aq-masthead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+.aq-title {
+  font-family: var(--aq-display);
+  font-weight: 700;
+  font-size: clamp(44px, 7vw, 104px);
+  line-height: 0.86;
+  letter-spacing: -0.02em;
+  margin: 0;
+  /* The wordmark is lit from above, like a stand under floodlights. */
+  background: linear-gradient(180deg, #ffffff 0%, #c9d3e6 70%, #7f8aa3 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.aq-lede {
+  max-width: 52ch;
+  margin: 14px 0 0;
+  color: #c3cbdb;
+  text-shadow: 0 1px 14px rgba(2, 5, 14, 0.95), 0 0 2px rgba(2, 5, 14, 0.9);
+  font-size: 15px;
+  line-height: 1.55;
+}
+.aq-tier-key {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--aq-dim);
+}
+.aq-tier-key span { display: inline-flex; align-items: center; gap: 8px; }
+@media (max-width: 860px) {
+  .aq-masthead { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Two fixed scrims. The stadium photograph is brightest exactly where the
+   masthead sits, and the navbar is transparent, so without these the lede
+   sat on a floodlight and the pool showed through the nav as it scrolled. */
+.aq-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(90vw 70vh at 0% 0%, rgba(3, 7, 18, 0.78), transparent 70%),
+    linear-gradient(180deg, rgba(3, 7, 18, 0.35), rgba(3, 7, 18, 0.6));
+}
+.aq-navband {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 78px;
+  z-index: 4;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(4, 8, 20, 0.96) 55%, rgba(4, 8, 20, 0));
+}
+
+/* --- Layout ------------------------------------------------------------- */
+
+.aq-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 28px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .aq-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* --- Tier label --------------------------------------------------------- */
+
+.aq-tier {
+  display: inline-grid;
+  place-items: center;
+  min-width: 34px;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--tier);
+  border-radius: 4px;
+  font-family: var(--aq-display);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--tier);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--tier) 70%, transparent);
+  box-shadow:
+    0 0 12px color-mix(in srgb, var(--tier) 35%, transparent),
+    inset 0 0 8px color-mix(in srgb, var(--tier) 22%, transparent);
+  background: color-mix(in srgb, var(--tier) 8%, transparent);
+}
+.aq-tier--sm { min-width: 28px; height: 17px; font-size: 10px; padding: 0 4px; }
+.aq-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--tier);
+  box-shadow: 0 0 10px var(--tier);
+}
+
+/* --- Filters ------------------------------------------------------------ */
+
+.aq-filters {
+  position: sticky;
+  top: 72px;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  margin-bottom: 18px;
+  border: 1px solid var(--aq-line);
+  border-radius: 14px;
+  background: var(--aq-panel);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.aq-seg {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--aq-line);
+}
+.aq-seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--aq-dim);
+  font: 500 12.5px/1 var(--aq-ui);
+  cursor: pointer;
+  transition: color 0.16s, background 0.16s;
+}
+.aq-seg button:hover { color: var(--aq-ink); }
+.aq-seg button[aria-pressed="true"] {
+  color: var(--aq-ink);
+  background: rgba(255, 255, 255, 0.1);
+}
+.aq-seg .aq-count { font-family: var(--aq-num); font-weight: 600; color: var(--aq-faint); }
+.aq-search {
+  flex: 1 1 180px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--aq-line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--aq-ink);
+  font: 400 13px var(--aq-ui);
+}
+.aq-search::placeholder { color: var(--aq-faint); }
+
+/* --- Pool grid ---------------------------------------------------------- */
+
+.aq-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(214px, 1fr));
+  gap: 16px;
+}
+.aq-more {
+  display: block;
+  margin: 24px auto 0;
+  height: 40px;
+  padding: 0 20px;
+  border-radius: 999px;
+  border: 1px solid var(--aq-line-2);
+  background: transparent;
+  color: var(--aq-ink);
+  font: 500 13px var(--aq-ui);
+  cursor: pointer;
+}
+.aq-more:hover { background: rgba(255, 255, 255, 0.06); }
+.aq-empty {
+  padding: 48px 16px;
+  text-align: center;
+  color: var(--aq-dim);
+  border: 1px dashed var(--aq-line-2);
+  border-radius: 14px;
+}
+
+/* --- The card ----------------------------------------------------------- */
+
+.aq-card-wrap { position: relative; perspective: 900px; }
+/* While a card is in the air its wrapper must outrank the board, which comes
+   later in the DOM and would otherwise paint over it. */
+.aq-card-wrap[data-dragging="true"] { z-index: 100; }
+.aq-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 300px;
+  padding: 12px 12px 14px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--tier) 26%, var(--aq-line));
+  background:
+    radial-gradient(120% 70% at 50% 34%, color-mix(in srgb, var(--tier) 13%, transparent), transparent 62%),
+    linear-gradient(180deg, rgba(22, 30, 56, 0.96), rgba(7, 11, 24, 0.98));
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.4);
+  transform-style: preserve-3d;
+  cursor: grab;
+  user-select: none;
+  outline: none;
+}
+.aq-card:focus-visible {
+  box-shadow: 0 0 0 2px var(--tier), 0 14px 40px rgba(0, 0, 0, 0.4);
+}
+.aq-card:active { cursor: grabbing; }
+/* The floodlight sweep: a band of light that crosses the card on hover. */
+.aq-card__sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.09) 50%, transparent 65%);
+  background-size: 250% 100%;
+  background-position: 120% 0;
+  transition: background-position 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.aq-card:hover .aq-card__sheen { background-position: -20% 0; }
+.aq-card[data-picked="true"] { opacity: 0.42; filter: saturate(0.4); }
+.aq-card[data-picked="true"] .aq-card__pick { opacity: 1; }
+
+.aq-card__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--aq-dim);
+}
+.aq-card__flag { display: inline-flex; align-items: center; gap: 5px; }
+.aq-card__os {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--aq-ink);
+  font-size: 10px;
+}
+.aq-card__core {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) 54px;
+  align-items: center;
+  gap: 4px;
+  margin: 10px 0 8px;
+}
+.aq-card__stats { display: grid; gap: 10px; margin: 0; }
+.aq-card__stats--right { text-align: right; }
+.aq-card__stats dt {
+  font-size: 9.5px;
+  line-height: 1.15;
+  color: var(--aq-faint);
+}
+.aq-card__stats dd {
+  margin: 1px 0 0;
+  font-family: var(--aq-num);
+  font-weight: 700;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--aq-ink);
+  font-variant-numeric: tabular-nums;
+}
+.aq-card__center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transform: translateZ(30px);
+}
+.aq-jersey {
+  font-family: var(--aq-display);
+  font-weight: 700;
+  font-size: 68px;
+  line-height: 0.9;
+  letter-spacing: -0.03em;
+  color: #fff;
+  text-shadow: 0 0 28px color-mix(in srgb, var(--tier) 45%, transparent);
+}
+/* No verified number: the role, outlined, in the number's place. Hollow so it
+   reads as a stand-in rather than a squad number. */
+.aq-jersey--role {
+  font-size: 40px;
+  color: transparent;
+  -webkit-text-stroke: 1.4px color-mix(in srgb, var(--tier) 75%, white);
+  text-shadow: none;
+}
+.aq-card__name {
+  font-family: var(--aq-display);
+  font-weight: 600;
+  font-size: 17px;
+  line-height: 1.1;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aq-card__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  padding-right: 36px;
+  font-size: 11.5px;
+  color: var(--aq-dim);
+}
+.aq-card__pick {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  translate: -50% 0;
+  opacity: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--aq-turf);
+}
+.aq-card__add {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--aq-line-2);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--aq-ink);
+  cursor: pointer;
+  transition: background 0.16s, border-color 0.16s;
+}
+.aq-card__add:hover { background: color-mix(in srgb, var(--tier) 25%, transparent); border-color: var(--tier); }
+.aq-card__toast {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 46px;
+  z-index: 3;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(40, 8, 12, 0.94);
+  border: 1px solid var(--aq-alarm);
+  color: #ffd9da;
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+/* --- The board ---------------------------------------------------------- */
+
+.aq-board {
+  position: sticky;
+  top: 72px;
+  display: flex;
+  flex-direction: column;
+  /* Stops short of the global SCOUT launcher in the bottom-right corner. */
+  max-height: calc(100vh - 168px);
+  border-radius: 18px;
+  border: 1px solid var(--aq-line-2);
+  background: var(--aq-panel-2);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+@media (max-width: 1100px) {
+  .aq-board { position: relative; top: 0; max-height: none; }
+}
+.aq-board[data-over="true"] {
+  border-color: var(--aq-turf);
+  box-shadow: 0 0 0 1px var(--aq-turf), 0 0 48px rgba(52, 210, 123, 0.22), 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+.aq-board[data-dragging="true"]:not([data-over="true"]) { border-style: dashed; }
+.aq-board__head { padding: 16px 16px 12px; border-bottom: 1px solid var(--aq-line); }
+.aq-board__row { display: flex; justify-content: space-between; align-items: end; gap: 12px; }
+.aq-team-name {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  border-bottom: 1px dashed transparent;
+  background: transparent;
+  color: var(--aq-ink);
+  font: 600 22px/1.1 var(--aq-display);
+  padding: 2px 0;
+}
+.aq-team-name:hover, .aq-team-name:focus { border-bottom-color: var(--aq-line-2); outline: none; }
+.aq-team-name::placeholder { color: var(--aq-faint); }
+.aq-tally {
+  font-family: var(--aq-display);
+  font-weight: 700;
+  font-size: 40px;
+  line-height: 0.9;
+  font-variant-numeric: tabular-nums;
+}
+.aq-tally small { font-size: 18px; color: var(--aq-faint); font-weight: 500; }
+.aq-tally[data-complete="true"] { color: var(--aq-turf); }
+
+/* Experience vs youth: one bar, three tier segments in proportion. */
+.aq-mix { margin-top: 12px; }
+.aq-mix__bar {
+  display: flex;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+}
+.aq-mix__bar > span { background: var(--tier); box-shadow: 0 0 10px var(--tier); }
+.aq-mix__legend {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--aq-dim);
+}
+
+.aq-board__body { flex: 1; overflow-y: auto; padding: 6px 12px 12px; }
+.aq-role { margin-top: 10px; }
+.aq-role__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 4px 4px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--aq-ink);
+}
+.aq-role__band { font-weight: 400; color: var(--aq-faint); }
+.aq-role__band[data-state="short"] { color: var(--aq-mq); }
+.aq-role__band[data-state="over"] { color: var(--aq-alarm); }
+.aq-slots { display: grid; gap: 6px; }
+
+.aq-slot {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px auto 38px minmax(0, 1fr) auto 26px;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 6px 0 8px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--tier) 30%, var(--aq-line));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tier) 12%, transparent), rgba(255, 255, 255, 0.02) 60%);
+  cursor: grab;
+  touch-action: none;
+}
+.aq-slot__no { font-family: var(--aq-num); font-weight: 700; font-size: 15px; color: var(--aq-faint); text-align: right; }
+.aq-slot__jersey { font-family: var(--aq-display); font-weight: 700; font-size: 20px; text-align: center; }
+.aq-slot__jersey--role { font-size: 12px; color: var(--aq-dim); font-weight: 600; }
+.aq-slot__name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aq-slot__stat { font-family: var(--aq-num); font-weight: 600; font-size: 13px; color: var(--aq-dim); white-space: nowrap; }
+.aq-slot__x {
+  width: 24px; height: 24px; display: grid; place-items: center;
+  border: 0; border-radius: 6px; background: transparent; color: var(--aq-faint); cursor: pointer;
+}
+.aq-slot__x:hover { background: rgba(255, 90, 95, 0.16); color: var(--aq-alarm); }
+.aq-slot--open {
+  grid-template-columns: 22px minmax(0, 1fr);
+  border: 1px dashed var(--aq-line);
+  background: transparent;
+  cursor: default;
+  color: var(--aq-faint);
+  font-size: 12px;
+}
+
+.aq-issues { list-style: none; margin: 12px 4px 0; padding: 0; display: grid; gap: 6px; font-size: 12px; line-height: 1.4; }
+.aq-issues li { display: grid; grid-template-columns: 8px 1fr; gap: 8px; color: var(--aq-dim); }
+.aq-issues li::before { content: ""; width: 6px; height: 6px; margin-top: 5px; border-radius: 50%; background: var(--aq-faint); }
+.aq-issues li[data-severity="warn"]::before { background: var(--aq-mq); }
+.aq-issues li[data-severity="block"] { color: #ffc7c9; }
+.aq-issues li[data-severity="block"]::before { background: var(--aq-alarm); }
+
+.aq-board__foot {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--aq-line);
+}
+.aq-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--aq-line-2);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--aq-ink);
+  font: 600 13px var(--aq-ui);
+  cursor: pointer;
+}
+.aq-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.09); }
+.aq-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.aq-btn--go { flex: 1; border-color: var(--aq-turf); background: rgba(52, 210, 123, 0.14); }
+.aq-btn--go:hover:not(:disabled) { background: rgba(52, 210, 123, 0.24); }
+
+/* --- SCOUT dock --------------------------------------------------------- */
+
+.aq-scout {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin: 0 12px 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(56, 225, 255, 0.28);
+  background: linear-gradient(120deg, rgba(56, 225, 255, 0.1), rgba(209, 123, 255, 0.08));
+  color: var(--aq-ink);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.aq-scout:hover { border-color: rgba(56, 225, 255, 0.6); }
+.aq-scout__emblem { width: 52px; height: 52px; }
+.aq-scout__title { font-family: var(--aq-display); font-weight: 600; font-size: 15px; }
+.aq-scout__hint { margin-top: 2px; font-size: 12px; line-height: 1.35; color: var(--aq-dim); }
+
+/* --- Report ------------------------------------------------------------- */
+
+.aq-report {
+  margin-top: 40px;
+  border-radius: 22px;
+  border: 1px solid var(--aq-line-2);
+  background: var(--aq-panel-2);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  overflow: hidden;
+  scroll-margin-top: 80px;
+}
+.aq-report__hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: clamp(20px, 4vw, 48px);
+  align-items: center;
+  padding: clamp(22px, 4vw, 44px);
+  border-bottom: 1px solid var(--aq-line);
+}
+.aq-grade {
+  position: relative;
+  font-family: var(--aq-display);
+  font-weight: 700;
+  font-size: clamp(110px, 16vw, 200px);
+  line-height: 0.8;
+  color: var(--grade);
+  text-shadow: 0 0 60px color-mix(in srgb, var(--grade) 40%, transparent);
+}
+.aq-grade small {
+  display: block;
+  margin-top: 10px;
+  font-family: var(--aq-num);
+  font-size: 18px;
+  font-weight: 600;
+  text-shadow: none;
+  color: var(--aq-dim);
+  text-align: center;
+}
+.aq-report__headline {
+  margin: 0;
+  font-family: var(--aq-display);
+  font-weight: 600;
+  font-size: clamp(24px, 3vw, 38px);
+  line-height: 1.08;
+  max-width: 26ch;
+}
+.aq-report__summary { margin: 14px 0 0; max-width: 64ch; color: var(--aq-dim); font-size: 15px; line-height: 1.6; }
+.aq-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--aq-line-2);
+  font-size: 11.5px;
+  color: var(--aq-dim);
+}
+.aq-report__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-bottom: 1px solid var(--aq-line);
+}
+.aq-report__grid > section { padding: clamp(18px, 3vw, 32px); }
+.aq-report__grid > section + section { border-left: 1px solid var(--aq-line); }
+.aq-report__lists { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.aq-report__lists > section { padding: clamp(18px, 3vw, 32px); }
+.aq-report__lists > section + section { border-left: 1px solid var(--aq-line); }
+@media (max-width: 860px) {
+  .aq-report__hero, .aq-report__grid, .aq-report__lists { grid-template-columns: minmax(0, 1fr); }
+  .aq-report__grid > section + section, .aq-report__lists > section + section { border-left: 0; border-top: 1px solid var(--aq-line); }
+}
+.aq-report h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--aq-dim); }
+.aq-verdict { margin: 6px 0 10px; font-family: var(--aq-display); font-weight: 600; font-size: 22px; line-height: 1.15; }
+.aq-report p.aq-body { margin: 0; color: var(--aq-ink); opacity: 0.86; font-size: 14px; line-height: 1.6; }
+.aq-points { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; font-size: 14px; line-height: 1.5; }
+.aq-points li { display: grid; grid-template-columns: 14px 1fr; gap: 8px; }
+.aq-points li::before { content: ""; width: 8px; height: 8px; margin-top: 7px; border-radius: 2px; background: var(--mark); }
+.aq-points--none { color: var(--aq-faint); font-size: 14px; margin-top: 12px; }
+.aq-report__foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 16px clamp(18px, 3vw, 32px);
+  font-size: 12px;
+  color: var(--aq-faint);
+}
+.aq-report--pending {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+  padding: 28px;
+}
+.aq-report--pending h2 { margin: 0; font: 600 22px var(--aq-display); }
+.aq-report--pending p { margin: 6px 0 0; color: var(--aq-dim); font-size: 14px; }
+
+/* --- Phone: a bar that keeps the tally in reach ------------------------- */
+
+.aq-mobile-bar { display: none; }
+@media (max-width: 1100px) {
+  .aq-mobile-bar {
+    position: fixed;
+    left: 16px;
+    right: 96px;
+    bottom: 22px;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    height: 48px;
+    padding: 0 8px 0 16px;
+    border-radius: 14px;
+    border: 1px solid var(--aq-line-2);
+    background: var(--aq-panel-2);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    font: 600 14px var(--aq-ui);
+  }
+}
+
+/* --- Phone ------------------------------------------------------------- */
+
+@media (max-width: 640px) {
+  /* The navbar wraps to two rows on a phone. */
+  .aucteam { padding-top: 136px; }
+  .aq-navband { height: 124px; }
+  .aq-filters { position: relative; top: 0; }
+  .aq-seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .aq-seg::-webkit-scrollbar { display: none; }
+  .aq-seg button { white-space: nowrap; flex: none; }
+  .aq-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aucteam *, .aucteam *::before, .aucteam *::after {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+  }
+}

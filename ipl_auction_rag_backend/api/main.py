@@ -30,6 +30,7 @@ from config.env_check import check_environment, log_report
 from config.settings import get_settings
 from api.routes import router as api_router
 from api.routes_scout import router as scout_router
+from api.routes_aucteam import router as aucteam_router
 from auction.room import room as auction_room
 from auction.ws import router as auction_router
 
@@ -401,6 +402,11 @@ app.include_router(auction_router)
 # service, so it shares this port, this CORS configuration and this process --
 # and so the console keeps talking to exactly one origin.
 app.include_router(scout_router)
+
+# AUCTEAM: the playing-XI builder and its SCOUT team report. Same reason as
+# the two above -- registered before the SPA catch-all so /api/v1/aucteam/*
+# is never answered with index.html.
+app.include_router(aucteam_router)
 
 
 # ---------------------------------------------------------------------------

@@ -37,6 +37,8 @@ export type ScoutOrigin =
   | "nav"
   | "block"
   | "pool"
+  /** The AUCTEAM builder's SCOUT dock, with the roster as a draft. */
+  | "aucteam"
   | null;
 
 export interface ScoutUiState {

@@ -90,6 +90,7 @@ const DESTINATIONS: Destination[] = [
     label: "Live Bidding",
     hint: "Live Bidding — join the auction room",
   },
+  { to: "/aucteam", label: "AUCTEAM", hint: "AUCTEAM — build a playing XI and get a SCOUT report" },
   { to: "/about", label: "About", hint: "About — what AUCTONIQ is and how it works" },
   // Hidden from the bar, live everywhere else. See `Destination.hidden`.
   { to: "/console", label: "Console", hint: "Console — the offline auction console", hidden: true },
