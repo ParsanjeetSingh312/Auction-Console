@@ -286,6 +286,11 @@ class AuctionRoom:
     # this account's alone, and its franchise seats are for delegate accounts.
     # None for MAIN, which keeps the password-gated chair.
     owner_account_id: int | None = None
+    # Which kind of account created and runs it: an auctioneer room (an
+    # Auctioneer account's) or a delegate room (a Delegate account running an
+    # auction of its own). The chair goes to an account of that kind -- the
+    # creating one -- and the franchise seats to Delegate accounts either way.
+    room_type: Literal["auctioneer", "delegate"] = "auctioneer"
     rules: dict[str, Any] = field(default_factory=lambda: copy.deepcopy(DEFAULT_RULES))
     # Bumped on every setup change; acknowledgements quote it (rule 7).
     rules_version: int = 1
@@ -606,14 +611,30 @@ class AuctionRoom:
             # one connection per chair and one seat per account.
             by_account = self.owner_account_id is not None
             if by_account and role == "auctioneer" and not account_admin:
-                if account_role != "auctioneer":
+                if account_role != self.room_type:
                     raise RoomError(
-                        "Only an Auctioneer account can run an auction room. Log in with one.",
+                        "Only an Auctioneer account can run an auctioneer room. Log in with one."
+                        if self.room_type == "auctioneer"
+                        else "Only the Delegate account that created this room can run it.",
                         about="join",
                     )
                 if account_id != self.owner_account_id:
                     raise RoomError(
                         "Only the account that created this room can take its chair.",
+                        about="join",
+                    )
+            # The account running a room does not also bid in it, and an
+            # account bidding in a room does not also run it.
+            if by_account and account_id is not None:
+                other_role = "franchise" if role == "auctioneer" else "auctioneer"
+                if any(
+                    s.account_id == account_id and s.client_id != client_id and s.role == other_role
+                    for s in self.seats.values()
+                ):
+                    raise RoomError(
+                        "Your account is running this room, so it cannot also take a franchise seat."
+                        if role == "franchise"
+                        else "Your account holds a franchise seat in this room, so it cannot also run it.",
                         about="join",
                     )
             if by_account and role == "franchise":
@@ -1610,6 +1631,7 @@ class AuctionRoom:
             "type": "state",
             "room": self.code,
             "room_kind": self.kind,
+            "room_type": self.room_type,
             "version": self.version,
             # What this server build understands. A client can compare it with
             # what it intends to send and say so plainly, instead of firing a

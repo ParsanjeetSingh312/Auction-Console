@@ -27,9 +27,10 @@ import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 
-import { canCreateRooms, canJoinRooms, tagFor, useAccount } from "../../console/accountStore";
+import { canJoinRooms, roomTypesFor, tagFor, useAccount } from "../../console/accountStore";
 import type { Account } from "../../console/accountStore";
 import { createRoom, DEFAULT_ROOM, enterRoom, normaliseRoomCode } from "../../console/auctionRoom";
+import type { RoomType } from "../../console/auctionRoom";
 import { cardVariants, gridVariants } from "../../console/motion";
 import type { AuctionSocket } from "../../hooks/useAuctionSocket";
 
@@ -139,13 +140,15 @@ function WrongAccount({ account, need }: { account: Account; need: string }) {
 /** The auctioneer: their account creates the room and takes its chair. */
 function CreateRoom({ socket }: { socket: AuctionSocket }) {
   const { status, account } = useAccount();
+  const types = roomTypesFor(account);
 
-  const create = () => {
+  const create = (type: RoomType) => {
     // The claim waits for the new room's connection, which carries the
-    // session: the server opens the room for this auctioneer account and seats
-    // it in the chair, and Live Bidding opens the control panel.
+    // session: the server opens the room for this account -- refusing a kind
+    // the account may not create -- seats it in the chair, and Live Bidding
+    // opens the control panel.
     socket.queueSeat({ role: "auctioneer" });
-    createRoom();
+    createRoom(type);
   };
 
   return (
@@ -156,26 +159,29 @@ function CreateRoom({ socket }: { socket: AuctionSocket }) {
     >
       <span aria-hidden className="absolute inset-x-0 top-0 h-[3px] bg-slate-ink" />
       <span className="font-ui text-[9.5px] font-semibold uppercase tracking-[0.16em] text-slate-faint">
-        Auctioneer accounts
+        Run an auction
       </span>
       <h2 className="mt-1.5 font-head text-[20px] font-bold leading-tight text-slate-ink">Create a room</h2>
       <p className="mt-1.5 font-ui text-[12px] leading-relaxed text-slate-muted">
-        Open a new auction room and take its chair. Its code is on your control panel to send to the
-        franchise owners.
+        Open a new auction room and run it from the control panel, where its code is shown to send to
+        the franchise owners.
       </p>
 
       {status === "loading" ? (
         <p className="mt-4 font-ui text-[12px] text-slate-faint">Checking your account…</p>
       ) : !account ? (
         <SignInPrompt role="Auctioneer" />
-      ) : !canCreateRooms(account) ? (
-        <WrongAccount account={account} need="Only Auctioneer accounts can create rooms." />
+      ) : types.length === 0 ? (
+        <WrongAccount account={account} need="Member accounts cannot create auction rooms." />
       ) : (
         <div className="mt-4">
           <p className="font-ui text-[12px] text-slate-body">
             Signed in as <b className="text-slate-ink">{account.name}</b>
           </p>
-          <button type="button" onClick={create} className={`${PRIMARY} mt-3 w-full`}>
+          {/* One button for everyone who may create: the kind of room follows
+              from the account (an auctioneer's or a delegate's), decided and
+              enforced by the server, and never shown here. */}
+          <button type="button" onClick={() => create(types[0])} className={`${PRIMARY} mt-3 w-full`}>
             Create room &amp; enter control panel
           </button>
         </div>
@@ -213,7 +219,7 @@ function JoinRoom({ socket }: { socket: AuctionSocket }) {
     >
       <span aria-hidden className="absolute inset-x-0 top-0 h-[3px] bg-neon-orange" />
       <span className="font-ui text-[9.5px] font-semibold uppercase tracking-[0.16em] text-slate-faint">
-        Delegate accounts
+        Join an auction
       </span>
       <h2 className="mt-1.5 font-head text-[20px] font-bold leading-tight text-slate-ink">Join a room</h2>
       <p className="mt-1.5 font-ui text-[12px] leading-relaxed text-slate-muted">

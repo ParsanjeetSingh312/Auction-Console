@@ -207,6 +207,7 @@ async def auction_socket(
     room: str | None = None,
     kind: str | None = None,
     open: str | None = None,  # noqa: A002 - the query parameter's name
+    type: str | None = None,  # noqa: A002 - the query parameter's name
 ) -> None:
     """
     One connection to one room. `?room=<code>` picks it. A code nobody has
@@ -232,13 +233,32 @@ async def auction_socket(
         if kind is None and open is None:
             await _refuse(websocket, 4404, "No auction room with that code is open. Check the code with your auctioneer.")
             return
-        # Creating a room is what an auctioneer account is for (and an
-        # administrator's), and nothing else.
-        if account is None or (account.role != "auctioneer" and not account.admin):
-            await _refuse(websocket, 4403, "Only an Auctioneer account can create an auction room. Log in with one.")
+        # What an account may create: an Auctioneer account an auctioneer
+        # room, a Delegate account a delegate room (one it runs itself), an
+        # administrator either. A delegate asking for an auctioneer room is
+        # refused, whatever it sends.
+        room_type = "delegate" if type == "delegate" else "auctioneer"
+        if account is None:
+            await _refuse(websocket, 4403, "Log in to create an auction room.")
+            return
+        if not account.admin and account.role != room_type:
+            await _refuse(
+                websocket,
+                4403,
+                "Delegate accounts can create delegate rooms only, not auctioneer rooms."
+                if account.role == "delegate"
+                else "Only an Auctioneer account can create an auctioneer room."
+                if room_type == "auctioneer"
+                else "Only a Delegate account can create a delegate room.",
+            )
             return
         try:
-            entry = registry.open(code, normalise_kind(kind) if kind else "mini", owner_account_id=account.id)
+            entry = registry.open(
+                code,
+                normalise_kind(kind) if kind else "mini",
+                owner_account_id=account.id,
+                room_type=room_type,
+            )
         except RoomsFull:
             await _refuse(websocket, 4429, "Every auction room is in use. Try again once one has finished.")
             return

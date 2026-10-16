@@ -174,6 +174,8 @@ export interface RoomState {
   /** The room's code and kind. Absent from a server that predates rooms. */
   room?: string;
   room_kind?: "mega" | "mini";
+  /** Who runs it: an Auctioneer account, or a Delegate account. */
+  room_type?: "auctioneer" | "delegate";
   rules: {
     /** Total Budget, lakh. */
     purse: number;

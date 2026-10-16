@@ -30,6 +30,12 @@ import { useSyncExternalStore } from "react";
 /** The server's default room. */
 export const DEFAULT_ROOM = "MAIN";
 
+/**
+ * Who runs a room: an auctioneer room is an Auctioneer account's, a delegate
+ * room is a Delegate account running an auction of its own.
+ */
+export type RoomType = "auctioneer" | "delegate";
+
 const STORAGE_KEY = "auctoniq:room";
 
 // The server's rule (ROOM_CODE in auction/rooms.py): a letter or digit, then up
@@ -48,6 +54,8 @@ interface StoredRoom {
    * an empty auction.
    */
   creating?: boolean;
+  /** The kind of room being created. Only meaningful while `creating`. */
+  type?: RoomType;
 }
 
 /** A code as the server keys it, or null if it is not a valid one. */
@@ -75,7 +83,13 @@ function read(): StoredRoom | null {
     if (!raw) return memory;
     const parsed = JSON.parse(raw) as StoredRoom;
     const code = normaliseRoomCode(parsed.code);
-    return code ? { code, creating: parsed.creating === true || undefined } : null;
+    return code
+      ? {
+          code,
+          creating: parsed.creating === true || undefined,
+          type: parsed.type === "delegate" ? "delegate" : parsed.type === "auctioneer" ? "auctioneer" : undefined,
+        }
+      : null;
   } catch {
     return memory;
   }
@@ -131,7 +145,8 @@ export function withRoom(url: string): string {
   const room = read();
   if (!room || room.code === DEFAULT_ROOM) return url;
   const join = url.includes("?") ? "&" : "?";
-  return `${url}${join}room=${encodeURIComponent(room.code)}${room.creating ? "&open=1" : ""}`;
+  const opening = room.creating ? `&open=1${room.type === "delegate" ? "&type=delegate" : ""}` : "";
+  return `${url}${join}room=${encodeURIComponent(room.code)}${opening}`;
 }
 
 /* ------------------------------------------------------------ changes -- */
@@ -159,10 +174,10 @@ export function useRoom(): ReturnType<typeof currentRoom> & { key: string } {
   return { ...currentRoom(), key };
 }
 
-/** Create a room under a fresh code and move this tab into it. */
-export function createRoom(): string {
+/** Create a room of `type` under a fresh code and move this tab into it. */
+export function createRoom(type: RoomType = "auctioneer"): string {
   const code = newRoomCode();
-  write({ code, creating: true });
+  write({ code, creating: true, type });
   changed();
   return code;
 }

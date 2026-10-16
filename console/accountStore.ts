@@ -42,9 +42,22 @@ export function tagFor(account: Account): string {
 export const ADMIN_BLURB =
   "Administrator: full access. Create and run any auction room, join any room, and use the admin tools.";
 
-/** May this account create auction rooms? (The server decides; this mirrors it.) */
+/**
+ * The kinds of room this account may create (the server decides; this mirrors
+ * it): an Auctioneer account auctioneer rooms, a Delegate account delegate
+ * rooms it runs itself, an administrator either, a Member neither.
+ */
+export function roomTypesFor(account: Account | null): ("auctioneer" | "delegate")[] {
+  if (!account) return [];
+  if (account.admin) return ["auctioneer", "delegate"];
+  if (account.role === "auctioneer") return ["auctioneer"];
+  if (account.role === "delegate") return ["delegate"];
+  return [];
+}
+
+/** May this account create auction rooms of any kind? */
 export function canCreateRooms(account: Account | null): boolean {
-  return !!account && (account.role === "auctioneer" || !!account.admin);
+  return roomTypesFor(account).length > 0;
 }
 
 /** May this account join a room by code? Delegates to bid, auctioneers to rejoin their own. */
@@ -55,7 +68,7 @@ export function canJoinRooms(account: Account | null): boolean {
 /** What each role is for, in a line. */
 export const ROLE_BLURB: Record<Role, string> = {
   auctioneer: "Create auction rooms and run them from the control panel.",
-  delegate: "Join a room with its code, take a franchise seat and bid.",
+  delegate: "Join an auctioneer's room with its code and bid, or create a delegate room and run it yourself.",
   member: "The free tier: the data room, SCOUT and AUCTEAM. No seat in a live room.",
 };
 

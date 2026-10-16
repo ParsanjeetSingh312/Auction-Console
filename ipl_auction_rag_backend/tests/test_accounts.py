@@ -146,10 +146,15 @@ class TestRoomsByAccount:
     def test_only_an_auctioneer_account_creates_a_room(self, client):
         from starlette.websockets import WebSocketDisconnect
 
-        for token in (None, register(client, "delegate"), register(client, "member")):
+        cases = (
+            (None, "Log in"),
+            (register(client, "delegate"), "delegate rooms only"),
+            (register(client, "member"), "Auctioneer account"),
+        )
+        for token, says in cases:
             with client.websocket_connect("/api/v1/auction/ws?room=NOPE1&open=1", headers=as_account(token)) as sock:
                 refusal = sock.receive_json()
-                assert refusal["about"] == "room" and "Auctioneer account" in refusal["message"]
+                assert refusal["about"] == "room" and says in refusal["message"]
                 with pytest.raises(WebSocketDisconnect) as closed:
                     sock.receive_json()
                 assert closed.value.code == 4403
@@ -255,3 +260,42 @@ class TestAdministrators:
         asyncio.run(require_admin(Req(admin), None))  # no key, admin session: allowed
         with pytest.raises(Exception):
             asyncio.run(require_admin(Req(None), None))  # no key, no session: refused
+
+
+class TestDelegateRooms:
+    def test_a_delegate_runs_a_room_of_its_own(self, client):
+        creator = register(client, "delegate")
+        bidder = register(client, "delegate")
+        auctioneer = register(client, "auctioneer")
+        member = register(client, "member")
+        ws = "/api/v1/auction/ws"
+        with client.websocket_connect(f"{ws}?room=DELE1&open=1&type=delegate", headers=as_account(creator)) as host:
+            state = drain(host, lambda m: m.get("type") == "state")
+            assert state["room_type"] == "delegate"
+            host.send_json({"type": "join", "role": "auctioneer"})
+            assert answer(host)["type"] == "joined"
+            # The one running it does not also bid in it.
+            with client.websocket_connect(f"{ws}?room=DELE1", headers=as_account(creator)) as again:
+                again.send_json({"type": "join", "role": "franchise", "team_id": 3})
+                assert "running this room" in answer(again)["message"]
+            # Other delegates take seats as usual.
+            with client.websocket_connect(f"{ws}?room=DELE1", headers=as_account(bidder)) as seat:
+                seat.send_json({"type": "join", "role": "franchise", "team_id": 1})
+                assert answer(seat)["type"] == "joined"
+            # An auctioneer account cannot take a delegate room's chair.
+            with client.websocket_connect(f"{ws}?room=DELE1", headers=as_account(auctioneer)) as other:
+                other.send_json({"type": "join", "role": "auctioneer"})
+                assert "Delegate account that created" in answer(other)["message"]
+        # A member creates neither kind.
+        with client.websocket_connect(f"{ws}?room=DELE2&open=1&type=delegate", headers=as_account(member)) as sock:
+            assert "Delegate account" in sock.receive_json()["message"]
+
+    def test_delegates_still_join_auctioneer_rooms(self, client):
+        owner = register(client, "auctioneer")
+        delegate = register(client, "delegate")
+        ws = "/api/v1/auction/ws"
+        with client.websocket_connect(f"{ws}?room=OFFICIAL1&open=1", headers=as_account(owner)) as host:
+            assert drain(host, lambda m: m.get("type") == "state")["room_type"] == "auctioneer"
+            with client.websocket_connect(f"{ws}?room=OFFICIAL1", headers=as_account(delegate)) as seat:
+                seat.send_json({"type": "join", "role": "franchise", "team_id": 2})
+                assert answer(seat)["type"] == "joined"
