@@ -342,3 +342,31 @@ class TestAdminSettings:
         assert client.get("/api/v1/accounts/me", headers=as_account(here)).status_code == 200
         assert client.get("/api/v1/accounts/me", headers=as_account(elsewhere)).status_code == 401
         assert client.post("/api/v1/accounts/login", json={"email": "pw-admin@example.test", "password": "second-password"}).status_code == 200
+
+
+class TestAdminBootstrap:
+    def test_listed_admins_get_accounts_once(self, client, monkeypatch):
+        from accounts.demo import ensure_admin_accounts
+
+        monkeypatch.setattr(get_settings(), "ADMIN_EMAILS", "first.admin@example.test,second@example.test")
+        assert ensure_admin_accounts("first-password") == 2
+        ok = client.post("/api/v1/accounts/login", json={"email": "first.admin@example.test", "password": "first-password"})
+        assert ok.status_code == 200
+        me = ok.json()["account"]
+        assert me["admin"] is True and me["name"] == "First Admin"
+        # The admin changes the password; a restart does not put it back.
+        changed = client.post(
+            "/api/v1/accounts/password",
+            json={"current_password": "first-password", "new_password": "my-own-password"},
+        )
+        assert changed.status_code == 200
+        assert ensure_admin_accounts("first-password") == 0
+        client.cookies.clear()
+        assert client.post("/api/v1/accounts/login", json={"email": "first.admin@example.test", "password": "my-own-password"}).status_code == 200
+
+    def test_nothing_is_made_without_a_first_password(self, monkeypatch):
+        from accounts.demo import ensure_admin_accounts
+
+        monkeypatch.setattr(get_settings(), "ADMIN_EMAILS", "nobody-yet@example.test")
+        assert ensure_admin_accounts("") == 0
+        assert store.account_with_password("nobody-yet@example.test") is None

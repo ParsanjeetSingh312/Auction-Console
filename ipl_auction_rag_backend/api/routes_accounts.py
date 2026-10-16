@@ -161,7 +161,11 @@ async def register(payload: RegisterRequest, request: Request, response: Respons
     # An administrator's address is reserved once it is listed, so nobody can
     # register it and inherit admin (see ADMIN_EMAILS in config/settings.py).
     if payload.email in store.admin_emails():
-        raise HTTPException(status_code=403, detail="That email is reserved. Log in instead.")
+        raise HTTPException(
+            status_code=403,
+            detail="That email is reserved for an administrator. Its account is made by the server: "
+            "log in with the first password set in ADMIN_INITIAL_PASSWORD.",
+        )
     password_hash = await asyncio.to_thread(hash_password, payload.password)
     try:
         account = await asyncio.to_thread(

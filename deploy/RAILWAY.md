@@ -38,7 +38,8 @@ Nothing else is needed; the entrypoint redirects all state there.
 | `RAILWAY_HEALTHCHECK_TIMEOUT_SEC` | `900` (first boot downloads the models before it answers) |
 | `AUCTION_MAX_ROOMS` | optional, default `24`: auction rooms open at once (each is one auction, up to 12 franchises) |
 | `AUCTION_MAX_CONNECTIONS` | optional, default `600`: live-bidding sockets across every room |
-| `ADMIN_EMAILS` | comma-separated emails of administrator accounts. Register those accounts on the site **first**, then add this |
+| `ADMIN_EMAILS` | comma-separated emails of administrator accounts. Listed emails cannot be registered by anyone; the server creates their accounts (next row) |
+| `ADMIN_INITIAL_PASSWORD` | first password of the admin accounts the server creates for `ADMIN_EMAILS` that have none yet. Log in with it, then change it under Account settings; existing accounts are never touched |
 | `DEMO_ACCOUNTS_PASSWORD` | optional: creates 15 demo accounts (`auctioneer1@demo.auctoniq.test`, ...) with this password. Remove it to stop refreshing them |
 
 Do **not** set `PORT` (Railway sets it), `PLAYWRIGHT_BROWSERS_PATH`, or `HF_HOME`.

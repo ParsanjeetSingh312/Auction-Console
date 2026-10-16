@@ -297,11 +297,16 @@ class Settings(BaseSettings):
     # role anyone can pick at registration: it is granted here, in the
     # environment, and taken away by removing the email.
     #
-    # Register the accounts FIRST, then list them. A listed email can no
-    # longer be registered, so nobody can claim an admin address -- which also
-    # means an address listed before its owner registered is locked out until
-    # it is taken off the list.
+    # A listed email can no longer be registered, so nobody can claim an admin
+    # address. Its account is made by the server instead: see the setting below.
     ADMIN_EMAILS: str = ""
+
+    # The first password of an administrator account the server creates. At
+    # startup, every email on ADMIN_EMAILS that has no account yet gets one,
+    # with this password -- log in with it, then change it under Account
+    # settings. An account that already exists is never touched, so changing
+    # your password sticks across restarts. Empty creates none.
+    ADMIN_INITIAL_PASSWORD: str = ""
 
     # Admin key for the destructive and expensive endpoints: POST /api/v1/ingest
     # (rebuilds the whole player pool) and POST /api/v1/scout/research (spends a

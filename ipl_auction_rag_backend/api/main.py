@@ -270,6 +270,16 @@ async def lifespan(app: FastAPI):
             exc,
         )
 
+    # Administrator accounts for ADMIN_EMAILS that have none yet, with
+    # ADMIN_INITIAL_PASSWORD as their first password (accounts/demo.py).
+    if get_settings().ADMIN_INITIAL_PASSWORD:
+        try:
+            from accounts.demo import ensure_admin_accounts
+
+            await asyncio.to_thread(ensure_admin_accounts, get_settings().ADMIN_INITIAL_PASSWORD)
+        except Exception as exc:  # noqa: BLE001 - startup must not die here
+            logger.warning("Could not create the administrator accounts: %s", exc)
+
     # Demo accounts, when DEMO_ACCOUNTS_PASSWORD is set (accounts/demo.py).
     if get_settings().DEMO_ACCOUNTS_PASSWORD:
         try:
