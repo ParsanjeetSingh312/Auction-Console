@@ -29,6 +29,7 @@ import {
   type ScoutAdvice,
 } from "./scoutOrchestrator";
 import { RagError } from "./ragClient";
+import { currentRoom } from "./auctionRoom";
 
 export interface OrchestratorState {
   /** The question this run is answering, kept for the transcript's record. */
@@ -115,6 +116,8 @@ export function useScoutOrchestrator(): OrchestratorState {
       {
         question: trimmed,
         team_id: options.teamId ?? null,
+        // The purse SCOUT reasons about is read from this room on the server.
+        room: currentRoom().code,
         on_block_player_id: options.onBlockPlayerId ?? null,
         budget_seconds: options.budgetSeconds ?? null,
         thread_id: options.threadId ?? null,

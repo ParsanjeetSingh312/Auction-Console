@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import time
 import uuid
@@ -39,7 +40,8 @@ from pydantic import TypeAdapter, ValidationError
 
 from auction.report_card import build_team_card
 from auction.report_pdf import render_team_pdf
-from auction.room import RoomError, room
+from auction.room import AuctionRoom, RoomError
+from auction.rooms import MAIN, RoomEntry, RoomsFull, normalise_code, normalise_kind, registry
 from auction.schemas import ClientMessage
 from db import get_player_db
 
@@ -55,11 +57,14 @@ MAX_FRAME_BYTES = 8 * 1024
 RATE = 20.0  # messages per second
 BURST = 40.0
 
-# Ceiling on simultaneous connections. Ten franchises, an auctioneer and a
-# generous gallery of spectators fit well within this; a flood that opens
-# thousands of sockets to exhaust the process is refused at the door, which the
-# per-connection rate limiter above cannot do on its own.
-MAX_CONNECTIONS = 200
+# Ceilings on simultaneous connections, per room and across every room. A
+# room's twelve franchises, its auctioneer and a gallery of spectators fit well
+# within the first; the second is set from the load test (see
+# security/loadtest_auction.py) with headroom under where bids start to slow. A
+# flood that opens thousands of sockets to exhaust the process is refused at
+# the door, which the per-connection rate limiter above cannot do on its own.
+ROOM_MAX_CONNECTIONS = 40
+MAX_CONNECTIONS = int(os.getenv("AUCTION_MAX_CONNECTIONS", "600"))
 
 _message_adapter: TypeAdapter[Any] = TypeAdapter(ClientMessage)
 
@@ -96,11 +101,11 @@ class ConnectionManager:
         self._sockets: dict[str, WebSocket] = {}
 
     async def connect(self, websocket: WebSocket) -> str | None:
-        # Refuse a new connection past the ceiling, before the handshake
+        # Refuse a new connection past either ceiling, before the handshake
         # completes. 1013 is "try again later", so a legitimate client knows to
         # retry rather than reading it as a protocol error. None tells the caller
         # the socket was closed and it should stop.
-        if len(self._sockets) >= MAX_CONNECTIONS:
+        if len(self._sockets) >= ROOM_MAX_CONNECTIONS or total_connections() >= MAX_CONNECTIONS:
             await websocket.close(code=1013)
             return None
         await websocket.accept()
@@ -141,18 +146,91 @@ class ConnectionManager:
         return len(self._sockets)
 
 
-manager = ConnectionManager()
+# One set of sockets per room, keyed by room code. The room object is kept
+# beside its manager so a code reopened after its old room was swept gets a
+# fresh manager rather than the old room's.
+_managers: dict[str, tuple[AuctionRoom, ConnectionManager]] = {}
 
 
-async def _broadcast_state() -> None:
-    await manager.broadcast(room.state_payload())
+def total_connections() -> int:
+    return sum(manager.count for _, manager in _managers.values())
+
+
+def manager_for(entry: RoomEntry) -> ConnectionManager:
+    """The room's sockets, and the room's clock pointed at them."""
+    held = _managers.get(entry.code)
+    if held is not None and held[0] is entry.room:
+        return held[1]
+    manager = ConnectionManager()
+    _managers[entry.code] = (entry.room, manager)
+    room = entry.room
+
+    async def broadcast_state() -> None:
+        await manager.broadcast(room.state_payload())
+
+    # The clock's voice -- see the note at the end of this module.
+    room.set_broadcaster(broadcast_state)
+    # Forget managers whose rooms have been closed.
+    stale = [c for c, (r, _) in _managers.items() if (e := registry.get(c)) is None or e.room is not r]
+    for code in stale:
+        _managers.pop(code, None)
+    return manager
+
+
+async def _refuse(websocket: WebSocket, code: int, message: str) -> None:
+    """
+    Turn a connection away with a reason. Accepted first, because a socket
+    closed during the handshake reaches a browser as a bare failure with no
+    code and no words; the 44xx code tells the client not to retry.
+    """
+    await websocket.accept()
+    await websocket.send_text(json.dumps({"type": "error", "message": message, "about": "room"}))
+    await websocket.close(code=code)
+
+
+def _room_for(code_raw: str | None) -> AuctionRoom:
+    """The open room a REST read names, or 404. No code means MAIN."""
+    code = normalise_code(code_raw)
+    entry = registry.get(code) if code else None
+    if entry is None:
+        raise HTTPException(status_code=404, detail="No auction room with that code.")
+    return entry.room
 
 
 @router.websocket("/ws")
-async def auction_socket(websocket: WebSocket) -> None:
+async def auction_socket(
+    websocket: WebSocket,
+    room: str | None = None,
+    kind: str | None = None,
+    open: str | None = None,  # noqa: A002 - the query parameter's name
+) -> None:
+    """
+    One connection to one room. `?room=<code>` picks it. A code nobody has
+    opened is opened only when the connection asks to: `open=1` (the app's
+    "create a room": twelve franchise seats, so ten- to twelve-team auctions
+    all fit) or an explicit `kind` (mega for ten, mini for twelve). No code
+    means MAIN, the room older clients join.
+    """
+    code = normalise_code(room)
+    if code is None:
+        await _refuse(websocket, 4400, "That is not a room code. Codes are letters, digits and dashes.")
+        return
+    entry = registry.get(code)
+    if entry is None:
+        if kind is None and open is None:
+            await _refuse(websocket, 4404, "No auction room with that code is open. Check the code with your auctioneer.")
+            return
+        try:
+            entry = registry.open(code, normalise_kind(kind) if kind else "mini")
+        except RoomsFull:
+            await _refuse(websocket, 4429, "Every auction room is in use. Try again once one has finished.")
+            return
+    manager = manager_for(entry)
     client_id = await manager.connect(websocket)
     if client_id is None:
         return  # at capacity; connect() already closed the socket
+    registry.connected(entry)
+    room = entry.room  # from here on, the room object itself
     limiter = RateLimiter()
 
     # A connection with no seat yet still gets the state, so a spectator's UI
@@ -204,7 +282,7 @@ async def auction_socket(websocket: WebSocket) -> None:
                 continue
 
             try:
-                await _dispatch(client_id, message)
+                await _dispatch(room, manager, client_id, message)
             except RoomError as exc:
                 # An expected refusal: wrong role, illegal bid, stale lot. The
                 # client is told why and the connection carries on.
@@ -229,11 +307,12 @@ async def auction_socket(websocket: WebSocket) -> None:
         logger.exception("socket loop failed for %s", client_id)
     finally:
         manager.disconnect(client_id)
+        registry.disconnected(entry)
         await room.leave(client_id)
-        await _broadcast_state()
+        await manager.broadcast(room.state_payload())
 
 
-async def _dispatch(client_id: str, message: Any) -> None:
+async def _dispatch(room: AuctionRoom, manager: ConnectionManager, client_id: str, message: Any) -> None:
     """
     Route a validated message to the room, then broadcast what changed.
 
@@ -255,6 +334,10 @@ async def _dispatch(client_id: str, message: Any) -> None:
             message.display_name,
             message.password,
         )
+        if seat.role == "auctioneer":
+            entry = registry.get(room.code)
+            if entry is not None:
+                entry.claimed = True  # kept for IDLE_SECONDS, not the short wait
         team = room.team_by_id(seat.team_id)
         await manager.send(
             client_id,
@@ -320,7 +403,7 @@ async def _dispatch(client_id: str, message: Any) -> None:
         await room.finish(client_id)
         await manager.send(client_id, {"type": "report", "report": room.report()})
 
-    await _broadcast_state()
+    await manager.broadcast(room.state_payload())
 
 
 def _first_error(exc: ValidationError) -> str:
@@ -350,9 +433,26 @@ def _first_error(exc: ValidationError) -> str:
 
 
 @router.get("/state")
-async def get_state() -> dict[str, Any]:
-    """The room's current state, same shape the socket broadcasts."""
-    return room.state_payload()
+async def get_state(room: str | None = None) -> dict[str, Any]:
+    """A room's current state, same shape the socket broadcasts."""
+    return _room_for(room).state_payload()
+
+
+@router.get("/rooms/stats")
+async def rooms_stats() -> dict[str, Any]:
+    """
+    How busy the server is: rooms open and sockets held, against the ceilings.
+    Counts only -- no room codes, which would let anyone walk into another
+    league's auction.
+    """
+    entries = registry.entries()
+    return {
+        "rooms_open": len(entries),
+        "rooms_live": sum(1 for e in entries if e.room.phase == "live"),
+        "connections": total_connections(),
+        "max_connections": MAX_CONNECTIONS,
+        "room_max_connections": ROOM_MAX_CONNECTIONS,
+    }
 
 
 # --------------------------------------------------------------------- #
@@ -373,11 +473,17 @@ async def get_state() -> dict[str, Any]:
 # room by exactly the same route.
 # --------------------------------------------------------------------- #
 
-room.set_broadcaster(_broadcast_state)
+manager = manager_for(registry.get(MAIN))  # MAIN's sockets, and its clock's voice
+
+
+async def _broadcast_state() -> None:
+    """MAIN's broadcast. Kept for callers that predate rooms."""
+    entry = registry.get(MAIN)
+    await manager_for(entry).broadcast(entry.room.state_payload())
 
 
 @router.get("/report")
-async def get_report() -> dict[str, Any]:
+async def get_report(room: str | None = None) -> dict[str, Any]:
     """
     The closing report.
 
@@ -385,11 +491,11 @@ async def get_report() -> dict[str, Any]:
     report is genuinely useful mid-auction — it is how an auctioneer answers
     "who still has no keeper?" without counting by hand.
     """
-    return room.report()
+    return _room_for(room).report()
 
 
 @router.get("/report/{team_id}/pdf")
-async def get_team_pdf(team_id: int) -> Response:
+async def get_team_pdf(team_id: int, room: str | None = None) -> Response:
     """
     One franchise's closing report, as a PDF.
 
@@ -408,7 +514,8 @@ async def get_team_pdf(team_id: int) -> Response:
     room: `Room.load_players` keeps eight fields per player and the report needs
     the batting and bowling columns, so the join happens at report time.
     """
-    team = room.team_by_id(team_id)
+    auction = _room_for(room)
+    team = auction.team_by_id(team_id)
     if team is None:
         raise HTTPException(status_code=404, detail=f"No franchise with id {team_id}.")
 
@@ -426,7 +533,7 @@ async def get_team_pdf(team_id: int) -> Response:
         rows = {}
 
     try:
-        card = build_team_card(room, team_id, rows)
+        card = build_team_card(auction, team_id, rows)
         pdf = render_team_pdf(card)
     except Exception:
         logger.exception("Failed to render the report for team %s", team_id)

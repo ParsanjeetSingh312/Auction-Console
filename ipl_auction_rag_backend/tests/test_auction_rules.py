@@ -383,11 +383,13 @@ class TestPropagation:
 
         from api.main import app
         from auction import ws
+        from auction.rooms import MAIN, registry
 
         fresh = AuctionRoom()
         fresh.load_players([dict(p) for p in POOL])
-        monkeypatch.setattr(ws, "room", fresh)
-        fresh.set_broadcaster(ws._broadcast_state)
+        # The default room, swapped for a fresh one; its sockets and clock follow.
+        monkeypatch.setattr(registry.get(MAIN), "room", fresh)
+        ws.manager_for(registry.get(MAIN))
 
         def drain_to(sock, predicate):
             for _ in range(20):

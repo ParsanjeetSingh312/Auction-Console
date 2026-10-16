@@ -36,6 +36,8 @@ Nothing else is needed; the entrypoint redirects all state there.
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | if you use Supabase |
 | `GROQ_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `HUGGINGFACE_API_KEY` | whichever you use |
 | `RAILWAY_HEALTHCHECK_TIMEOUT_SEC` | `900` (first boot downloads the models before it answers) |
+| `AUCTION_MAX_ROOMS` | optional, default `24`: auction rooms open at once (each is one auction, up to 12 franchises) |
+| `AUCTION_MAX_CONNECTIONS` | optional, default `600`: live-bidding sockets across every room |
 
 Do **not** set `PORT` (Railway sets it), `PLAYWRIGHT_BROWSERS_PATH`, or `HF_HOME`.
 
@@ -44,9 +46,27 @@ Do **not** set `PORT` (Railway sets it), `PLAYWRIGHT_BROWSERS_PATH`, or `HF_HOME
 - **Networking → Generate Domain.** If it asks for a port, use the one in the
   deploy logs line `Starting uvicorn directly on 0.0.0.0:<port>`.
 - **Deploy → Healthcheck Path:** `/api/v1/ping`.
-- **Deploy → Replicas:** 1. The auction room is in-process state; a second
-  replica would be a second, separate auction.
+- **Deploy → Replicas:** 1, and no autoscaling. Auction rooms are in-process
+  state; a second replica would hold a second, separate set of rooms, and
+  people with the same room code could land on different ones.
 - **Resources:** at least 4 GB memory. Startup is ~2 GB resident.
+
+## Auction rooms and load
+
+Live Bidding runs one auction per room: the auctioneer creates a room (its code
+shows on their control panel) and franchise owners join with that code. All
+rooms live in the one server process.
+
+- **Capacity.** Measured with `ipl_auction_rag_backend/security/loadtest_auction.py`
+  on a desktop: 6 simultaneous auctions (74 people) used ~8% of one CPU core
+  with bids reaching the whole room in under 20 ms; 48 auctions (592 people)
+  still ran cleanly at ~35%. Railway's vCPUs are slower, so plan for 20-30
+  auctions at once; the default caps (24 rooms, 600 sockets) sit there. Check
+  `GET /api/v1/auction/rooms/stats` for rooms and sockets in use.
+- **Do not redeploy during an auction.** Rooms are in memory: a deploy or a
+  restart ends every running auction. Deploy between auctions.
+- **Egress.** Updates are compressed (permessage-deflate): roughly 0.5 GB an
+  hour with six auctions bidding at once.
 
 ## 5. First deploy, then load the player pool
 

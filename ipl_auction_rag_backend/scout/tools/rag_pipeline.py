@@ -256,9 +256,10 @@ def auction_is_running() -> tuple[bool, str]:
     being inspected should not construct one.
     """
     try:
-        from auction.room import room
+        from auction.rooms import registry
 
-        return room.phase not in ("lobby", "finished"), room.phase
+        # Any room: with several auctions open, one running is enough.
+        return registry.any_running()
     except Exception as exc:  # noqa: BLE001 - no room is not an auction
         logger.debug("no auction room available (%s); treating as idle", exc)
         return False, "unavailable"

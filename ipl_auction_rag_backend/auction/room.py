@@ -55,6 +55,7 @@ from auction.rules import (
     MARQUEE_PLAYERS,
     MARQUEE_REVEAL_SECONDS,
     MAX_TEAMS,
+    MINI_TEAMS,
     RuleViolation,
     SquadPosition,
     check_bid_amount,
@@ -123,6 +124,15 @@ DEFAULT_TEAMS: list[dict[str, Any]] = [
 
 # Rule 1: the room never seats more franchises than the rulebook allows.
 assert len(DEFAULT_TEAMS) <= MAX_TEAMS
+
+# The two extra franchises a mini auction seats, after the ten. Named for the
+# two IPL franchises that came and went, so they read as part of the league.
+EXTRA_TEAMS: list[dict[str, Any]] = [
+    {"id": 11, "name": "Kochi", "code": "KOC", "color": "#E07A1F"},
+    {"id": 12, "name": "Pune", "code": "PUN", "color": "#3B4BA0"},
+]
+ALL_TEAMS: list[dict[str, Any]] = DEFAULT_TEAMS + EXTRA_TEAMS
+assert len(ALL_TEAMS) >= MINI_TEAMS
 
 DEFAULT_RULES = rulebook.DEFAULT_RULES
 
@@ -265,6 +275,10 @@ class RoomError(Exception):
 
 @dataclass
 class AuctionRoom:
+    # Which auction this is, when the server is running more than one
+    # (auction/rooms.py). The default room is MAIN, a mega auction.
+    code: str = "MAIN"
+    kind: Literal["mega", "mini"] = "mega"
     rules: dict[str, Any] = field(default_factory=lambda: copy.deepcopy(DEFAULT_RULES))
     # Bumped on every setup change; acknowledgements quote it (rule 7).
     rules_version: int = 1
@@ -709,6 +723,17 @@ class AuctionRoom:
         here testable without a socket.
         """
         self._broadcast = broadcast
+
+    def configure_seats(self, count: int) -> None:
+        """
+        Size the room: the first `count` franchises, and the seat limit with
+        them. Called once, when a room is opened and before anyone sits.
+        """
+        if not 1 <= count <= len(ALL_TEAMS):
+            raise ValueError(f"A room seats 1 to {len(ALL_TEAMS)} franchises, not {count}.")
+        self.teams = copy.deepcopy(ALL_TEAMS[:count])
+        self.rules["max_teams"] = count
+        self._refill_timeouts()
 
     def _refill_timeouts(self) -> None:
         """Every franchise back to a full set of lifelines."""
@@ -1527,6 +1552,8 @@ class AuctionRoom:
 
         return {
             "type": "state",
+            "room": self.code,
+            "room_kind": self.kind,
             "version": self.version,
             # What this server build understands. A client can compare it with
             # what it intends to send and say so plainly, instead of firing a

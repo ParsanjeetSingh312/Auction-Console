@@ -11,8 +11,10 @@ Money is ₹ lakh throughout (100 lakh = 1 Cr), matching the frontend.
 
 The non-negotiable guidelines, and where each one is enforced
 --------------------------------------------------------------
-1. Room limit       MAX_TEAMS = 10. `room.join` refuses an eleventh franchise
-                    seat, and the team list itself never exceeds it.
+1. Room limit       MAX_TEAMS = 10 in a mega auction, the default room;
+                    MINI_TEAMS = 12 in a mini auction (auction/rooms.py). The
+                    room's own `max_teams` is the one enforced: `room.join`
+                    refuses a seat past it, and the team list never exceeds it.
 2. Uniformity       One `rules` dict per room. No team carries its own budget or
                     caps; every limit is read from the room's rules at the moment
                     it is checked, so a host edit lands on all ten at once.
@@ -42,6 +44,10 @@ from typing import Any
 # --------------------------------------------------------------------- #
 
 MAX_TEAMS = 10
+# A mini auction seats twelve franchises. Only a room opened as one does; the
+# default room, and every mega auction, stays at MAX_TEAMS.
+MINI_TEAMS = 12
+TEAMS_BY_KIND = {"mega": MAX_TEAMS, "mini": MINI_TEAMS}
 ACTION_SECONDS = 7
 BUFFER_SECONDS = 30
 BUFFERS_PER_TEAM = 3

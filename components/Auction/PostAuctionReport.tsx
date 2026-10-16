@@ -23,6 +23,7 @@ import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { apiUrl } from "../../console/apiBase";
+import { withRoom } from "../../console/auctionRoom";
 import { money } from "../../console/format";
 import { EASE, gridVariants, panelVariants, rowVariants, viewVariants } from "../../console/motion";
 
@@ -133,7 +134,7 @@ export default function PostAuctionReport({
     // `apiUrl` rather than a local base. This call site was the worst of the
     // three copies: it had no override variable at all, so when the backend
     // moved off :8001 there was no setting that could point the report at it.
-    fetch(apiUrl("/api/v1/auction/report"), { signal: controller.signal })
+    fetch(apiUrl(withRoom("/api/v1/auction/report")), { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error(`Report unavailable (${response.status})`);
         return response.json();
@@ -400,7 +401,7 @@ function FranchiseCard({
         */}
         {canDownload && (
           <a
-            href={apiUrl(`/api/v1/auction/report/${franchise.team.id}/pdf`)}
+            href={apiUrl(withRoom(`/api/v1/auction/report/${franchise.team.id}/pdf`))}
             download
             title={`Download ${team.name}'s auction report as a PDF`}
             className="ml-auto rounded-md border border-line px-2.5 py-1 font-ui text-[9.5px] font-semibold uppercase tracking-[0.1em] text-slate-muted no-underline transition-colors hover:border-slate-faint/60 hover:text-slate-ink"

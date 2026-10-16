@@ -257,6 +257,10 @@ async def lifespan(app: FastAPI):
 
         rows = get_player_db().get_all_players(limit=1000, offset=0)
         loaded = auction_room.load_players(rows)
+        # Every other auction room loads the same pool when it is opened.
+        from auction.rooms import registry as auction_rooms
+
+        auction_rooms.set_pool(rows)
         logger.info("Auction room: %d players loaded", loaded)
     except Exception as exc:  # noqa: BLE001 - startup must not die here
         logger.warning(

@@ -85,6 +85,9 @@ class AdviseRequest(BaseModel):
     #: None means no franchise context: the advisor answers without budget
     #: reasoning, which is the right behaviour for the read-only /data screen.
     team_id: int | None = Field(default=None, ge=1, le=50)
+    #: The auction room the franchise is sitting in, by its code. None means
+    #: MAIN, the default room -- what every client sent before there were rooms.
+    room: str | None = Field(default=None, max_length=24)
     on_block_player_id: int | None = Field(default=None, ge=1)
     #: Seconds for the whole turn. The console should send something short
     #: while a lot is live -- the room opens one for seven seconds.
@@ -224,7 +227,7 @@ async def _probe_hermes(base_url: str, api_key: str, timeout: float) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _team_context(team_id: int | None) -> tuple[TeamContext | None, list[str]]:
+def _team_context(team_id: int | None, room_code: str | None = None) -> tuple[TeamContext | None, list[str]]:
     """
     A franchise's real position, read from the room.
 
@@ -237,8 +240,13 @@ def _team_context(team_id: int | None) -> tuple[TeamContext | None, list[str]]:
     if team_id is None:
         return None, []
     try:
-        from auction.room import room
+        from auction.rooms import normalise_code, registry
 
+        code = normalise_code(room_code)
+        entry = registry.get(code) if code else None
+        if entry is None:
+            return None, ["No auction room with that code; answering without budget context."]
+        room = entry.room
         team = room.team_by_id(team_id)
         if team is None:
             return None, [f"No franchise with id {team_id}; answering without budget context."]
@@ -268,7 +276,7 @@ async def advise(request: AdviseRequest) -> ScoutOutput:
     """
     from scout.graph.workflow import run
 
-    team, team_notes = _team_context(request.team_id)
+    team, team_notes = _team_context(request.team_id, request.room)
     try:
         output = await run(
             ScoutInput(
@@ -358,7 +366,7 @@ async def advise_stream(request: AdviseRequest) -> StreamingResponse:
     from scout.graph.state import NOTES_RESET
     from scout.graph.workflow import compiled, output_from
 
-    team, team_notes = _team_context(request.team_id)
+    team, team_notes = _team_context(request.team_id, request.room)
     thread_id = request.thread_id or f"req-{uuid.uuid4().hex[:16]}"
 
     async def events() -> AsyncIterator[str]:

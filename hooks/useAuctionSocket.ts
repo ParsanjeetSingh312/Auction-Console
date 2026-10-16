@@ -33,6 +33,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { wsUrl } from "../console/apiBase";
+import { useRoom, withRoom } from "../console/auctionRoom";
 
 /* ------------------------------------------------------------------ *
  * The wire format, mirroring auction/schemas.py
@@ -169,6 +170,9 @@ export interface RoomState {
    * and the only symptom is a control that appears to do nothing.
    */
   supports?: string[];
+  /** The room's code and kind. Absent from a server that predates rooms. */
+  room?: string;
+  room_kind?: "mega" | "mini";
   rules: {
     /** Total Budget, lakh. */
     purse: number;
@@ -246,11 +250,15 @@ export interface SeatRequest {
  * outright for the case where the socket really does live somewhere else.
  */
 function socketUrl(): string {
-  return wsUrl();
+  // The room code from the page's address (console/auctionRoom.ts); none
+  // means the default room.
+  return withRoom(wsUrl());
 }
 
 /** Backoff schedule, in ms. Caps rather than growing without bound. */
 const BACKOFF = [400, 900, 1800, 3000, 5000, 8000];
+/** Close codes for a room code the server will not serve: no retry. */
+const ROOM_REFUSALS = new Set([4400, 4404, 4429]);
 const PING_INTERVAL = 25_000;
 
 export interface AuctionSocket {
@@ -260,11 +268,23 @@ export interface AuctionSocket {
   /** Most recent refusal from the room. Cleared by `dismissError`. */
   error: string | null;
   dismissError: () => void;
+  /**
+   * Why the server turned this page's room code away (no such room, not a
+   * code, every room in use). Set once and kept: the socket does not retry.
+   */
+  roomError: string | null;
 
   /** Seconds left on the waiting-room countdown, or null outside `waiting`. */
   secondsLeft: number | null;
 
   claimSeat: (request: SeatRequest) => void;
+  /**
+   * The seat to claim as soon as the socket (re)opens, without sending now.
+   * For moving rooms: the next room's connection is not open yet when the
+   * auctioneer submits their login, so the claim waits for it. Null forgets
+   * any seat held in the room being left.
+   */
+  queueSeat: (request: SeatRequest | null) => void;
   openWaitingRoom: (seconds?: number) => void;
   startAuction: () => void;
   putUp: (playerId: number) => void;
@@ -349,6 +369,7 @@ export function useAuctionSocket(): AuctionSocket {
   const [state, setState] = useState<RoomState | null>(null);
   const [seat, setSeat] = useState<Seat | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [roomError, setRoomError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   const socketRef = useRef<WebSocket | null>(null);
@@ -357,17 +378,36 @@ export function useAuctionSocket(): AuctionSocket {
   /** Read inside send() so a bid always quotes the version on screen. */
   const lotVersion = useRef<number | null>(null);
   const attempt = useRef(0);
-  const closed = useRef(false);
+  // The room this tab is in (console/auctionRoom.ts). The connection below is
+  // to that room, and moves when it does.
+  const room = useRoom();
 
   /* ---------------- the connection ---------------- */
 
   useEffect(() => {
-    closed.current = false;
+    // Per room. A local flag rather than a ref: when the room changes, the old
+    // socket's close and its last frames arrive after this effect has already
+    // run again for the new room, and must be ignored rather than mistaken
+    // for the new room's.
+    let stopped = false;
     let reconnectTimer: number | undefined;
     let pingTimer: number | undefined;
 
+    setState(null);
+    setSeat(null);
+    setRoomError(null);
+    attempt.current = 0;
+    lotVersion.current = null;
+
+    // At the Live Bidding entry, before a room is created or joined, there is
+    // nothing to connect to.
+    if (!room.chosen) {
+      setStatus("closed");
+      return;
+    }
+
     const connect = () => {
-      if (closed.current) return;
+      if (stopped) return;
 
       // Created here, not memoised — StrictMode's double mount would otherwise
       // hand the second mount a socket the first mount's cleanup had closed.
@@ -404,6 +444,7 @@ export function useAuctionSocket(): AuctionSocket {
       };
 
       socket.onmessage = (event) => {
+        if (stopped) return; // a frame from the room this tab has left
         let payload: Record<string, unknown>;
         try {
           payload = JSON.parse(event.data as string);
@@ -422,7 +463,8 @@ export function useAuctionSocket(): AuctionSocket {
             setSeat((payload as { seat: Seat }).seat);
             break;
           case "error":
-            setError(String(payload.message ?? "The room refused that."));
+            if (payload.about === "room") setRoomError(String(payload.message ?? "That room is not available."));
+            else setError(String(payload.message ?? "The room refused that."));
             break;
           case "pong":
           default:
@@ -430,9 +472,12 @@ export function useAuctionSocket(): AuctionSocket {
         }
       };
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         window.clearInterval(pingTimer);
-        if (closed.current) {
+        // 44xx: the server turned the room code away (auction/ws.py `_refuse`).
+        // Retrying would be refused the same way, so stop and say why.
+        if (stopped) return; // the room this tab has left
+        if (ROOM_REFUSALS.has(event.code)) {
           setStatus("closed");
           return;
         }
@@ -450,13 +495,16 @@ export function useAuctionSocket(): AuctionSocket {
     connect();
 
     return () => {
-      closed.current = true;
+      stopped = true;
       window.clearTimeout(reconnectTimer);
       window.clearInterval(pingTimer);
       socketRef.current?.close();
       socketRef.current = null;
     };
-  }, []);
+    // The room itself: entering one, leaving for the entry, or moving between
+    // codes. Not `creating` clearing once the chair is taken -- same room.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.chosen, room.code]);
 
   /* ---------------- countdown ---------------- */
 
@@ -651,8 +699,12 @@ export function useAuctionSocket(): AuctionSocket {
     seat,
     error,
     dismissError: useCallback(() => setError(null), []),
+    roomError,
     secondsLeft,
     claimSeat,
+    queueSeat: useCallback((request: SeatRequest | null) => {
+      seatRequest.current = request;
+    }, []),
     bid,
     ...actions,
     myTeam,

@@ -206,23 +206,23 @@ async def ingest(request: IngestRequest | None = None) -> IngestResponse:
         # at which point the room would keep bidding on the old pool while
         # every client showed the new one. Re-reading here closes that window.
         try:
-            from auction.room import room as auction_room
+            from auction.rooms import registry as auction_rooms
             from db import get_player_db
 
-            if auction_room.phase in ("lobby", "finished"):
-                auction_room.load_players(
-                    get_player_db().get_all_players(limit=1000, offset=0)
-                )
-                logger.info("Auction room pool refreshed after ingestion")
-            else:
-                # Swapping the pool under a running auction would invalidate
-                # the block and every record keyed by player id. The operator
-                # is told rather than having the auction quietly corrupted.
+            # Every open room, not just the default one. A room mid-auction
+            # keeps its pool: swapping it under a running auction would
+            # invalidate the block and every record keyed by player id, so the
+            # operator is told rather than the auction quietly corrupted.
+            kept = auction_rooms.refresh_pool(
+                get_player_db().get_all_players(limit=1000, offset=0)
+            )
+            logger.info("Auction room pools refreshed after ingestion")
+            if kept:
                 logger.warning(
-                    "Ingestion finished, but the auction is %s - the room kept "
-                    "its existing pool. Finish or reset the auction, then "
-                    "restart to pick up the new data.",
-                    auction_room.phase,
+                    "Ingestion finished, but an auction is running in %s - "
+                    "those rooms kept their existing pool. Finish or reset "
+                    "them, then restart to pick up the new data.",
+                    ", ".join(kept),
                 )
         except Exception as exc:  # noqa: BLE001 - ingestion itself succeeded
             logger.warning("Could not refresh the auction room pool: %s", exc)

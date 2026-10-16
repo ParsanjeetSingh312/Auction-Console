@@ -30,6 +30,7 @@ import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 
+import { currentRoom, leaveRoom, markRoomClaimed, useRoom } from "../console/auctionRoom";
 import { money } from "../console/format";
 import { cardVariants, EASE, gridVariants, pressable } from "../console/motion";
 import { useSocketEngine } from "../console/socketEngine";
@@ -45,6 +46,7 @@ import SocketBlock from "../components/Auction/SocketBlock";
 import WaitingRoom from "../components/Auction/WaitingRoom";
 import AuctionBriefing from "../components/Auction/AuctionBriefing";
 import LiveMarquee from "../components/Marquee/LiveMarquee";
+import RoomGate from "../components/Auction/RoomGate";
 
 import "../console/console.css";
 
@@ -191,6 +193,40 @@ function LiveAuctionInner() {
   }, [phase]);
 
   /*
+    The room this tab is in (console/auctionRoom.ts), and what sends it back to
+    the Live Bidding entry: a code the server will not serve, or -- for an
+    auctioneer creating a room -- a login it turned away. Either way the tab
+    leaves the room and the entry says why.
+
+    A room this tab created and has not yet got the chair of is still
+    "creating": the first error from it is the login being refused, since a
+    room nobody else knows the code to has nothing else to refuse.
+  */
+  const room = useRoom();
+  const [gateNotice, setGateNotice] = useState<string | null>(null);
+  const { roomError, queueSeat } = socket;
+  useEffect(() => {
+    if (!room.chosen || !roomError) return;
+    setGateNotice(roomError);
+    queueSeat(null);
+    leaveRoom();
+  }, [room.chosen, roomError, queueSeat]);
+
+  const creating = room.chosen && room.creating && role !== "auctioneer";
+  useEffect(() => {
+    if (role === "auctioneer" && room.creating) markRoomClaimed();
+  }, [role, room.creating]);
+  useEffect(() => {
+    if (!creating || !error) return;
+    setGateNotice(error);
+    queueSeat(null);
+    leaveRoom();
+  }, [creating, error, queueSeat]);
+  useEffect(() => {
+    if (room.chosen) setGateNotice(null);
+  }, [room.chosen]);
+
+  /*
     Someone who just clicked "Leave seat" is asking for the seat picker, not for
     whatever screen the room's phase would otherwise dictate.
 
@@ -202,6 +238,17 @@ function LiveAuctionInner() {
   */
   const leaving =
     role === null && new URLSearchParams(window.location.search).get("seat") === "pick";
+
+  /* ---------------- the way in: create or join a room ---------------- */
+
+  if (!room.chosen) {
+    return (
+      <>
+        {toastLayer}
+        <RoomGate socket={socket} notice={gateNotice} />
+      </>
+    );
+  }
 
   /* ---------------- the report ---------------- */
 
@@ -414,6 +461,8 @@ function SeatPicker({
           </div>
         </motion.header>
 
+        <RoomBar socket={socket} />
+
         <motion.button
           {...pressable}
           variants={cardVariants}
@@ -461,7 +510,11 @@ function SeatPicker({
           </span>
         </motion.div>
 
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        <div
+          className={`grid grid-cols-2 gap-2 sm:grid-cols-3 ${
+            (socket.state?.teams.length ?? 0) > 10 ? "lg:grid-cols-6" : "lg:grid-cols-5"
+          }`}
+        >
           {(socket.state?.teams ?? []).map((team, index) => (
             <motion.button
               key={team.id}
@@ -503,6 +556,51 @@ function SeatPicker({
         <AuctioneerLoginModal socket={socket} onClose={() => setLoginOpen(false)} />
       )}
     </div>
+  );
+}
+
+const ROOM_BUTTON =
+  "rounded-lg border border-line bg-surface-card px-3 py-2 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-body transition-colors hover:border-slate-faint/60 hover:text-slate-ink disabled:cursor-not-allowed disabled:opacity-60";
+
+/**
+ * Which room this is, and the way out of it.
+ *
+ * Shown above the seats. Never the room's code: that is on the auctioneer's
+ * control panel alone (RoomCodeBadge). Creating and joining rooms happen at the
+ * Live Bidding entry (RoomGate), which "Leave room" returns to.
+ */
+function RoomBar({ socket }: { socket: ReturnType<typeof useAuctionSocket> }) {
+  const here = currentRoom();
+  const teams = socket.state?.teams.length;
+
+  return (
+    <motion.section
+      variants={cardVariants}
+      className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface-card px-5 py-3.5 shadow-soft"
+      aria-label="Auction room"
+    >
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 gap-y-1">
+        <span className="font-ui text-[9.5px] font-semibold uppercase tracking-[0.16em] text-slate-faint">
+          Auction room
+        </span>
+        <span className="font-head text-[17px] font-bold leading-none text-slate-ink">
+          {here.code ? "Private room" : "Main room"}
+        </span>
+        {teams ? (
+          <span className="font-ui text-[11.5px] text-slate-muted">up to {teams} franchises</span>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          socket.queueSeat(null);
+          leaveRoom();
+        }}
+        className={ROOM_BUTTON}
+      >
+        Leave room
+      </button>
+    </motion.section>
   );
 }
 

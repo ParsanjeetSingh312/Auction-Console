@@ -21,6 +21,7 @@ import { motion, useReducedMotion } from "framer-motion";
 
 import { EASE, pressable } from "../../console/motion";
 import type { AuctionSocket } from "../../hooks/useAuctionSocket";
+import RoomCodeBadge from "./RoomCodeBadge";
 
 export interface WaitingRoomProps {
   socket: AuctionSocket;
@@ -83,6 +84,12 @@ export default function WaitingRoom({
                 ? "Waiting for the auctioneer to begin."
                 : "Stay on this screen. The block opens automatically when the auctioneer starts."}
           </p>
+          {/* The room's code, for franchise owners still to arrive. Auctioneer only. */}
+          {isAuctioneer && (
+            <div className="mt-4 flex justify-center">
+              <RoomCodeBadge />
+            </div>
+          )}
         </header>
 
         <section className="rounded-xl border border-line bg-surface-card p-4 shadow-soft">

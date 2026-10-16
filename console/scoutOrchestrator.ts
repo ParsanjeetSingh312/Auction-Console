@@ -126,6 +126,8 @@ export interface OrchestratorHandlers {
 export interface AdviseRequest {
   question: string;
   team_id?: number | null;
+  /** The auction room the franchise sits in; null is the default room. */
+  room?: string | null;
   on_block_player_id?: number | null;
   budget_seconds?: number | null;
   thread_id?: string | null;

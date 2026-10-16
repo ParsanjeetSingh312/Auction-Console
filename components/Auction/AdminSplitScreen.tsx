@@ -56,6 +56,7 @@ import ResultsView from "../Console/ResultsView";
 import ScoutView from "../Console/ScoutView";
 import TeamBudgetGrid from "../Console/TeamBudgetGrid";
 import TeamsView from "../Console/TeamsView";
+import RoomCodeBadge from "./RoomCodeBadge";
 
 /** Left-pane tools. The right pane never changes — that is the point. */
 type Tool = "teams" | "pool" | "results" | "scout" | "stats";
@@ -440,6 +441,9 @@ export default function AdminSplitScreen({
             </div>
           </div>
         </div>
+
+        {/* The room's code, to send to the franchise owners. Only here. */}
+        <RoomCodeBadge />
 
         <div className="min-w-[240px] flex-1">
           <CommandSearch
