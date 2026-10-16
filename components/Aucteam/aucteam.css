@@ -691,6 +691,85 @@
   }
 }
 
+/* --- Reset ------------------------------------------------------------- */
+
+.aq-report__reset {
+  padding: 0 clamp(22px, 4vw, 44px) clamp(22px, 3vw, 32px);
+  border-bottom: 1px solid var(--aq-line);
+}
+/* The big one, under the grade. Green-edged like the "Get the report" button
+   it follows on from: it is the next step, not a destructive one. */
+.aq-reset {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  min-height: 76px;
+  padding: 14px 22px;
+  border-radius: 16px;
+  border: 1.5px solid rgba(52, 210, 123, 0.55);
+  background:
+    linear-gradient(100deg, rgba(52, 210, 123, 0.16), rgba(56, 225, 255, 0.08) 70%),
+    rgba(255, 255, 255, 0.02);
+  color: var(--aq-ink);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 18px 44px -24px rgba(52, 210, 123, 0.8);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.aq-reset:hover {
+  border-color: var(--aq-turf);
+  box-shadow: 0 22px 54px -22px rgba(52, 210, 123, 0.95);
+}
+.aq-reset__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  background: rgba(52, 210, 123, 0.18);
+  color: var(--aq-turf);
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.aq-reset:hover .aq-reset__icon {
+  transform: rotate(-300deg);
+}
+.aq-reset__text strong {
+  display: block;
+  font-family: var(--aq-display);
+  font-weight: 600;
+  font-size: clamp(18px, 2vw, 22px);
+  line-height: 1.15;
+}
+.aq-reset__text small {
+  display: block;
+  margin-top: 3px;
+  font-size: 13px;
+  color: var(--aq-dim);
+}
+
+/* The flight home (resetFlight.ts): ghosts above everything on the page. */
+.aq-flight-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  pointer-events: none;
+}
+.aq-ghost {
+  background: var(--aq-panel-2);
+  will-change: transform, opacity;
+}
+/* A card glows as its player lands back on it. */
+.aq-card-wrap--home .aq-card {
+  animation: aq-home 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes aq-home {
+  0% { box-shadow: 0 0 0 0 var(--tier), 0 14px 40px rgba(0, 0, 0, 0.4); }
+  30% { box-shadow: 0 0 0 3px var(--tier), 0 0 46px -6px var(--tier); }
+  100% { box-shadow: 0 0 0 0 transparent, 0 14px 40px rgba(0, 0, 0, 0.4); }
+}
+
 /* --- Phone ------------------------------------------------------------- */
 
 @media (max-width: 640px) {

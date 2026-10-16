@@ -97,7 +97,7 @@ function AucteamCard({ player, picked, index = 0 }: AucteamCardProps) {
   const draggable = !picked && !coarsePointer;
 
   return (
-    <motion.div className="aq-card-wrap" data-dragging={dragging} animate={shake}>
+    <motion.div className="aq-card-wrap" data-card-id={player.id} data-dragging={dragging} animate={shake}>
       <motion.article
         className="aq-card"
         data-tier={player.tier}

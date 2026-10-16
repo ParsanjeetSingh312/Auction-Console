@@ -27,6 +27,7 @@
  */
 import { useCallback, useMemo } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { RotateCcw } from "lucide-react";
 
 import {
   ROLE_NAMES,
@@ -37,7 +38,6 @@ import {
   type TierCode,
 } from "../../console/aucteamApi";
 import {
-  clearRoster,
   generateReport,
   removePlayer,
   setTeamName,
@@ -45,6 +45,7 @@ import {
   useRosterPlayers,
 } from "../../console/aucteamStore";
 import { overBoard, pointOf, registerBoard } from "./dropZone";
+import { resetWithFlight } from "./resetFlight";
 import ScoutDock from "./ScoutDock";
 import TierLabel from "./TierLabel";
 
@@ -77,6 +78,7 @@ function Slot({ player, number }: { player: AucteamPlayer; number: number }) {
       layout={!reduced}
       className="aq-slot"
       data-tier={player.tier}
+      data-player-id={player.id}
       initial={reduced ? false : { scale: 0.86, x: -14 }}
       animate={{ scale: 1, x: 0 }}
       exit={reduced ? undefined : { x: 48, opacity: 0, transition: { duration: 0.18 } }}
@@ -265,8 +267,15 @@ export default function RosterBoard() {
       <ScoutDock />
 
       <div className="aq-board__foot">
-        <button type="button" className="aq-btn" onClick={clearRoster} disabled={players.length === 0}>
-          Clear
+        <button
+          type="button"
+          className="aq-btn"
+          onClick={() => void resetWithFlight()}
+          disabled={players.length === 0}
+          title="Send every pick back to the pool"
+        >
+          <RotateCcw aria-hidden className="h-4 w-4" />
+          Reset
         </button>
         <button
           type="button"

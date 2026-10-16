@@ -267,6 +267,31 @@ export function clearRoster(): void {
   rosterChanged();
 }
 
+/**
+ * Start a new XI: every pick goes back to the pool, and the check and the
+ * report go with them. Any request still in flight is abandoned, so a report
+ * for the old eleven can never land on the empty board. The team name stays.
+ *
+ * The animation that carries the picks home lives in
+ * components/Aucteam/resetFlight.ts; this is only the state change it ends on.
+ */
+export function resetBuild(): void {
+  window.clearTimeout(validateTimer);
+  validateController?.abort();
+  reportController?.abort();
+  reportFor = null;
+  set({
+    roster: [],
+    check: null,
+    checking: false,
+    report: null,
+    reportStatus: "idle",
+    reportError: null,
+    refusal: null,
+  });
+  persist();
+}
+
 export function setTeamName(name: string): void {
   set({ teamName: name.slice(0, 40) });
   persist();

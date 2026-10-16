@@ -175,21 +175,45 @@ export default function PlayerSelect({ players, stats }: PlayerSelectProps) {
         setDealt(true);
         return;
       }
+      /*
+        The deal glides after the scroll instead of being pinned to it.
+
+        Tied straight to scroll progress, the cards jumped in steps with every
+        notch of a mouse wheel (about 100px a notch). Now each scroll update
+        retargets one tween that eases the deal towards where the scroll says
+        it should be, so a notch reads as a push and the cards coast to rest.
+        `overwrite` keeps it to one tween however fast the wheel turns; the
+        headline's fade rides the same value, so it glides too.
+      */
+      const glide = { v: deal.current };
+      const to = (progress: number) => clamp((progress - DEAL_START) / (DEAL_END - DEAL_START), 0, 1);
+      const apply = () => {
+        deal.current = glide.v;
+        place();
+        setDealt(glide.v > 0.96);
+      };
       ScrollTrigger.create({
         trigger: wrapRef.current,
         start: "top top",
         end: "bottom bottom",
         onUpdate: (self) => {
-          deal.current = clamp((self.progress - DEAL_START) / (DEAL_END - DEAL_START), 0, 1);
-          place();
-          setDealt(deal.current > 0.96);
+          gsap.to(glide, {
+            v: to(self.progress),
+            duration: 0.9,
+            ease: "power3.out",
+            overwrite: true,
+            onUpdate: apply,
+          });
         },
+        // A resize or a reload mid-page jumps straight to the right state.
         onRefresh: (self) => {
-          deal.current = clamp((self.progress - DEAL_START) / (DEAL_END - DEAL_START), 0, 1);
-          place();
+          gsap.killTweensOf(glide);
+          glide.v = to(self.progress);
+          apply();
         },
       });
       place();
+      return () => gsap.killTweensOf(glide);
     },
     { scope: wrapRef, dependencies: [reduced, place] },
   );
@@ -266,9 +290,9 @@ export default function PlayerSelect({ players, stats }: PlayerSelectProps) {
         >
           <span className="font-tech text-[10px] uppercase tracking-[0.32em] text-auctiq-gold/80">On the block</span>
           <h2 className="mt-3 font-auctiq text-[clamp(2rem,6vw,4.5rem)] leading-[0.95] tracking-[0.02em] text-auctiq-text">
-            EVERY NAME
+            TRENDING
             <br />
-            <span className="text-auctiq-gold text-glow-gold">HAS A PRICE</span>
+            <span className="text-auctiq-gold text-glow-gold">PLAYERS</span>
           </h2>
           <p className="mt-3 hidden max-w-md font-tech text-[13.5px] leading-relaxed text-auctiq-text/75 sm:block">
             Two hundred and eighty-four of them, scouted on seventeen metrics apiece. The bidding decides the rest.

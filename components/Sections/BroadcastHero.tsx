@@ -30,16 +30,19 @@
  * slot markers are gone. The container and its `gap-3` are the same ones the
  * shell established, so nothing moved when the contents landed.
  */
-import { Suspense, lazy, useLayoutEffect, useRef } from "react";
+import { Fragment, Suspense, lazy, useLayoutEffect, useRef } from "react";
 
-import { createTimeline, splitText, stagger, utils } from "animejs";
+import { createTimeline, stagger, utils } from "animejs";
+import gsap from "gsap";
 
 import { AuctiqMark } from "../Global/AuctiqLogo";
 import { useHandoffPhase } from "../Intro/ballHandoff";
 // Superseded in place by the war-room trigger. `LiveBiddingCard` is kept on
 // disk and unmounted; restoring it is this import and the line below.
 import WarRoomTrigger from "../WarRoom/WarRoomTrigger";
-import TrendingPlayersCard from "../UI/TrendingPlayersCard";
+// Trending Players was removed so the war room can take the whole column.
+// `TrendingPlayersCard` is kept on disk and unmounted; restoring it is its
+// import and a line in the panel stack below.
 // Removed from the hero after deployment. `UpcomingAuctionsCard` is kept on
 // disk and unmounted; restoring it is its import and a line in the panel stack.
 
@@ -53,6 +56,33 @@ import TrendingPlayersCard from "../UI/TrendingPlayersCard";
 const AuctoniqTrophy = lazy(() => import("../3D/AuctoniqTrophy"));
 
 const WORD = "AUCTONIQ".split("");
+const TAGLINE = ["Where", "intelligence", "meets", "patience"];
+
+/**
+ * The wordmark's flash, and the tagline answering it.
+ *
+ * One pass of light crosses AUCTONIQ; as it leaves the last letter a second
+ * pass runs along the tagline, the gold under it brightens and the rules
+ * either side stretch out and settle. Then the pair rests for a few seconds
+ * and does it again, so the line under the name is never a static caption.
+ * Returns the timeline so the caller can kill it.
+ */
+function flashLoop(root: HTMLElement, delay: number): gsap.core.Timeline | null {
+  const band = root.querySelector<HTMLElement>(".wordmark-sheen");
+  const sheen = root.querySelector<HTMLElement>(".hero-tagline-sheen");
+  const line = root.querySelector<HTMLElement>(".hero-tagline");
+  const rules = root.querySelectorAll<HTMLElement>(".hero-tagline-rule");
+  if (!band || !sheen || !line) return null;
+  const rest = "drop-shadow(0 0 1px rgba(0,0,0,0.9)) drop-shadow(0 0 10px rgba(246,196,90,0.28))";
+  const lit = "drop-shadow(0 0 1px rgba(0,0,0,0.9)) drop-shadow(0 0 18px rgba(255,214,120,0.75))";
+  return gsap
+    .timeline({ repeat: -1, repeatDelay: 5.2, delay })
+    .fromTo(band, { backgroundPosition: "150% 0%" }, { backgroundPosition: "-50% 0%", duration: 1.1, ease: "sine.inOut" }, 0)
+    .fromTo(sheen, { backgroundPosition: "150% 0%" }, { backgroundPosition: "-50% 0%", duration: 1.0, ease: "sine.inOut" }, 0.7)
+    .fromTo(line, { filter: rest }, { filter: lit, duration: 0.45, ease: "power2.out", yoyo: true, repeat: 1 }, 0.75)
+    .fromTo(line, { letterSpacing: "0.24em" }, { letterSpacing: "0.27em", duration: 0.45, ease: "power2.out", yoyo: true, repeat: 1 }, 0.75)
+    .fromTo(rules, { scaleX: 1, opacity: 0.85 }, { scaleX: 1.45, opacity: 1, duration: 0.45, ease: "power3.out", yoyo: true, repeat: 1 }, 0.75);
+}
 
 export default function BroadcastHero() {
   /*
@@ -64,24 +94,37 @@ export default function BroadcastHero() {
   */
   const phase = useHandoffPhase();
   const holding = phase === "awaiting" || phase === "falling";
+  const columnRef = useRef<HTMLDivElement>(null);
   const wordRef = useRef<HTMLHeadingElement>(null);
-  const taglineRef = useRef<HTMLParagraphElement>(null);
+  const taglineRef = useRef<HTMLDivElement>(null);
   const wasHolding = useRef(holding);
   useLayoutEffect(() => {
     if (holding) {
       wasHolding.current = true;
       return;
     }
-    if (!wasHolding.current || !wordRef.current || !taglineRef.current) return;
-    wasHolding.current = false;
-    // Reduced motion: the readable final state, at once.
+    // Reduced motion: the readable final state, at once, and no loop.
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const column = columnRef.current;
+    if (!column || !wordRef.current || !taglineRef.current) return;
+    if (!wasHolding.current) {
+      // No opening to wait for (a returning visitor): the flash starts soon
+      // after the page settles, then repeats.
+      const loop = flashLoop(column, 1.6);
+      return () => {
+        loop?.kill();
+      };
+    }
+    wasHolding.current = false;
     const letters = wordRef.current.querySelectorAll(".hero-letter");
     const band = wordRef.current.parentElement?.querySelector(".wordmark-sheen");
-    const tagline = splitText(taglineRef.current, { words: true });
+    const words = taglineRef.current.querySelectorAll(".hero-tagline > .hero-tagline-word");
+    const rules = taglineRef.current.querySelectorAll(".hero-tagline-rule");
+    const sheen = taglineRef.current.querySelector(".hero-tagline-sheen");
     // Hidden from the first paint, not from whenever each tween starts.
     utils.set(letters, { opacity: 0 });
-    utils.set(tagline.words, { opacity: 0 });
+    utils.set(words, { opacity: 0 });
+    utils.set(rules, { scaleX: 0 });
     // One thing at a time: the ball settles into the cradle first (about half
     // a second), then the name rises over it from the middle out, coming into
     // focus; one pass of light crosses it; then the line under it, word by
@@ -101,22 +144,27 @@ export default function BroadcastHero() {
       )
       .add(wordRef.current, { letterSpacing: ["0.3em", "0.06em"], duration: 1400 }, 550)
       .add(
-        tagline.words,
-        { translateY: [10, 0], opacity: [0, 1], filter: ["blur(6px)", "blur(0px)"], duration: 800, ease: "outQuart", delay: stagger(80) },
+        words,
+        { translateY: [14, 0], opacity: [0, 1], filter: ["blur(6px)", "blur(0px)"], duration: 800, ease: "outQuart", delay: stagger(90) },
         1300,
-      );
-    // After every letter has landed, so the copy lines up with the word.
+      )
+      .add(rules, { scaleX: [0, 1], duration: 900, ease: "outExpo" }, 1500);
+    // After every letter has landed, so the copy lines up with the word; the
+    // tagline catches the same light as it leaves the last letter.
     if (band) tl.add(band, { backgroundPosition: ["150% 0%", "-50% 0%"], duration: 1100, ease: "inOutSine" }, 2050);
+    if (sheen) tl.add(sheen, { backgroundPosition: ["150% 0%", "-50% 0%"], duration: 1000, ease: "inOutSine" }, 2750);
+    // Then the same flash on a loop, the first repeat a few seconds later.
+    const loop = flashLoop(column, 9);
     return () => {
       tl.complete();
-      tagline.revert();
+      loop?.kill();
     };
   }, [holding]);
 
   return (
     <section
       aria-label="IPL Auction 2026"
-      className="relative z-10 mx-auto flex min-h-[100svh] w-full max-w-[1400px] flex-col gap-8 px-5 pb-10 pt-[150px] sm:px-8 sm:pt-[120px] lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(300px,34%)] lg:items-stretch lg:gap-10"
+      className="relative z-10 mx-auto flex min-h-[100svh] w-full max-w-[1400px] flex-col gap-8 px-5 pb-10 pt-[150px] sm:px-8 sm:pt-[120px] lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(400px,42%)] lg:items-center lg:gap-12"
     >
       {/*
         Left column — the wordmark, and the trophy beneath it.
@@ -127,7 +175,7 @@ export default function BroadcastHero() {
         naming. Centred rather than left-aligned because a single word over a
         centred object reads as a mark; ranged left it reads as a stray label.
       */}
-      <div className="auctiq-stagger flex min-w-0 flex-col items-center justify-center">
+      <div ref={columnRef} className="auctiq-stagger flex min-w-0 flex-col items-center justify-center">
         {/*
           Russo One, the same face the showcase sets "EVERY NAME HAS A PRICE"
           in, so the landing has one display voice rather than a different one
@@ -185,32 +233,48 @@ export default function BroadcastHero() {
         </Suspense>
 
         {/*
-          Cyan against the orange above it and the navy behind it. On the
-          #020617 ground it measures 11.16:1 — the highest-contrast token on
-          this surface — and it is the complement of the wordmark's orange, so
-          the pair reads as deliberate rather than as two accent colours that
-          happened to land together.
+          The tagline, answering the wordmark.
 
-          Set in Chakra Petch, which is Russo One's companion everywhere else on
-          this page: the showcase runs exactly this pairing under its own
-          heading. A display face carrying its own caption reads as a logo with
-          a subtitle welded on.
+          Gold rather than the cyan it used to be: the gold of the trophy it
+          now sits under, graded from champagne at the cap height to amber at
+          the baseline, so it reads as struck metal next to the orange neon of
+          the name. Rajdhani Bold — squared, condensed, sporty — in place of
+          Chakra Petch, larger and tracked a little tighter so it holds as one
+          bold line instead of a whisper of letters.
 
-          `uppercase` as a class rather than capitals in the string, so a screen
-          reader gets a sentence instead of six initialisms.
+          Pulled up under the plinth with a negative top margin: the trophy's
+          canvas leaves a band of empty scene below the model, which is what
+          left the line stranded at the foot of the hero.
+
+          The words are spans of their own so they can rise in one at a time,
+          and the gradient sits on each word (it is vertical, so every word
+          gets the identical grade). A copy on top carries the moving band of
+          light, the same trick as the wordmark's sheen. Screen readers get one
+          plain sentence from the sr-only span.
         */}
-        {/* The dark halo keeps the cyan readable over the lit stands of the
-            stadium photograph, which sit right behind this line. */}
-        <p
+        <div
           ref={taglineRef}
-          className="mt-1 text-center font-tech text-[clamp(0.7rem,1.5vw,0.95rem)] font-medium uppercase tracking-[0.34em] text-neon-cyan"
-          style={{
-            textShadow: "0 1px 10px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.7)",
-            ...(holding ? { visibility: "hidden" as const } : null),
-          }}
+          className="relative z-10 -mt-[clamp(3rem,8.5vh,5.75rem)] mb-[clamp(3rem,8.5vh,5.75rem)] flex items-center justify-center gap-4 sm:gap-5"
+          style={holding ? { visibility: "hidden" } : undefined}
         >
-          Where intelligence meets patience
-        </p>
+          <span aria-hidden className="hero-tagline-rule hero-tagline-rule--l hidden sm:block" />
+          <p className="hero-tagline relative">
+            <span className="sr-only">Where intelligence meets patience</span>
+            {TAGLINE.map((word, i) => (
+              <Fragment key={word}>
+                {i > 0 && " "}
+                <span aria-hidden className="hero-tagline-word">
+                  {word}
+                </span>
+              </Fragment>
+            ))}
+            {/* One run of plain text, so the band clips to every glyph at once. */}
+            <span aria-hidden className="hero-tagline-sheen">
+              {TAGLINE.join(" ")}
+            </span>
+          </p>
+          <span aria-hidden className="hero-tagline-rule hero-tagline-rule--r hidden sm:block" />
+        </div>
       </div>
 
       {/* Right column — the panel stack, and nothing else. */}
@@ -220,9 +284,8 @@ export default function BroadcastHero() {
         currently doing, and a reader who meets all six at once has no idea which
         to look at first.
       */}
-      <div className="auctiq-stagger flex flex-col gap-3 [&>*:nth-child(1)]:[animation-delay:0.30s] [&>*:nth-child(2)]:[animation-delay:0.41s]">
+      <div className="auctiq-stagger flex flex-col [&>*:nth-child(1)]:[animation-delay:0.30s]">
         <WarRoomTrigger />
-        <TrendingPlayersCard />
       </div>
     </section>
   );

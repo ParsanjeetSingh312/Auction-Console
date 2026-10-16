@@ -544,3 +544,100 @@
     }
   }
 }
+
+/* ==========================================================================
+   War Room panel (WarRoomTrigger.tsx): the landing's main right-hand panel.
+   ========================================================================== */
+.war-room-card {
+  /* A step heavier than the stock neon card: it is the only panel now, and
+     it carries a lot playing out. A cyan wash from the top-left corner, the
+     same hue as its rule, so the panel reads lit rather than painted. */
+  background:
+    radial-gradient(120% 60% at 0% 0%, rgba(34, 211, 238, 0.10), transparent 60%),
+    radial-gradient(90% 50% at 100% 100%, rgba(251, 146, 60, 0.07), transparent 65%),
+    theme("colors.neon.pane");
+  box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  min-height: 560px;
+}
+.war-room-pulse {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #fb923c;
+}
+.war-room-pulse::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 999px;
+  border: 1px solid rgba(251, 146, 60, 0.7);
+  animation: war-room-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes war-room-ping {
+  0% { transform: scale(0.6); opacity: 1; }
+  80%, 100% { transform: scale(1.6); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .war-room-pulse::after { animation: none; }
+}
+
+/* ==========================================================================
+   Hero tagline (BroadcastHero.tsx): "Where intelligence meets patience".
+   Rajdhani Bold in graded trophy gold, between two gold rules, with a band
+   of light that runs along it each time the AUCTONIQ wordmark flashes.
+   ========================================================================== */
+.hero-tagline {
+  margin: 0;
+  font-family: theme("fontFamily.num");
+  font-weight: 700;
+  font-size: clamp(1.05rem, 1.6vw, 1.4rem);
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  word-spacing: 0.12em;
+  /* The trailing tracking after the last letter would push the line right. */
+  padding-left: 0.24em;
+  text-align: center;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 10px rgba(246, 196, 90, 0.28));
+}
+.hero-tagline-word {
+  display: inline-block;
+  color: transparent;
+  background-image: linear-gradient(180deg, #ffe7a3 0%, #f6c45a 45%, #e6a032 75%, #c7801c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+/* The band of light: the same words as one plain run of text laid exactly
+   over them, transparent, with a bright stripe clipped to its glyphs and
+   moved by background-position (the wordmark's sheen, for the tagline). */
+.hero-tagline-sheen {
+  position: absolute;
+  inset: 0;
+  padding-left: inherit;
+  pointer-events: none;
+  color: transparent;
+  /* A narrow hot core with a soft falloff: a glint, not a wash. Added as
+     light over the gold rather than painted on top of it. */
+  mix-blend-mode: plus-lighter;
+  background-image: linear-gradient(100deg, rgba(255, 255, 255, 0) 44%, rgba(255, 248, 225, 0.85) 48.5%, #ffffff 50%, rgba(255, 248, 225, 0.85) 51.5%, rgba(255, 255, 255, 0) 56%);
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  background-position: 150% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+.hero-tagline-rule {
+  height: 2px;
+  width: clamp(28px, 4vw, 64px);
+  border-radius: 2px;
+  box-shadow: 0 0 10px rgba(246, 196, 90, 0.45);
+}
+.hero-tagline-rule--l {
+  background: linear-gradient(90deg, rgba(246, 196, 90, 0), #f6c45a);
+  transform-origin: 100% 50%;
+}
+.hero-tagline-rule--r {
+  background: linear-gradient(270deg, rgba(246, 196, 90, 0), #f6c45a);
+  transform-origin: 0% 50%;
+}

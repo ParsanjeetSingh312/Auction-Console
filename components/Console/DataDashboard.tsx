@@ -17,9 +17,10 @@
  * PlayerCard are used here completely unmodified, exactly as the console uses
  * them, and there is no second copy of any of them to keep in step.
  *
- * The rail keeps the franchise purses and the ledger. Both are readings, not
- * controls, and during pre-auction analysis "who has money" is one of the more
- * useful things on the screen.
+ * The right rail is gone too. It held the franchise purses and the ledger,
+ * and on this route both only ever showed starting values -- the read-only
+ * engine has no auction to move them -- so the pool now takes the full width.
+ * TeamBudgetGrid and LedgerPanel are unchanged and still used by the console.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -40,12 +41,10 @@ import { useScout } from "../../console/useScout";
 
 import ReloadPoolButton from "../ReloadPoolButton";
 import CommandSearch from "./CommandSearch";
-import LedgerPanel from "./LedgerPanel";
 import PoolTable from "./PoolTable";
 import type { PoolLayout } from "./PoolTable";
 import ResultsView from "./ResultsView";
 import ScoutView from "./ScoutView";
-import TeamBudgetGrid from "./TeamBudgetGrid";
 import TeamsView from "./TeamsView";
 import { PlayerCard } from "./PlayerCard";
 
@@ -301,7 +300,7 @@ export default function DataDashboard() {
         </motion.nav>
       </motion.header>
 
-      <div className="split">
+      <div className="split split--solo">
         <main className="main">
           {engine.rosterError && (
             <RosterError message={engine.rosterError} onRetry={engine.reloadRoster} />
@@ -359,14 +358,6 @@ export default function DataDashboard() {
           </div>
         </main>
 
-        <aside className="side">
-          <div className="border-b border-rule px-3.5 py-3">
-            <TeamBudgetGrid summaries={engine.summaries} purse={engine.rules.purse} />
-          </div>
-
-          {/* No onClear: clearing the ledger would be a write. */}
-          <LedgerPanel log={engine.log} />
-        </aside>
       </div>
 
       <AnimatePresence>

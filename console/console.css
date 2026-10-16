@@ -489,6 +489,14 @@
   grid-template-columns: minmax(0, 1fr) 372px;
   min-height: 0;
 }
+/* The Data Interface has no rail: the pool takes the whole width. */
+.split.split--solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+.split.split--solo > .main {
+  padding: 18px clamp(18px, 2.4vw, 36px) 48px;
+}
+
 .split > .main {
   min-width: 0;
   overflow: auto;
@@ -1836,4 +1844,142 @@ select.pick {
 html:has(.console-dark),
 body:has(.console-dark) {
   background-color: #020617;
+}
+
+/* ==========================================================================
+   Pool cards (PoolGrid.tsx): the franchise tint.
+
+   Built from the theme's own tokens (--paper, --rule, --ink), so the same
+   card works on the white console and the night Data Interface. The team
+   colour is a hint, not a fill: a wash that fades out by the middle of the
+   card, a hairline, and a 3px edge.
+   ========================================================================== */
+.pool-card {
+  border-color: var(--rule);
+  background:
+    linear-gradient(140deg, color-mix(in oklab, var(--team) 7%, transparent) 0%, transparent 60%),
+    var(--paper);
+}
+.pool-card--team {
+  border-color: color-mix(in oklab, var(--team) 26%, var(--rule));
+  background:
+    radial-gradient(120% 90% at 0% 0%, color-mix(in oklab, var(--team) 17%, transparent), transparent 62%),
+    radial-gradient(80% 70% at 100% 100%, color-mix(in oklab, var(--team-2) 7%, transparent), transparent 70%),
+    var(--paper);
+}
+.pool-card:hover {
+  border-color: color-mix(in oklab, var(--team) 60%, var(--rule));
+  box-shadow: 0 14px 34px -20px color-mix(in oklab, var(--team) 80%, transparent);
+}
+.pool-card__edge {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--team), var(--team-2));
+  opacity: 0.85;
+}
+.pool-card__sheen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 38%, rgba(255, 255, 255, 0.07) 50%, transparent 62%);
+  background-size: 260% 100%;
+  background-position: 130% 0;
+  transition: background-position 0.75s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pool-card:hover .pool-card__sheen {
+  background-position: -30% 0;
+}
+.pool-card__team {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  color: var(--ink-2);
+  background: color-mix(in oklab, var(--team) 13%, transparent);
+  border: 1px solid color-mix(in oklab, var(--team) 30%, transparent);
+  letter-spacing: 0.08em;
+}
+.pool-card__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--team);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pool-card__sheen { transition: none; }
+}
+
+/* ==========================================================================
+   Seat picker (LiveAuction.tsx SeatPicker): the chair and the franchise board.
+   ========================================================================== */
+.seat-chair {
+  background:
+    radial-gradient(90% 120% at 0% 0%, color-mix(in oklab, var(--teal) 12%, transparent), transparent 60%),
+    var(--card);
+  box-shadow: var(--shadow);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.seat-chair:not(:disabled):hover {
+  border-color: color-mix(in oklab, var(--teal) 55%, var(--rule));
+  box-shadow: 0 24px 60px -28px color-mix(in oklab, var(--teal) 70%, transparent), var(--shadow);
+}
+.seat-chair:disabled {
+  opacity: 0.82;
+}
+.seat-chair__rule {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--teal), color-mix(in oklab, var(--teal) 10%, transparent));
+}
+/* One pass of light, driven by GSAP on arrival (parked off the left edge). */
+.seat-chair__sweep {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 45%;
+  pointer-events: none;
+  transform: translateX(-120%);
+  background: linear-gradient(100deg, transparent, color-mix(in oklab, var(--ink) 7%, transparent), transparent);
+}
+.seat-chair__emblem {
+  display: grid;
+  place-items: center;
+  width: 132px;
+  height: 132px;
+  border-radius: 999px;
+  color: var(--ink-2);
+  border: 1px solid var(--rule);
+  background: radial-gradient(circle, color-mix(in oklab, var(--teal) 14%, transparent), transparent 70%);
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), color 0.2s;
+}
+.seat-chair:not(:disabled):hover .seat-chair__emblem {
+  transform: rotate(-12deg) scale(1.04);
+  color: var(--teal-ink);
+}
+
+.seat-team {
+  border-color: color-mix(in oklab, var(--team) 32%, var(--rule));
+  background:
+    linear-gradient(180deg, color-mix(in oklab, var(--team) 16%, transparent) 0%, transparent 72%),
+    radial-gradient(110% 70% at 100% 100%, color-mix(in oklab, var(--team-2) 6%, transparent), transparent 70%),
+    var(--card);
+  box-shadow: var(--shadow);
+  transition: border-color 0.2s, box-shadow 0.25s;
+}
+.seat-team:not(:disabled):hover {
+  border-color: color-mix(in oklab, var(--team) 70%, var(--rule));
+  box-shadow: 0 22px 48px -24px color-mix(in oklab, var(--team) 85%, transparent), var(--shadow);
+}
+.seat-team__bar {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--team), var(--team-2));
+}
+.seat-team--taken {
+  filter: grayscale(0.85);
+  opacity: 0.55;
+  border-style: dashed;
 }

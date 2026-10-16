@@ -34,9 +34,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import gsap from "gsap";
+import { motion, useReducedMotion } from "framer-motion";
 import { useGSAP } from "@gsap/react";
 
 import { money, statLines } from "../../console/format";
+import { franchiseOf } from "../../console/franchises";
 import type {
   AuctionRecord,
   ConsolePlayer,
@@ -221,7 +223,7 @@ export default function PoolGrid({
         otherwise all grow to the tallest — which is what put 1995px of empty
         space inside the All-rounders box in the first version.
       */}
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] items-start gap-3">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] items-start gap-4">
         {visibleColumns.map((column) => (
           <section
             key={column.key}
@@ -243,7 +245,7 @@ export default function PoolGrid({
               </span>
             </header>
 
-            <ul className="space-y-2">
+            <ul className="space-y-2.5">
               {grouped[column.key].map((player) => (
                 <PlayerBox
                   key={player.id}
@@ -313,10 +315,19 @@ function PagerButton({
 }
 
 /**
- * One player, as a box.
+ * One player in the pool.
  *
- * A button rather than a div: opening the detail card is the whole point of the
- * box, and a keyboard user should reach it by tabbing rather than not at all.
+ * Two colours, each with one job. The ROLE tint (the column's colour) marks the
+ * price and the cap badge, so a bowler's figures read as a bowler's at a
+ * glance. The FRANCHISE tint is the card's ground: a light wash from the top
+ * left, a hairline border and a two-colour edge in the colours of the side the
+ * player was in the IPL 2026 squad of (console/franchises.ts, sourced from
+ * Wisden). A player in no 2026 squad keeps the plain ground rather than a
+ * guessed colour.
+ *
+ * Motion split: GSAP staggers the cards in (on the <li>, `.pool-box`), Framer
+ * Motion lifts the card under the pointer (on the <button>). Different
+ * elements, so the two never write the same transform.
  */
 function PlayerBox({
   player,
@@ -329,34 +340,47 @@ function PlayerBox({
   showMarket: boolean;
   onOpen: (player: ConsolePlayer) => void;
 }) {
+  const reduced = useReducedMotion();
   const tint = TINT[player.roleShort];
-
-  // Two figures, chosen by role. `statLines` leads with Matches, which is the
-  // least interesting of the three here, so it is dropped.
+  const team = franchiseOf(player.name);
   const figures = statLines(player).slice(1, 3);
-
   const sold = showMarket && record.status === "sold";
   const unsold = showMarket && record.status === "unsold";
 
+  const teamColour = team?.primary ?? "#64748b";
+  const teamAccent = team?.accent ?? "#64748b";
+
   return (
-    <li>
-      <button
+    <li className="pool-box">
+      <motion.button
         type="button"
         onClick={() => onOpen(player)}
-        style={{ ["--tint" as string]: tint }}
-        className={`pool-box group relative block w-full overflow-hidden rounded-lg border border-[var(--rule)] bg-[var(--paper)] p-2.5 text-left transition-[transform,border-color,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:border-[color-mix(in_oklab,var(--tint)_55%,transparent)] hover:shadow-[0_0_28px_-14px_var(--tint)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--tint)] ${
-          sold || unsold ? "opacity-75 hover:opacity-100" : ""
-        }`}
+        whileHover={reduced ? undefined : { y: -3 }}
+        whileTap={reduced ? undefined : { scale: 0.985 }}
+        transition={{ type: "spring", stiffness: 420, damping: 30 }}
+        title={team ? `${team.side} squad, IPL 2026` : undefined}
+        style={{
+          ["--tint" as string]: tint,
+          ["--team" as string]: teamColour,
+          ["--team-2" as string]: teamAccent,
+        }}
+        className={`pool-card group relative block w-full overflow-hidden rounded-xl border p-3.5 pl-4 text-left transition-[border-color,box-shadow] duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--tint)] ${
+          team ? "pool-card--team" : ""
+        } ${sold || unsold ? "opacity-75 hover:opacity-100" : ""}`}
       >
+        {/* The franchise edge: primary into accent, top to bottom. */}
+        {team && <span aria-hidden className="pool-card__edge" />}
+        {/* A soft pass of light on hover. */}
+        <span aria-hidden className="pool-card__sheen" />
+
         {/* The jersey number, set large behind the content and allowed to
-            bleed. Absent for most of the pool — an unverified number at this
-            size would be the most prominent lie on the page — in which case
-            nothing is drawn and the layout is unchanged. */}
+            bleed. Absent for most of the pool -- an unverified number at this
+            size would be the most prominent lie on the page. */}
         {player.jersey != null && (
           <span
             aria-hidden
-            className="pointer-events-none absolute -top-1 right-1 select-none font-num text-[34px] font-bold leading-none transition-transform duration-500 ease-out group-hover:scale-110"
-            style={{ color: `color-mix(in oklab, ${tint} 20%, transparent)` }}
+            className="pointer-events-none absolute -top-1 right-2 select-none font-num text-[44px] font-bold leading-none transition-transform duration-500 ease-out group-hover:scale-110"
+            style={{ color: `color-mix(in oklab, ${team ? teamColour : tint} 26%, transparent)` }}
           >
             {player.jersey}
           </span>
@@ -364,7 +388,7 @@ function PlayerBox({
 
         <div className="relative">
           <div className="flex items-start justify-between gap-2">
-            <span className="font-ui text-[12.5px] font-bold leading-tight text-[var(--ink)]">
+            <span className="font-ui text-[14px] font-bold leading-tight text-[var(--ink)]">
               {player.name}
             </span>
             <span
@@ -378,22 +402,22 @@ function PlayerBox({
             </span>
           </div>
 
-          {/* The price. Base by default — the Data Interface is the
+          {/* The price. Base by default -- the Data Interface is the
               participant's view and has no business showing what a player
               went for. An auctioneer sees the sale instead. */}
-          <div className="mt-1 flex items-baseline gap-1.5">
+          <div className="mt-1.5 flex items-baseline gap-1.5">
             <span
-              className="font-num text-[14px] font-bold leading-none"
+              className="font-num text-[16px] font-bold leading-none"
               style={{ color: sold ? "var(--sold)" : tint }}
             >
               {sold && record.price != null ? money(record.price) : money(player.base)}
             </span>
-            <span className="font-ui text-[8.5px] uppercase tracking-[0.12em] text-[var(--muted)]">
+            <span className="font-ui text-[9px] uppercase tracking-[0.12em] text-[var(--muted)]">
               {sold ? "sold" : unsold ? "unsold · base" : "base"}
             </span>
             {player.baseAssumed && !sold && (
               <span
-                className="font-ui text-[8.5px] text-[var(--muted)]"
+                className="font-ui text-[9px] text-[var(--muted)]"
                 title="No base price in the dataset; the auction floor is shown instead"
               >
                 ~
@@ -402,7 +426,7 @@ function PlayerBox({
           </div>
 
           {figures.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-x-2.5 gap-y-0.5 font-ui text-[10px] text-[var(--muted)]">
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 font-ui text-[11px] text-[var(--muted)]">
               {figures.map((figure) => (
                 <span key={figure.label}>
                   {figure.label}{" "}
@@ -414,13 +438,21 @@ function PlayerBox({
             </div>
           )}
 
-          <div className="mt-1 font-ui text-[9px] uppercase tracking-[0.1em] text-[var(--muted)] opacity-70">
-            {player.country ?? (player.overseas ? "Overseas" : "—")}
-            <span className="mx-1 opacity-50">·</span>
-            {player.set}
+          <div className="mt-2 flex items-center justify-between gap-2 font-ui text-[9.5px] uppercase tracking-[0.1em] text-[var(--muted)]">
+            <span className="truncate opacity-75">
+              {player.country ?? (player.overseas ? "Overseas" : "—")}
+              <span className="mx-1 opacity-50">·</span>
+              {player.set}
+            </span>
+            {team && (
+              <span className="pool-card__team flex-none">
+                <span aria-hidden className="pool-card__dot" />
+                {team.name}
+              </span>
+            )}
           </div>
         </div>
-      </button>
+      </motion.button>
     </li>
   );
 }
