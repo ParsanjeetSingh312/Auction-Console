@@ -33,6 +33,7 @@ import { createRoom, DEFAULT_ROOM, enterRoom, normaliseRoomCode } from "../../co
 import type { RoomType } from "../../console/auctionRoom";
 import { cardVariants, gridVariants } from "../../console/motion";
 import type { AuctionSocket } from "../../hooks/useAuctionSocket";
+import LightSweep from "../UI/LightSweep";
 
 const LABEL = "font-ui text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-body";
 const INPUT =
@@ -154,10 +155,13 @@ function CreateRoom({ socket }: { socket: AuctionSocket }) {
   return (
     <motion.section
       variants={cardVariants}
-      className="relative overflow-hidden rounded-xl border border-line bg-surface-card p-5 shadow-soft"
+      whileHover={{ y: -3 }}
+      transition={{ type: "spring", stiffness: 300, damping: 24 }}
+      className="seat-chair relative overflow-hidden rounded-xl border border-line p-5"
       aria-label="Create a room"
     >
-      <span aria-hidden className="absolute inset-x-0 top-0 h-[3px] bg-slate-ink" />
+      <span aria-hidden className="seat-chair__rule" />
+      <LightSweep />
       <span className="font-ui text-[9.5px] font-semibold uppercase tracking-[0.16em] text-slate-faint">
         Run an auction
       </span>
@@ -214,10 +218,13 @@ function JoinRoom({ socket }: { socket: AuctionSocket }) {
   return (
     <motion.section
       variants={cardVariants}
-      className="relative overflow-hidden rounded-xl border border-line bg-surface-card p-5 shadow-soft"
+      whileHover={{ y: -3 }}
+      transition={{ type: "spring", stiffness: 300, damping: 24 }}
+      className="seat-chair relative overflow-hidden rounded-xl border border-line p-5"
       aria-label="Join a room"
     >
       <span aria-hidden className="absolute inset-x-0 top-0 h-[3px] bg-neon-orange" />
+      <LightSweep delay={0.55} />
       <span className="font-ui text-[9.5px] font-semibold uppercase tracking-[0.16em] text-slate-faint">
         Join an auction
       </span>

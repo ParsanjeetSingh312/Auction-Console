@@ -13,6 +13,7 @@ import { motion } from "framer-motion";
 import { ADMIN_BLURB, logOut, ROLE_BLURB, ROLE_TAG, useAccount } from "../console/accountStore";
 import { cardVariants, gridVariants } from "../console/motion";
 import StadiumBackdrop from "../components/Sections/StadiumBackdrop";
+import LightSweep from "../components/UI/LightSweep";
 import { RoleTag } from "./Login";
 
 import "../console/console.css";
@@ -62,9 +63,11 @@ export default function Account() {
           {account ? (
             <motion.section
               variants={cardVariants}
-              className="rounded-xl border border-line bg-surface-card p-6 shadow-soft"
+              className="seat-chair relative overflow-hidden rounded-xl border border-line p-6"
               aria-label="Account details"
             >
+              <span aria-hidden className="seat-chair__rule" />
+              <LightSweep />
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="truncate font-head text-[22px] font-bold leading-tight text-slate-ink">{account.name}</h2>

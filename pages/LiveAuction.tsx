@@ -28,11 +28,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
+import gsap from "gsap";
+import { Gavel } from "lucide-react";
 
 import { currentRoom, leaveRoom, markRoomClaimed, useRoom } from "../console/auctionRoom";
 import { money } from "../console/format";
-import { cardVariants, EASE, gridVariants, pressable } from "../console/motion";
+import { franchiseByCode } from "../console/franchises";
+import { cardVariants, gridVariants } from "../console/motion";
 import { useSocketEngine } from "../console/socketEngine";
 import { useAuctionEngine } from "../console/useAuctionEngine";
 import { useScout } from "../console/useScout";
@@ -391,12 +394,22 @@ function LiveAuctionInner() {
 /**
  * The lobby.
  *
- * One chair and ten seats. The asymmetry is deliberate and visible: there is
- * exactly one auctioneer and they can do things nobody else can.
+ * One chair and up to twelve seats. The asymmetry is deliberate and visible:
+ * there is exactly one auctioneer and they can do things nobody else can, so
+ * the chair is the large panel and the franchises are a board beneath it.
  *
  * Seats already taken are shown as taken rather than hidden, because a
  * franchise arriving to find their team greyed out learns something ("someone
  * else is playing Mumbai") that a missing tile does not tell them.
+ *
+ * Each seat carries a hint of its franchise's colour (console/franchises.ts):
+ * a wash from the top, a bar along the top edge, the code in the team colour.
+ * A hint, not a fill -- a dozen full-colour tiles would read as a dozen kits.
+ *
+ * Motion: Framer Motion brings the chair and the seats in and lifts a seat
+ * under the pointer; GSAP sweeps one pass of light across the chair on arrival
+ * and counts each purse up. Every final value is in the DOM from the first
+ * render, so a page that never ticks still reads correctly.
  */
 function SeatPicker({
   engine,
@@ -417,33 +430,56 @@ function SeatPicker({
   // it takes the chair with no password, and the server refuses anyone else.
   // The main room keeps its password login.
   const privateRoom = currentRoom().code !== null;
+  const reduced = useReducedMotion();
+  const sweepRef = useRef<HTMLSpanElement>(null);
+
+  // One pass of light across the chair as the page arrives.
+  useEffect(() => {
+    const el = sweepRef.current;
+    if (!el || reduced) return;
+    const tween = gsap.fromTo(
+      el,
+      { xPercent: -120 },
+      { xPercent: 220, duration: 1.6, ease: "power2.inOut", delay: 0.35 },
+    );
+    return () => {
+      tween.kill();
+    };
+  }, [reduced]);
+
+  const chairOpen = !connecting && !auctioneerPresent;
+  const teams = socket.state?.teams ?? [];
+  // Note: `[display:block]` rather than Tailwind's `block` throughout this
+  // picker. console.css has a bare `.block` rule (the console's "on the block"
+  // panel: padding and a bottom border) that the utility collides with -- it is
+  // what drew stray rules under the chair's title and description.
 
   return (
-    <div className="min-h-screen bg-surface bg-dots px-5 py-10">
+    <div className="min-h-screen bg-surface bg-dots px-5 py-10 sm:px-8 sm:py-14">
       {/*
-        The seat picker assembles on arrival: heading, the auctioneer's chair,
-        the franchise grid, the footnote. The grid is not itself a stagger child
-        — its buttons already carry their own per-index delay, and nesting the
-        two would compound the fades into a group that dims before it brightens.
+        The seat picker assembles on arrival: heading, the room, the auctioneer's
+        chair, the franchise board. The board is not itself a stagger child --
+        its seats carry their own per-index spring, and nesting the two would
+        compound the delays.
       */}
       <motion.div
-        className="mx-auto w-full max-w-3xl"
+        className="mx-auto w-full max-w-[1280px]"
         variants={gridVariants}
         initial="initial"
         animate="animate"
       >
         <motion.header
-          className="mb-7 flex items-start justify-between gap-4"
+          className="mb-8 flex flex-wrap items-start justify-between gap-4"
           variants={cardVariants}
         >
           <div>
-            <span className="font-ui text-[9.5px] font-semibold uppercase tracking-[0.16em] text-slate-faint">
+            <span className="font-ui text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-faint">
               Live bidding interface
             </span>
-            <h1 className="mt-1 font-head text-[28px] font-bold leading-tight text-slate-ink">
+            <h1 className="mt-1.5 font-head text-[34px] font-bold leading-tight text-slate-ink">
               Take your seat
             </h1>
-            <p className="mt-1.5 max-w-md font-ui text-[12.5px] leading-relaxed text-slate-muted">
+            <p className="mt-1.5 max-w-xl font-ui text-[14px] leading-relaxed text-slate-muted">
               {local.isLoadingRoster
                 ? "Loading the player pool…"
                 : `${local.players.length} players · ${money(engine.rules.purse)} a franchise · squad cap ${engine.rules.maxSquad}`}
@@ -467,9 +503,11 @@ function SeatPicker({
 
         <RoomBar socket={socket} />
 
+        {/* The chair. */}
         <motion.button
-          {...pressable}
           variants={cardVariants}
+          whileHover={chairOpen && !reduced ? { y: -3 } : undefined}
+          whileTap={chairOpen && !reduced ? { scale: 0.99 } : undefined}
           type="button"
           disabled={connecting || auctioneerPresent}
           onClick={() => (privateRoom ? socket.claimSeat({ role: "auctioneer" }) : setLoginOpen(true))}
@@ -480,84 +518,88 @@ function SeatPicker({
                 ? "Take the chair of a room your account created"
                 : "Auctioneer login"
           }
-          className="group relative mb-6 block w-full overflow-hidden rounded-xl border border-line bg-surface-card p-5 text-left shadow-soft transition-shadow hover:shadow-soft-lg disabled:cursor-not-allowed disabled:opacity-60"
+          className="seat-chair group relative mb-10 grid w-full overflow-hidden rounded-2xl border border-line text-left disabled:cursor-not-allowed md:grid-cols-[minmax(0,1fr)_260px]"
         >
-          <span aria-hidden className="absolute inset-x-0 top-0 h-[3px] bg-slate-ink" />
-          <span className="font-ui text-[9.5px] font-semibold uppercase tracking-[0.16em] text-slate-faint">
-            {auctioneerPresent
-              ? "Occupied"
-              : privateRoom
-                ? "One seat · the creating account only"
-                : "One seat · password protected"}
-          </span>
-          <span className="mt-1.5 block font-head text-[20px] font-bold leading-tight text-slate-ink">
-            Auctioneer
-          </span>
-          <span className="mt-1.5 block max-w-lg font-ui text-[12.5px] leading-relaxed text-slate-muted">
-            Split-screen control. Run the lots, read the data, and watch the bidding
-            without choosing between them.
-          </span>
-          <span className="mt-3.5 flex items-center gap-1.5 font-ui text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-ink">
-            {auctioneerPresent ? (
-              "The chair is taken"
-            ) : (
-              <>
-                {privateRoom ? "Take the chair" : "Log in to take the chair"}
-                <span className="transition-transform duration-200 group-hover:translate-x-1">
-                  →
+          <span aria-hidden className="seat-chair__rule" />
+          <span aria-hidden ref={sweepRef} className="seat-chair__sweep" />
+
+          <span className="relative [display:block] p-7 sm:p-9">
+            <span className="flex items-center gap-2.5 font-ui text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-faint">
+              <span
+                aria-hidden
+                className={`h-2 w-2 rounded-full ${auctioneerPresent ? "bg-amber-400" : "bg-emerald-400"}`}
+              />
+              {auctioneerPresent
+                ? "Occupied"
+                : privateRoom
+                  ? "One seat · the creating account only"
+                  : "One seat · password protected"}
+            </span>
+            <span className="mt-3 [display:block] font-ui text-[clamp(28px,3.4vw,40px)] font-semibold uppercase leading-none tracking-[0.2em] text-slate-ink">
+              Auctioneer
+            </span>
+            <span className="mt-4 [display:block] max-w-xl font-ui text-[15px] leading-relaxed text-slate-muted">
+              Split-screen control. Run the lots, read the data, and watch the bidding
+              without choosing between them.
+            </span>
+            <span className="mt-6 flex flex-wrap gap-2.5">
+              {["Run the lots", "Read the data", "Watch every paddle"].map((item) => (
+                <span
+                  key={item}
+                  className="rounded-md border border-line px-3 py-1.5 font-ui text-[11.5px] font-medium uppercase tracking-[0.12em] text-slate-body"
+                >
+                  {item}
                 </span>
-              </>
-            )}
+              ))}
+            </span>
+            <span className="mt-7 flex items-center gap-2 font-ui text-[13px] font-semibold uppercase tracking-[0.16em] text-slate-ink">
+              {auctioneerPresent ? (
+                "The chair is taken"
+              ) : (
+                <>
+                  {privateRoom ? "Take the chair" : "Log in to take the chair"}
+                  <span className="transition-transform duration-200 group-hover:translate-x-1.5">
+                    →
+                  </span>
+                </>
+              )}
+            </span>
+          </span>
+
+          {/* The emblem: a gavel in a ring. Decorative. */}
+          <span
+            aria-hidden
+            className="relative hidden items-center justify-center border-l border-line md:flex"
+          >
+            <span className="seat-chair__emblem">
+              <Gavel strokeWidth={1.25} className="h-16 w-16" />
+            </span>
           </span>
         </motion.button>
 
-        <motion.div className="mb-2.5 flex items-baseline justify-between" variants={cardVariants}>
-          <span className="font-ui text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-muted">
+        <motion.div className="mb-4 flex items-baseline justify-between" variants={cardVariants}>
+          <span className="font-ui text-[13px] font-semibold uppercase tracking-[0.18em] text-slate-muted">
             Franchises
           </span>
-          <span className="font-ui text-[10px] uppercase tracking-[0.1em] text-slate-faint">
+          <span className="font-ui text-[11px] uppercase tracking-[0.14em] text-slate-faint">
             bid for one team
           </span>
         </motion.div>
 
         <div
-          className={`grid grid-cols-2 gap-2 sm:grid-cols-3 ${
-            (socket.state?.teams.length ?? 0) > 10 ? "lg:grid-cols-6" : "lg:grid-cols-5"
+          className={`grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 ${
+            teams.length > 10 ? "lg:grid-cols-6" : "lg:grid-cols-5"
           }`}
         >
-          {(socket.state?.teams ?? []).map((team, index) => (
-            <motion.button
+          {teams.map((team, index) => (
+            <FranchiseSeat
               key={team.id}
-              type="button"
+              team={team}
+              index={index}
               disabled={connecting || team.connected}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.24, ease: EASE, delay: index * 0.025 }}
-              whileHover={team.connected ? undefined : { scale: 1.03 }}
-              whileTap={team.connected ? undefined : { scale: 0.97 }}
-              onClick={() => socket.claimSeat({ role: "franchise", teamId: team.id })}
-              title={team.connected ? `${team.name} is already being played` : team.name}
-              className={`group relative overflow-hidden rounded-lg border px-2.5 py-2.5 pl-3 text-left shadow-chip transition-colors ${
-                team.connected
-                  ? "cursor-not-allowed border-dashed border-line bg-surface-sunken/60"
-                  : "border-line bg-surface-card hover:border-slate-faint/60"
-              }`}
-            >
-              <span
-                aria-hidden
-                className="absolute inset-y-0 left-0 w-[3px]"
-                style={{ backgroundColor: team.connected ? "#CBD5E1" : team.color }}
-              />
-              <span className="font-ui text-[10px] font-semibold uppercase leading-none tracking-[0.08em] text-slate-body">
-                {team.code}
-              </span>
-              <span className="mt-1 block font-num text-[14px] font-bold leading-none tabular-nums text-slate-ink">
-                {money(team.left)}
-              </span>
-              <span className="mt-0.5 block font-ui text-[8.5px] uppercase leading-none tracking-[0.06em] text-slate-faint">
-                {team.connected ? "taken" : team.name}
-              </span>
-            </motion.button>
+              reduced={!!reduced}
+              onClaim={() => socket.claimSeat({ role: "franchise", teamId: team.id })}
+            />
           ))}
         </div>
       </motion.div>
@@ -566,6 +608,103 @@ function SeatPicker({
         <AuctioneerLoginModal socket={socket} onClose={() => setLoginOpen(false)} />
       )}
     </div>
+  );
+}
+
+type SeatTeam = NonNullable<ReturnType<typeof useAuctionSocket>["state"]>["teams"][number];
+
+/** One franchise seat on the board, in a hint of its team's colour. */
+function FranchiseSeat({
+  team,
+  index,
+  disabled,
+  reduced,
+  onClaim,
+}: {
+  team: SeatTeam;
+  index: number;
+  disabled: boolean;
+  reduced: boolean;
+  onClaim: () => void;
+}) {
+  // Kochi and Pune have no IPL 2026 squad colours; they keep the room's own.
+  const colours = franchiseByCode(team.code);
+  const primary = colours?.primary ?? team.color;
+  const accent = colours?.accent ?? team.color;
+  const purseRef = useRef<HTMLSpanElement>(null);
+
+  // The purse counts up once, on arrival. The final figure is already in the
+  // DOM; the tween only writes on ticks.
+  useEffect(() => {
+    const el = purseRef.current;
+    if (!el || reduced) return;
+    const counter = { v: 0 };
+    const tween = gsap.to(counter, {
+      v: team.left,
+      duration: 1.1,
+      delay: 0.25 + index * 0.05,
+      ease: "power3.out",
+      onUpdate: () => {
+        el.textContent = money(counter.v);
+      },
+      onComplete: () => {
+        el.textContent = money(team.left);
+      },
+    });
+    return () => {
+      tween.kill();
+      el.textContent = money(team.left);
+    };
+    // Counted once per mount: a purse change after this just renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reduced]);
+
+  return (
+    <motion.button
+      type="button"
+      disabled={disabled}
+      initial={reduced ? false : { y: 18, scale: 0.97 }}
+      animate={{ y: 0, scale: 1 }}
+      transition={{ type: "spring", stiffness: 260, damping: 24, delay: reduced ? 0 : 0.15 + index * 0.04 }}
+      whileHover={disabled || reduced ? undefined : { y: -5 }}
+      whileTap={disabled || reduced ? undefined : { scale: 0.97 }}
+      onClick={onClaim}
+      title={team.connected ? `${team.name} is already being played` : team.name}
+      style={{ ["--team" as string]: primary, ["--team-2" as string]: accent }}
+      className={`seat-team group relative flex min-h-[168px] flex-col overflow-hidden rounded-xl border p-5 text-left ${
+        team.connected ? "seat-team--taken cursor-not-allowed" : ""
+      }`}
+    >
+      <span aria-hidden className="seat-team__bar" />
+      <span className="flex items-center justify-between gap-2">
+        <span
+          className="font-ui text-[15px] font-bold uppercase tracking-[0.14em]"
+          style={{ color: team.connected ? undefined : primary }}
+        >
+          {team.code}
+        </span>
+        <span
+          aria-hidden
+          className="h-2.5 w-2.5 rounded-full"
+          style={{
+            background: team.connected ? "#64748b" : primary,
+            boxShadow: team.connected ? undefined : `0 0 10px ${primary}`,
+          }}
+        />
+      </span>
+      <span
+        ref={purseRef}
+        className="mt-auto [display:block] pt-6 font-num text-[24px] font-bold leading-none tabular-nums text-slate-ink"
+      >
+        {money(team.left)}
+      </span>
+      <span className="mt-1 [display:block] font-ui text-[10px] uppercase tracking-[0.12em] text-slate-faint">
+        purse
+      </span>
+      <span className="mt-3 [display:block] border-t border-line pt-3 font-ui text-[11.5px] font-semibold uppercase tracking-[0.14em] text-slate-body">
+        {team.connected ? "Taken" : team.name}
+      </span>
+    </motion.button>
   );
 }
 

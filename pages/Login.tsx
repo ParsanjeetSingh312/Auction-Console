@@ -16,6 +16,7 @@ import { logIn, register, ROLE_BLURB, ROLE_TAG, useAccount } from "../console/ac
 import type { Role } from "../console/accountStore";
 import { cardVariants, gridVariants } from "../console/motion";
 import StadiumBackdrop from "../components/Sections/StadiumBackdrop";
+import LightSweep from "../components/UI/LightSweep";
 
 import "../console/console.css";
 
@@ -139,9 +140,11 @@ function LoginForm({ onDone }: { onDone: () => void }) {
     <motion.form
       variants={cardVariants}
       onSubmit={submit}
-      className="rounded-xl border border-line bg-surface-card p-5 shadow-soft"
+      className="seat-chair relative overflow-hidden rounded-xl border border-line p-5"
       aria-label="Log in"
     >
+      <span aria-hidden className="seat-chair__rule" />
+      <LightSweep />
       <label className="block">
         <span className={LABEL}>Email</span>
         <input
@@ -206,9 +209,11 @@ function RegisterForm({ onDone }: { onDone: () => void }) {
     <motion.form
       variants={cardVariants}
       onSubmit={submit}
-      className="rounded-xl border border-line bg-surface-card p-5 shadow-soft"
+      className="seat-chair relative overflow-hidden rounded-xl border border-line p-5"
       aria-label="Create account"
     >
+      <span aria-hidden className="seat-chair__rule" />
+      <LightSweep />
       <fieldset>
         <legend className={LABEL}>I am joining as</legend>
         <div className="mt-2 grid gap-2">
