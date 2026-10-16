@@ -302,13 +302,14 @@ class TestDelegateRooms:
 
 
 class TestAdminSettings:
-    def test_only_admins_change_email_or_password(self, client):
+    def test_only_admins_change_email(self, client):
         token = register(client, "auctioneer", email="plain-user@example.test", password="right-password")
-        for path, body in (
-            ("/api/v1/accounts/email", {"new_email": "new@example.test", "password": "right-password"}),
-            ("/api/v1/accounts/password", {"current_password": "right-password", "new_password": "another-password"}),
-        ):
-            assert client.post(path, json=body, headers=as_account(token)).status_code == 403
+        refused = client.post(
+            "/api/v1/accounts/email",
+            json={"new_email": "new@example.test", "password": "right-password"},
+            headers=as_account(token),
+        )
+        assert refused.status_code == 403
         assert client.post("/api/v1/accounts/email", json={"new_email": "x@example.test", "password": "y"}).status_code == 401
 
     def test_admin_moves_only_to_a_listed_email(self, client, monkeypatch):
@@ -328,43 +329,31 @@ class TestAdminSettings:
         old = client.post("/api/v1/accounts/login", json={"email": "old-admin@example.test", "password": "right-password"})
         assert ok.status_code == 200 and old.status_code == 401
 
-    def test_admin_password_change_signs_out_elsewhere(self, client, monkeypatch):
-        here = register(client, "member", email="pw-admin@example.test", password="first-password")
-        monkeypatch.setattr(get_settings(), "ADMIN_EMAILS", "pw-admin@example.test")
-        elsewhere = client.post("/api/v1/accounts/login", json={"email": "pw-admin@example.test", "password": "first-password"}).cookies.get(COOKIE)
-        client.cookies.clear()
-        changed = client.post(
-            "/api/v1/accounts/password",
-            json={"current_password": "first-password", "new_password": "second-password"},
-            headers=as_account(here),
-        )
-        assert changed.status_code == 200
-        assert client.get("/api/v1/accounts/me", headers=as_account(here)).status_code == 200
-        assert client.get("/api/v1/accounts/me", headers=as_account(elsewhere)).status_code == 401
-        assert client.post("/api/v1/accounts/login", json={"email": "pw-admin@example.test", "password": "second-password"}).status_code == 200
-
 
 class TestAdminBootstrap:
-    def test_listed_admins_get_accounts_once(self, client, monkeypatch):
+    def test_every_admin_shares_one_password(self, client, monkeypatch):
         from accounts.demo import ensure_admin_accounts
 
+        existing = register(client, "member", email="second@example.test", password="its-own-password")
         monkeypatch.setattr(get_settings(), "ADMIN_EMAILS", "first.admin@example.test,second@example.test")
-        assert ensure_admin_accounts("first-password") == 2
-        ok = client.post("/api/v1/accounts/login", json={"email": "first.admin@example.test", "password": "first-password"})
-        assert ok.status_code == 200
-        me = ok.json()["account"]
-        assert me["admin"] is True and me["name"] == "First Admin"
-        # The admin changes the password; a restart does not put it back.
-        changed = client.post(
-            "/api/v1/accounts/password",
-            json={"current_password": "first-password", "new_password": "my-own-password"},
-        )
-        assert changed.status_code == 200
-        assert ensure_admin_accounts("first-password") == 0
-        client.cookies.clear()
-        assert client.post("/api/v1/accounts/login", json={"email": "first.admin@example.test", "password": "my-own-password"}).status_code == 200
+        assert ensure_admin_accounts("shared-admin-pw") == 2
+        for email in ("first.admin@example.test", "second@example.test"):
+            ok = client.post("/api/v1/accounts/login", json={"email": email, "password": "shared-admin-pw"})
+            assert ok.status_code == 200 and ok.json()["account"]["admin"] is True
+            client.cookies.clear()
+        # The account that already existed keeps its id, now on the shared password.
+        assert client.get("/api/v1/accounts/me", headers=as_account(existing)).json()["account"]["email"] == "second@example.test"
+        assert client.post("/api/v1/accounts/login", json={"email": "second@example.test", "password": "its-own-password"}).status_code == 401
+        # Changing the setting changes it for every admin.
+        ensure_admin_accounts("new-shared-pw")
+        for email in ("first.admin@example.test", "second@example.test"):
+            assert client.post("/api/v1/accounts/login", json={"email": email, "password": "new-shared-pw"}).status_code == 200
+            client.cookies.clear()
 
-    def test_nothing_is_made_without_a_first_password(self, monkeypatch):
+    def test_there_is_no_per_account_password_change(self, client):
+        assert client.post("/api/v1/accounts/password", json={}).status_code in (404, 405)
+
+    def test_nothing_is_made_without_a_password(self, monkeypatch):
         from accounts.demo import ensure_admin_accounts
 
         monkeypatch.setattr(get_settings(), "ADMIN_EMAILS", "nobody-yet@example.test")

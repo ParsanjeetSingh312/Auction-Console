@@ -33,26 +33,28 @@ DEMO_ACCOUNTS: list[tuple[str, str, store.Role]] = [
 
 def ensure_admin_accounts(password: str) -> int:
     """
-    Create an account for every ADMIN_EMAILS address that has none, with
-    `password` as its first password. Existing accounts are left exactly as
-    they are. Returns how many were created.
+    Give every ADMIN_EMAILS address an account whose password is `password`:
+    created if missing, its password brought in line if not. One password for
+    every administrator (ADMIN_PASSWORD). Returns how many accounts it covers.
     """
     if not password:
         return 0
     password_hash = hash_password(password)
-    created = 0
+    covered = 0
     for email in sorted(store.admin_emails()):
-        if store.account_with_password(email) is not None:
-            continue
-        name = email.split("@", 1)[0].replace(".", " ").replace("_", " ").strip().title() or "Administrator"
-        try:
-            store.create_account(email, name, "auctioneer", password_hash)
-            created += 1
-        except store.EmailTaken:
-            pass  # made by another start in the meantime
-    if created:
-        logger.info("Created %d administrator account(s) from ADMIN_EMAILS", created)
-    return created
+        found = store.account_with_password(email)
+        if found is not None:
+            store.update_password(found[0].id, password_hash)
+        else:
+            name = email.split("@", 1)[0].replace(".", " ").replace("_", " ").strip().title() or "Administrator"
+            try:
+                store.create_account(email, name, "auctioneer", password_hash)
+            except store.EmailTaken:
+                continue  # made by another start in the meantime
+        covered += 1
+    if covered:
+        logger.info("Administrator accounts ready: %d, sharing ADMIN_PASSWORD", covered)
+    return covered
 
 
 def ensure_demo_accounts(password: str) -> int:

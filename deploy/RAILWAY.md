@@ -39,7 +39,7 @@ Nothing else is needed; the entrypoint redirects all state there.
 | `AUCTION_MAX_ROOMS` | optional, default `24`: auction rooms open at once (each is one auction, up to 12 franchises) |
 | `AUCTION_MAX_CONNECTIONS` | optional, default `600`: live-bidding sockets across every room |
 | `ADMIN_EMAILS` | comma-separated emails of administrator accounts. Listed emails cannot be registered by anyone; the server creates their accounts (next row) |
-| `ADMIN_INITIAL_PASSWORD` | first password of the admin accounts the server creates for `ADMIN_EMAILS` that have none yet. Log in with it, then change it under Account settings; existing accounts are never touched |
+| `ADMIN_PASSWORD` | the one password every admin account uses. At each start the server creates any missing `ADMIN_EMAILS` account and sets all of them to this password; change it here and redeploy to change it for every admin |
 | `DEMO_ACCOUNTS_PASSWORD` | optional: creates 15 demo accounts (`auctioneer1@demo.auctoniq.test`, ...) with this password. Remove it to stop refreshing them |
 
 Do **not** set `PORT` (Railway sets it), `PLAYWRIGHT_BROWSERS_PATH`, or `HF_HOME`.

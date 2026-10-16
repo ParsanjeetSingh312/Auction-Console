@@ -301,12 +301,18 @@ class Settings(BaseSettings):
     # address. Its account is made by the server instead: see the setting below.
     ADMIN_EMAILS: str = ""
 
-    # The first password of an administrator account the server creates. At
-    # startup, every email on ADMIN_EMAILS that has no account yet gets one,
-    # with this password -- log in with it, then change it under Account
-    # settings. An account that already exists is never touched, so changing
-    # your password sticks across restarts. Empty creates none.
+    # The one password every administrator account uses. At startup the server
+    # gives every ADMIN_EMAILS address an account with this password -- creating
+    # it if missing, and bringing its password in line if not -- so the same
+    # password works for every admin, and changing it here and restarting
+    # changes it for all of them. Empty leaves admin accounts as they are.
+    ADMIN_PASSWORD: str = ""
+    # The earlier name for ADMIN_PASSWORD, still read if that one is unset.
     ADMIN_INITIAL_PASSWORD: str = ""
+
+    @property
+    def admin_password(self) -> str:
+        return self.ADMIN_PASSWORD or self.ADMIN_INITIAL_PASSWORD
 
     # Admin key for the destructive and expensive endpoints: POST /api/v1/ingest
     # (rebuilds the whole player pool) and POST /api/v1/scout/research (spends a

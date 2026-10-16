@@ -211,16 +211,6 @@ def account_for_session(token: str | None) -> Account | None:
     return _account(row)
 
 
-def close_other_sessions(account_id: int, keep_token: str | None) -> None:
-    """Sign the account out everywhere but the session `keep_token` belongs to."""
-    keep = _hash_token(keep_token) if keep_token else ""
-    with _connect() as conn:
-        conn.execute(
-            "DELETE FROM account_sessions WHERE account_id = ? AND token_hash != ?",
-            (account_id, keep),
-        )
-
-
 def close_session(token: str | None) -> None:
     if not token:
         return

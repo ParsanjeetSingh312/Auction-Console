@@ -7,7 +7,9 @@ Registering, logging in and out, and "who am I", under /api/v1/accounts.
     POST /logout                                 -> logged out
     GET  /me                                     -> the account, or 401
     POST /email      new_email, password         -> admins only: change email
-    POST /password   current, new password       -> admins only: change password
+
+Administrators share one password, ADMIN_PASSWORD, set on the server and
+applied at startup (accounts/demo.py); there is no per-account password change.
 
 The session rides in an httpOnly cookie, so page scripts cannot read it, and it
 is sent on the auction WebSocket's handshake as well -- which is how the room
@@ -82,11 +84,6 @@ class ChangeEmailRequest(BaseModel):
         if not EMAIL.match(value):
             raise ValueError("Enter a valid email address.")
         return value
-
-
-class ChangePasswordRequest(BaseModel):
-    current_password: str = Field(min_length=1, max_length=200)
-    new_password: str = Field(min_length=8, max_length=200)
 
 
 class LoginRequest(BaseModel):
@@ -164,7 +161,7 @@ async def register(payload: RegisterRequest, request: Request, response: Respons
         raise HTTPException(
             status_code=403,
             detail="That email is reserved for an administrator. Its account is made by the server: "
-            "log in with the first password set in ADMIN_INITIAL_PASSWORD.",
+            "log in with the administrator password.",
         )
     password_hash = await asyncio.to_thread(hash_password, payload.password)
     try:
@@ -215,7 +212,7 @@ async def me(request: Request) -> dict[str, Any]:
 
 # ------------------------------------------------------- admin settings --
 #
-# Changing an account's email or password is for administrators only. Admin
+# Changing an account's email is for administrators only. Admin
 # follows the email (ADMIN_EMAILS), so an admin may move only to an address
 # already on that list: anything else would quietly end their own admin
 # access, and a rename is never a way onto the list.
@@ -254,13 +251,3 @@ async def change_email(payload: ChangeEmailRequest, request: Request) -> dict[st
     except EmailTaken:
         raise HTTPException(status_code=409, detail="Another account already uses that email.")
     return {"account": updated.public()}
-
-
-@router.post("/password")
-async def change_password(payload: ChangePasswordRequest, request: Request) -> dict[str, Any]:
-    account = await _admin_with_password(request, payload.current_password)
-    new_hash = await asyncio.to_thread(hash_password, payload.new_password)
-    await asyncio.to_thread(store.update_password, account.id, new_hash)
-    # Everywhere else this account is signed in is signed out; this one stays.
-    await asyncio.to_thread(store.close_other_sessions, account.id, request.cookies.get(COOKIE))
-    return {"ok": True}

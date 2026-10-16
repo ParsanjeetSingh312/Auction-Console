@@ -166,15 +166,6 @@ export async function changeEmail(newEmail: string, password: string): Promise<A
   return account;
 }
 
-/** Administrators only: a new password; other devices are signed out. */
-export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
-  const response = await call("/password", {
-    method: "POST",
-    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
-  });
-  if (!response.ok) throw new Error(await reason(response));
-}
-
 export async function logOut(): Promise<void> {
   try {
     await call("/logout", { method: "POST" });

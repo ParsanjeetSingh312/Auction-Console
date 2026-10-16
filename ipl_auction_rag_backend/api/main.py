@@ -270,13 +270,13 @@ async def lifespan(app: FastAPI):
             exc,
         )
 
-    # Administrator accounts for ADMIN_EMAILS that have none yet, with
-    # ADMIN_INITIAL_PASSWORD as their first password (accounts/demo.py).
-    if get_settings().ADMIN_INITIAL_PASSWORD:
+    # Every ADMIN_EMAILS account, created if missing, with the one shared
+    # ADMIN_PASSWORD (accounts/demo.py).
+    if get_settings().admin_password:
         try:
             from accounts.demo import ensure_admin_accounts
 
-            await asyncio.to_thread(ensure_admin_accounts, get_settings().ADMIN_INITIAL_PASSWORD)
+            await asyncio.to_thread(ensure_admin_accounts, get_settings().admin_password)
         except Exception as exc:  # noqa: BLE001 - startup must not die here
             logger.warning("Could not create the administrator accounts: %s", exc)
 

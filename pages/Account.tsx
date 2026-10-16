@@ -11,7 +11,7 @@ import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 
-import { ADMIN_BLURB, changeEmail, changePassword, logOut, ROLE_BLURB, ROLE_TAG, useAccount } from "../console/accountStore";
+import { ADMIN_BLURB, changeEmail, logOut, ROLE_BLURB, ROLE_TAG, useAccount } from "../console/accountStore";
 import type { Account as AccountRecord } from "../console/accountStore";
 import { cardVariants, gridVariants } from "../console/motion";
 import StadiumBackdrop from "../components/Sections/StadiumBackdrop";
@@ -141,18 +141,15 @@ function Note({ kind, text }: { kind: "ok" | "err"; text: string }) {
 }
 
 /**
- * Account settings, for administrators only: change the email (to another
- * address already on ADMIN_EMAILS, since admin follows the email) and change
- * the password (which signs out every other device). Both ask for the current
- * password. The server refuses both for anyone who is not an administrator.
+ * Account settings, for administrators only: change the email, to another
+ * address already on ADMIN_EMAILS since admin follows the email. The password
+ * is not changed here: every administrator shares one, ADMIN_PASSWORD, set on
+ * the server. The server refuses the change for anyone who is not an admin.
  */
 function AdminSettings({ account }: { account: AccountRecord }) {
   const [email, setEmail] = useState("");
   const [emailPassword, setEmailPassword] = useState("");
   const [emailNote, setEmailNote] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
-  const [current, setCurrent] = useState("");
-  const [next, setNext] = useState("");
-  const [passwordNote, setPasswordNote] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const submitEmail = async (event: FormEvent) => {
@@ -169,26 +166,6 @@ function AdminSettings({ account }: { account: AccountRecord }) {
       });
     } catch (exc) {
       setEmailNote({ kind: "err", text: exc instanceof Error ? exc.message : "Could not change the email." });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const submitPassword = async (event: FormEvent) => {
-    event.preventDefault();
-    setPasswordNote(null);
-    if (next.length < 8) {
-      setPasswordNote({ kind: "err", text: "Use a new password of at least 8 characters." });
-      return;
-    }
-    setBusy(true);
-    try {
-      await changePassword(current, next);
-      setCurrent("");
-      setNext("");
-      setPasswordNote({ kind: "ok", text: "Password changed. Your other devices have been signed out." });
-    } catch (exc) {
-      setPasswordNote({ kind: "err", text: exc instanceof Error ? exc.message : "Could not change the password." });
     } finally {
       setBusy(false);
     }
@@ -231,35 +208,13 @@ function AdminSettings({ account }: { account: AccountRecord }) {
         </button>
       </form>
 
-      <form onSubmit={submitPassword} className="mt-5 border-t border-line pt-4" aria-label="Change password">
-        <h3 className="font-ui text-[12px] font-semibold text-slate-ink">Change password</h3>
-        <label className="mt-3 block">
-          <span className={LABEL}>Current password</span>
-          <input
-            type="password"
-            value={current}
-            onChange={(e) => setCurrent(e.target.value)}
-            autoComplete="current-password"
-            className={INPUT}
-          />
-        </label>
-        <label className="mt-3 block">
-          <span className={LABEL}>New password</span>
-          <input
-            type="password"
-            value={next}
-            onChange={(e) => setNext(e.target.value)}
-            autoComplete="new-password"
-            minLength={8}
-            className={INPUT}
-          />
-          <span className="mt-1 block font-ui text-[10.5px] text-slate-faint">At least 8 characters.</span>
-        </label>
-        {passwordNote && <Note {...passwordNote} />}
-        <button type="submit" disabled={busy || !current || !next} className={`${PRIMARY} mt-4 disabled:opacity-60`}>
-          Change password
-        </button>
-      </form>
+      <div className="mt-5 border-t border-line pt-4">
+        <h3 className="font-ui text-[12px] font-semibold text-slate-ink">Password</h3>
+        <p className="mt-1 font-ui text-[11.5px] leading-relaxed text-slate-muted">
+          Every administrator account shares one password, set on the server as ADMIN_PASSWORD. To change it,
+          change that setting in Railway and redeploy; it changes for all administrators at once.
+        </p>
+      </div>
     </motion.section>
   );
 }
