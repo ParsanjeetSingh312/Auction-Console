@@ -126,15 +126,18 @@ class RoomRegistry:
     def get(self, code: str) -> RoomEntry | None:
         return self._rooms.get(code)
 
-    def open(self, code: str, kind: Kind) -> RoomEntry:
-        """The room with this code, opening it as `kind` if it is not open."""
+    def open(self, code: str, kind: Kind, owner_account_id: int | None = None) -> RoomEntry:
+        """
+        The room with this code, opening it as `kind` if it is not open. A room
+        opened by an account seats by account (see AuctionRoom.owner_account_id).
+        """
         entry = self._rooms.get(code)
         if entry is not None:
             return entry
         self.sweep()
         if len(self._rooms) >= MAX_ROOMS:
             raise RoomsFull(f"{MAX_ROOMS} auctions are already open.")
-        room = AuctionRoom(code=code, kind=kind)
+        room = AuctionRoom(code=code, kind=kind, owner_account_id=owner_account_id)
         room.configure_seats(TEAMS_BY_KIND[kind])
         if self._pool:
             room.load_players(self._pool)

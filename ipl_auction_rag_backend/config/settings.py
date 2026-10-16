@@ -282,6 +282,27 @@ class Settings(BaseSettings):
     # client, never written to a log, and never appears in a broadcast.
     AUCTIONEER_PASSWORD: str = ""
 
+    # --- Demo accounts ---
+    # Set, the server makes sure a fixed set of demo accounts exists at startup
+    # (accounts/demo.py: auctioneers, delegates and a member, on the reserved
+    # demo.auctoniq.test domain), all with this password, so the account flows
+    # can be tried from several logins. Empty creates none. The password lives
+    # here, in the environment, never in the code -- the repository is public.
+    DEMO_ACCOUNTS_PASSWORD: str = ""
+
+    # --- Administrators ---
+    # Comma-separated emails of the accounts that are administrators: full
+    # access -- create and run any auction room, take any room's chair, join
+    # any room, and the admin endpoints without the X-Admin-Key header. Not a
+    # role anyone can pick at registration: it is granted here, in the
+    # environment, and taken away by removing the email.
+    #
+    # Register the accounts FIRST, then list them. A listed email can no
+    # longer be registered, so nobody can claim an admin address -- which also
+    # means an address listed before its owner registered is locked out until
+    # it is taken off the list.
+    ADMIN_EMAILS: str = ""
+
     # Admin key for the destructive and expensive endpoints: POST /api/v1/ingest
     # (rebuilds the whole player pool) and POST /api/v1/scout/research (spends a
     # scrape/embed budget). Sent as the `X-Admin-Key` header and compared in

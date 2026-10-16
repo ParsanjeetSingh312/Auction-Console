@@ -27,6 +27,7 @@ much harder to diagnose than saying what was wrong.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -38,6 +39,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Response, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
+from accounts import store as accounts
+from accounts.store import Account
+from api.routes_accounts import COOKIE, origin_allowed
 from auction.report_card import build_team_card
 from auction.report_pdf import render_team_pdf
 from auction.room import AuctionRoom, RoomError
@@ -215,13 +219,26 @@ async def auction_socket(
     if code is None:
         await _refuse(websocket, 4400, "That is not a room code. Codes are letters, digits and dashes.")
         return
+
+    # Whose account this connection is: the session cookie the browser sent
+    # with the handshake, from a page this server serves (or the dev server).
+    # Fixed for the life of the connection; logging in or out reconnects.
+    account: Account | None = None
+    if origin_allowed(websocket.headers.get("origin"), websocket.headers.get("host")):
+        account = await asyncio.to_thread(accounts.account_for_session, websocket.cookies.get(COOKIE))
+
     entry = registry.get(code)
     if entry is None:
         if kind is None and open is None:
             await _refuse(websocket, 4404, "No auction room with that code is open. Check the code with your auctioneer.")
             return
+        # Creating a room is what an auctioneer account is for (and an
+        # administrator's), and nothing else.
+        if account is None or (account.role != "auctioneer" and not account.admin):
+            await _refuse(websocket, 4403, "Only an Auctioneer account can create an auction room. Log in with one.")
+            return
         try:
-            entry = registry.open(code, normalise_kind(kind) if kind else "mini")
+            entry = registry.open(code, normalise_kind(kind) if kind else "mini", owner_account_id=account.id)
         except RoomsFull:
             await _refuse(websocket, 4429, "Every auction room is in use. Try again once one has finished.")
             return
@@ -282,7 +299,7 @@ async def auction_socket(
                 continue
 
             try:
-                await _dispatch(room, manager, client_id, message)
+                await _dispatch(room, manager, client_id, message, account)
             except RoomError as exc:
                 # An expected refusal: wrong role, illegal bid, stale lot. The
                 # client is told why and the connection carries on.
@@ -312,7 +329,13 @@ async def auction_socket(
         await manager.broadcast(room.state_payload())
 
 
-async def _dispatch(room: AuctionRoom, manager: ConnectionManager, client_id: str, message: Any) -> None:
+async def _dispatch(
+    room: AuctionRoom,
+    manager: ConnectionManager,
+    client_id: str,
+    message: Any,
+    account: Account | None = None,
+) -> None:
     """
     Route a validated message to the room, then broadcast what changed.
 
@@ -333,6 +356,9 @@ async def _dispatch(room: AuctionRoom, manager: ConnectionManager, client_id: st
             message.team_id,
             message.display_name,
             message.password,
+            account_id=account.id if account else None,
+            account_role=account.role if account else None,
+            account_admin=account.admin if account else False,
         )
         if seat.role == "auctioneer":
             entry = registry.get(room.code)

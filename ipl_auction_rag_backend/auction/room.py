@@ -245,6 +245,8 @@ class Seat:
     display_name: str | None = None
     # The rules_version this seat acknowledged in the briefing (rule 7).
     acked_version: int | None = None
+    # The account holding the seat, in a room that requires accounts.
+    account_id: int | None = None
 
 
 @dataclass
@@ -279,6 +281,11 @@ class AuctionRoom:
     # (auction/rooms.py). The default room is MAIN, a mega auction.
     code: str = "MAIN"
     kind: Literal["mega", "mini"] = "mega"
+    # The auctioneer account that created this room, when an account did
+    # (accounts/). Such a room seats by account, not by password: its chair is
+    # this account's alone, and its franchise seats are for delegate accounts.
+    # None for MAIN, which keeps the password-gated chair.
+    owner_account_id: int | None = None
     rules: dict[str, Any] = field(default_factory=lambda: copy.deepcopy(DEFAULT_RULES))
     # Bumped on every setup change; acknowledgements quote it (rule 7).
     rules_version: int = 1
@@ -575,6 +582,9 @@ class AuctionRoom:
         team_id: int | None,
         display_name: str | None,
         password: str | None = None,
+        account_id: int | None = None,
+        account_role: str | None = None,
+        account_admin: bool = False,
     ) -> Seat:
         """
         Claim a seat, if it is free.
@@ -586,18 +596,63 @@ class AuctionRoom:
         taken rather than left wondering why their buttons do nothing.
         """
         async with self._lock:
+            # A room an account created seats by account. What a connection may
+            # claim is what its account allows -- an auctioneer account the
+            # chair of the room it created, a delegate account a franchise
+            # seat -- so a code or a password in the wrong hands opens nothing.
+            # The account comes from the session the socket was opened with
+            # (auction/ws.py), never from the message.
+            # An administrator account may take any seat it asks for -- still
+            # one connection per chair and one seat per account.
+            by_account = self.owner_account_id is not None
+            if by_account and role == "auctioneer" and not account_admin:
+                if account_role != "auctioneer":
+                    raise RoomError(
+                        "Only an Auctioneer account can run an auction room. Log in with one.",
+                        about="join",
+                    )
+                if account_id != self.owner_account_id:
+                    raise RoomError(
+                        "Only the account that created this room can take its chair.",
+                        about="join",
+                    )
+            if by_account and role == "franchise":
+                if account_role != "delegate" and not account_admin:
+                    raise RoomError(
+                        "Only a Delegate account can take a franchise seat. Log in with one.",
+                        about="join",
+                    )
+                held = next(
+                    (s for s in self.seats.values()
+                     if s.account_id == account_id and s.client_id != client_id and s.role == "franchise"),
+                    None,
+                )
+                if held is not None:
+                    team = self.team_by_id(held.team_id) or {}
+                    raise RoomError(
+                        f"Your account already holds {team.get('name', 'a franchise')} in this room.",
+                        about="join",
+                    )
+
             if role == "auctioneer":
                 # Earn the chair before anything else about the claim is
                 # considered. A wrong or missing password is refused here, before
-                # occupancy is even checked.
-                self._check_auctioneer_password(password)
+                # occupancy is even checked. A room seated by account has
+                # already checked the account above instead.
+                if not by_account and not account_admin:
+                    self._check_auctioneer_password(password)
                 taken = any(
                     s.role == "auctioneer" and s.client_id != client_id
                     for s in self.seats.values()
                 )
                 if taken:
                     raise RoomError("The auctioneer's chair is already taken.", about="join")
-                seat = Seat(client_id=client_id, role="auctioneer", display_name=display_name)
+                seat = Seat(
+                    client_id=client_id,
+                    role="auctioneer",
+                    display_name=display_name,
+                    account_id=account_id if by_account else None,
+                )
 
             else:
                 if team_id is None or self.team_by_id(team_id) is None:
@@ -631,6 +686,7 @@ class AuctionRoom:
                     team_id=team_id,
                     display_name=display_name,
                     acked_version=previous.acked_version if previous else None,
+                    account_id=account_id if by_account else None,
                 )
 
             self.seats[client_id] = seat

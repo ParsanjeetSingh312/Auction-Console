@@ -413,6 +413,10 @@ function SeatPicker({
   // would refuse.
   const auctioneerPresent = socket.state?.auctioneer_present ?? false;
   const [loginOpen, setLoginOpen] = useState(false);
+  // A private room seats its auctioneer by account: the account that created
+  // it takes the chair with no password, and the server refuses anyone else.
+  // The main room keeps its password login.
+  const privateRoom = currentRoom().code !== null;
 
   return (
     <div className="min-h-screen bg-surface bg-dots px-5 py-10">
@@ -468,17 +472,23 @@ function SeatPicker({
           variants={cardVariants}
           type="button"
           disabled={connecting || auctioneerPresent}
-          onClick={() => setLoginOpen(true)}
+          onClick={() => (privateRoom ? socket.claimSeat({ role: "auctioneer" }) : setLoginOpen(true))}
           title={
             auctioneerPresent
               ? "The auctioneer's chair is already taken"
-              : "Auctioneer login"
+              : privateRoom
+                ? "Take the chair of a room your account created"
+                : "Auctioneer login"
           }
           className="group relative mb-6 block w-full overflow-hidden rounded-xl border border-line bg-surface-card p-5 text-left shadow-soft transition-shadow hover:shadow-soft-lg disabled:cursor-not-allowed disabled:opacity-60"
         >
           <span aria-hidden className="absolute inset-x-0 top-0 h-[3px] bg-slate-ink" />
           <span className="font-ui text-[9.5px] font-semibold uppercase tracking-[0.16em] text-slate-faint">
-            {auctioneerPresent ? "Occupied" : "One seat · password protected"}
+            {auctioneerPresent
+              ? "Occupied"
+              : privateRoom
+                ? "One seat · the creating account only"
+                : "One seat · password protected"}
           </span>
           <span className="mt-1.5 block font-head text-[20px] font-bold leading-tight text-slate-ink">
             Auctioneer
@@ -492,7 +502,7 @@ function SeatPicker({
               "The chair is taken"
             ) : (
               <>
-                Log in to take the chair
+                {privateRoom ? "Take the chair" : "Log in to take the chair"}
                 <span className="transition-transform duration-200 group-hover:translate-x-1">
                   →
                 </span>

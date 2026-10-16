@@ -48,6 +48,7 @@ import { Link, useLocation } from "react-router-dom";
 
 import AuctiqLogo from "./AuctiqLogo";
 import SocialRow from "./SocialRow";
+import AccountChip from "./AccountChip";
 
 /**
  * The legal notice, verbatim.
@@ -401,6 +402,8 @@ export default function AuctiqNav() {
             sky a cyan outline with no fill all but vanished. The plate carries
             its own contrast, so the button reads the same over any page.
           */}
+          <AccountChip />
+
           <Link
             to="/auction/live"
             data-testid="nav-join-now"

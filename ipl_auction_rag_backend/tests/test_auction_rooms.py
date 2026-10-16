@@ -9,12 +9,16 @@ rooms is bounded, so made-up codes cannot pile up.
 """
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 
 from auction import rooms as rooms_module
 from auction.rooms import MAIN, RoomRegistry, RoomsFull, normalise_code, registry
 from auction.room import AuctionRoom
+from accounts import store as account_store
+from api.routes_accounts import COOKIE
 from config.settings import get_settings
 
 PASSWORD = "rooms-test-secret"
@@ -27,8 +31,11 @@ POOL = [
 
 
 @pytest.fixture(autouse=True)
-def _setup(monkeypatch):
+def _setup(monkeypatch, tmp_path):
     monkeypatch.setattr(get_settings(), "AUCTIONEER_PASSWORD", PASSWORD)
+    # Rooms are created by accounts: a throwaway accounts database per test.
+    monkeypatch.setenv("ACCOUNTS_DB_PATH", str(tmp_path / "accounts.db"))
+    monkeypatch.setattr(account_store, "_ready_for", None)
     registry.set_pool(POOL)
     yield
     # Close the rooms these tests opened; MAIN stays.
@@ -47,6 +54,18 @@ def drain(sock, predicate, limit=30):
 
 def is_state(msg):
     return msg.get("type") == "state"
+
+
+def account(client, role):
+    """A new account of `role`; the header that makes a socket that account's."""
+    response = client.post(
+        "/api/v1/accounts/register",
+        json={"name": role, "email": f"{role}-{uuid.uuid4().hex}@example.test", "password": "long-enough-pw", "role": role},
+    )
+    assert response.status_code == 200, response.text
+    token = response.cookies.get(COOKIE)
+    client.cookies.clear()
+    return {"cookie": f"{COOKIE}={token}"}
 
 
 class TestCodes:
@@ -113,18 +132,22 @@ class TestOverTheSocket:
         from api.main import app
 
         with TestClient(app) as client:
-            with client.websocket_connect("/api/v1/auction/ws?room=ROOMA&kind=mega") as host_a, \
-                 client.websocket_connect("/api/v1/auction/ws?room=ROOMB&kind=mini") as host_b, \
-                 client.websocket_connect("/api/v1/auction/ws?room=ROOMA") as mum_a, \
-                 client.websocket_connect("/api/v1/auction/ws?room=ROOMB&kind=mini") as mum_b:
+            owner_a, owner_b = account(client, "auctioneer"), account(client, "auctioneer")
+            dele_a, dele_b = account(client, "delegate"), account(client, "delegate")
+            ws = "/api/v1/auction/ws"
+            with client.websocket_connect(f"{ws}?room=ROOMA&kind=mega", headers=owner_a) as host_a, \
+                 client.websocket_connect(f"{ws}?room=ROOMB&kind=mini", headers=owner_b) as host_b, \
+                 client.websocket_connect(f"{ws}?room=ROOMA", headers=dele_a) as mum_a, \
+                 client.websocket_connect(f"{ws}?room=ROOMB", headers=dele_b) as mum_b:
                 first_a = drain(host_a, is_state)
                 first_b = drain(host_b, is_state)
                 assert first_a["room"] == "ROOMA" and len(first_a["teams"]) == 10
                 assert first_b["room"] == "ROOMB" and len(first_b["teams"]) == 12
 
-                # Both chairs can be taken: they are different rooms.
-                host_a.send_json({"type": "join", "role": "auctioneer", "password": PASSWORD})
-                host_b.send_json({"type": "join", "role": "auctioneer", "password": PASSWORD})
+                # Both chairs can be taken: they are different rooms, each its
+                # creator's.
+                host_a.send_json({"type": "join", "role": "auctioneer"})
+                host_b.send_json({"type": "join", "role": "auctioneer"})
                 assert drain(host_a, lambda m: m.get("type") in ("joined", "error"))["type"] == "joined"
                 assert drain(host_b, lambda m: m.get("type") in ("joined", "error"))["type"] == "joined"
 
@@ -147,7 +170,9 @@ class TestOverTheSocket:
         from api.main import app
 
         with TestClient(app) as client:
-            with client.websocket_connect("/api/v1/auction/ws?room=MADE1&open=1") as host,                  client.websocket_connect("/api/v1/auction/ws?room=MADE1") as franchise:
+            owner = account(client, "auctioneer")
+            with client.websocket_connect("/api/v1/auction/ws?room=MADE1&open=1", headers=owner) as host, \
+                 client.websocket_connect("/api/v1/auction/ws?room=MADE1") as franchise:
                 assert len(drain(host, is_state)["teams"]) == 12
                 # Joining by the code alone reaches the same room.
                 assert drain(franchise, is_state)["room"] == "MADE1"
@@ -156,7 +181,10 @@ class TestOverTheSocket:
         from api.main import app
 
         with TestClient(app) as client:
-            with client.websocket_connect("/api/v1/auction/ws?room=MINIX&kind=mini") as pune:
+            owner, delegate = account(client, "auctioneer"), account(client, "delegate")
+            with client.websocket_connect("/api/v1/auction/ws?room=MINIX&kind=mini", headers=owner) as host, \
+                 client.websocket_connect("/api/v1/auction/ws?room=MINIX", headers=delegate) as pune:
+                drain(host, is_state)
                 drain(pune, is_state)
                 pune.send_json({"type": "join", "role": "franchise", "team_id": 12})
                 joined = drain(pune, lambda m: m.get("type") in ("joined", "error"))

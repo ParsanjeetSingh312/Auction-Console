@@ -28,15 +28,26 @@ from __future__ import annotations
 import logging
 import secrets
 
-from fastapi import Header, HTTPException, status
+from fastapi import Header, HTTPException, Request, status
 
 from config.settings import get_settings
 
 logger = logging.getLogger("api.auth")
 
 
-async def require_admin(x_admin_key: str | None = Header(default=None)) -> None:
-    """FastAPI dependency: allow the request only if the admin key matches."""
+async def require_admin(request: Request, x_admin_key: str | None = Header(default=None)) -> None:
+    """
+    FastAPI dependency: allow the request only if the admin key matches, or the
+    caller is signed in with an administrator account (ADMIN_EMAILS).
+    """
+    # Imported here: accounts reads settings, and this module is imported early.
+    from accounts.store import account_for_session
+    from api.routes_accounts import COOKIE
+
+    account = account_for_session(request.cookies.get(COOKIE))
+    if account is not None and account.admin:
+        return
+
     required = get_settings().ADMIN_API_KEY
 
     if not required:

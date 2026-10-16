@@ -6,13 +6,17 @@
  * (console/auctionRoom.ts). This is the first screen of `/auction`, before the
  * tab is in any room:
  *
- *   Create a room   the auctioneer. Their login (designation and password)
- *                   creates the room and takes its chair in one step, and they
- *                   land straight on the control panel, where the room's code
- *                   is shown for them to send to the franchise owners.
- *   Join a room     a franchise. The code they were sent takes them into the
- *                   room, where they choose their franchise, read the briefing
- *                   and bid.
+ *   Create a room   an Auctioneer account. One press creates the room and
+ *                   takes its chair -- the account is the credential, carried
+ *                   by the session cookie -- and lands on the control panel,
+ *                   where the room's code is shown to send to the franchise
+ *                   owners.
+ *   Join a room     a Delegate account. The code they were sent takes them
+ *                   into the room, where they choose their franchise, read the
+ *                   briefing and bid.
+ *
+ * The server enforces all of it (auction/room.py): what is hidden here for an
+ * account that may not use it is a courtesy, not the lock.
  *
  * The code is never shown here: a franchise's typing is masked, and a refused
  * code is not repeated back. Every room seats up to twelve franchises, so one
@@ -23,6 +27,8 @@ import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 
+import { canCreateRooms, canJoinRooms, tagFor, useAccount } from "../../console/accountStore";
+import type { Account } from "../../console/accountStore";
 import { createRoom, DEFAULT_ROOM, enterRoom, normaliseRoomCode } from "../../console/auctionRoom";
 import { cardVariants, gridVariants } from "../../console/motion";
 import type { AuctionSocket } from "../../hooks/useAuctionSocket";
@@ -31,7 +37,9 @@ const LABEL = "font-ui text-[10px] font-semibold uppercase tracking-[0.12em] tex
 const INPUT =
   "mt-1 w-full rounded-lg border border-line bg-surface-sunken px-3 py-2 font-ui text-[13px] text-slate-ink outline-none transition-colors focus:border-slate-faint";
 const PRIMARY =
-  "rounded-lg bg-slate-ink px-4 py-2 font-ui text-[11px] font-semibold uppercase tracking-[0.1em] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center justify-center rounded-lg bg-slate-ink px-4 py-2 font-ui text-[11px] font-semibold uppercase tracking-[0.1em] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60";
+const SECONDARY =
+  "inline-flex items-center justify-center rounded-lg border border-line bg-surface-card px-4 py-2 font-ui text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-body transition-colors hover:border-slate-faint/60 hover:text-slate-ink";
 
 export default function RoomGate({
   socket,
@@ -99,85 +107,86 @@ export default function RoomGate({
   );
 }
 
-/** The auctioneer: log in, and the room is created around them. */
-function CreateRoom({ socket }: { socket: AuctionSocket }) {
-  const [designation, setDesignation] = useState("");
-  const [password, setPassword] = useState("");
-  const [formError, setFormError] = useState<string | null>(null);
+/** Signed out: the way to an account that can do this, and back here after. */
+function SignInPrompt({ role }: { role: "Auctioneer" | "Delegate" }) {
+  return (
+    <div className="mt-4">
+      <p className="font-ui text-[12px] leading-relaxed text-slate-body">
+        Log in with {role === "Auctioneer" ? "an" : "a"} {role} account to continue.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Link to="/login?next=/auction/live" className={PRIMARY}>
+          Log in
+        </Link>
+        <Link to="/login?mode=register&next=/auction/live" className={SECONDARY}>
+          Create an account
+        </Link>
+      </div>
+    </div>
+  );
+}
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    setFormError(null);
-    if (designation.trim().toUpperCase() !== "AUCTIONEER") {
-      setFormError('Enter "AUCTIONEER" as the designation.');
-      return;
-    }
-    if (!password) {
-      setFormError("Enter the auctioneer password.");
-      return;
-    }
-    // The claim waits for the new room's connection; on success the seat is the
-    // auctioneer's and Live Bidding opens the control panel. A refused login
-    // brings the tab back here with the room's reason.
-    socket.queueSeat({ role: "auctioneer", password });
+/** Signed in with an account that may not do this: say so, and why. */
+function WrongAccount({ account, need }: { account: Account; need: string }) {
+  return (
+    <p className="mt-4 rounded-lg border border-line bg-surface-sunken px-3 py-2.5 font-ui text-[12px] leading-relaxed text-slate-muted">
+      You are signed in as <b className="text-slate-ink">{account.name}</b>, a{" "}
+      <b className="text-slate-ink">{tagFor(account)}</b> account. {need}
+    </p>
+  );
+}
+
+/** The auctioneer: their account creates the room and takes its chair. */
+function CreateRoom({ socket }: { socket: AuctionSocket }) {
+  const { status, account } = useAccount();
+
+  const create = () => {
+    // The claim waits for the new room's connection, which carries the
+    // session: the server opens the room for this auctioneer account and seats
+    // it in the chair, and Live Bidding opens the control panel.
+    socket.queueSeat({ role: "auctioneer" });
     createRoom();
   };
 
   return (
-    <motion.form
+    <motion.section
       variants={cardVariants}
-      onSubmit={submit}
-      noValidate
       className="relative overflow-hidden rounded-xl border border-line bg-surface-card p-5 shadow-soft"
       aria-label="Create a room"
     >
       <span aria-hidden className="absolute inset-x-0 top-0 h-[3px] bg-slate-ink" />
       <span className="font-ui text-[9.5px] font-semibold uppercase tracking-[0.16em] text-slate-faint">
-        Auctioneer · password protected
+        Auctioneer accounts
       </span>
       <h2 className="mt-1.5 font-head text-[20px] font-bold leading-tight text-slate-ink">Create a room</h2>
       <p className="mt-1.5 font-ui text-[12px] leading-relaxed text-slate-muted">
-        Log in to open a new auction room and take its chair. Its code is on your control panel to
-        send to the franchise owners.
+        Open a new auction room and take its chair. Its code is on your control panel to send to the
+        franchise owners.
       </p>
 
-      <label className="mt-4 block">
-        <span className={LABEL}>Designation</span>
-        <input
-          type="text"
-          value={designation}
-          onChange={(event) => setDesignation(event.target.value)}
-          placeholder="AUCTIONEER"
-          autoComplete="off"
-          className={INPUT}
-        />
-      </label>
-      <label className="mt-3 block">
-        <span className={LABEL}>Password</span>
-        <input
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          autoComplete="current-password"
-          className={INPUT}
-        />
-      </label>
-
-      {formError && (
-        <p role="alert" className="mt-3 font-ui text-[11.5px] leading-relaxed text-[#C0453A]">
-          {formError}
-        </p>
+      {status === "loading" ? (
+        <p className="mt-4 font-ui text-[12px] text-slate-faint">Checking your account…</p>
+      ) : !account ? (
+        <SignInPrompt role="Auctioneer" />
+      ) : !canCreateRooms(account) ? (
+        <WrongAccount account={account} need="Only Auctioneer accounts can create rooms." />
+      ) : (
+        <div className="mt-4">
+          <p className="font-ui text-[12px] text-slate-body">
+            Signed in as <b className="text-slate-ink">{account.name}</b>
+          </p>
+          <button type="button" onClick={create} className={`${PRIMARY} mt-3 w-full`}>
+            Create room &amp; enter control panel
+          </button>
+        </div>
       )}
-
-      <button type="submit" className={`${PRIMARY} mt-5 w-full`}>
-        Create room &amp; enter control panel
-      </button>
-    </motion.form>
+    </motion.section>
   );
 }
 
 /** A franchise: the code they were sent, and in. */
 function JoinRoom({ socket }: { socket: AuctionSocket }) {
+  const { status, account } = useAccount();
   const [code, setCode] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -192,49 +201,61 @@ function JoinRoom({ socket }: { socket: AuctionSocket }) {
     enterRoom(room);
   };
 
+  // Delegates join to bid; an auctioneer may come back into a room it created
+  // (a new tab, another device) and take its chair from the room's own screen.
+  const allowed = canJoinRooms(account);
+
   return (
-    <motion.form
+    <motion.section
       variants={cardVariants}
-      onSubmit={submit}
-      noValidate
       className="relative overflow-hidden rounded-xl border border-line bg-surface-card p-5 shadow-soft"
       aria-label="Join a room"
     >
       <span aria-hidden className="absolute inset-x-0 top-0 h-[3px] bg-neon-orange" />
       <span className="font-ui text-[9.5px] font-semibold uppercase tracking-[0.16em] text-slate-faint">
-        Franchise owners
+        Delegate accounts
       </span>
       <h2 className="mt-1.5 font-head text-[20px] font-bold leading-tight text-slate-ink">Join a room</h2>
       <p className="mt-1.5 font-ui text-[12px] leading-relaxed text-slate-muted">
         Enter the room code your auctioneer sent you, then choose your franchise.
       </p>
 
-      <label className="mt-4 block">
-        <span className={LABEL}>Room code</span>
-        <input
-          type="password"
-          value={code}
-          onChange={(event) => {
-            setCode(event.target.value.toUpperCase());
-            setFormError(null);
-          }}
-          maxLength={24}
-          autoComplete="one-time-code"
-          autoCapitalize="characters"
-          spellCheck={false}
-          className={`${INPUT} font-num tracking-[0.18em]`}
-        />
-      </label>
-
-      {formError && (
-        <p role="alert" className="mt-3 font-ui text-[11.5px] leading-relaxed text-[#C0453A]">
-          {formError}
-        </p>
+      {status === "loading" ? (
+        <p className="mt-4 font-ui text-[12px] text-slate-faint">Checking your account…</p>
+      ) : !account ? (
+        <SignInPrompt role="Delegate" />
+      ) : !allowed ? (
+        <WrongAccount account={account} need="Member accounts cannot take a seat in a live auction room." />
+      ) : (
+        <form onSubmit={submit} noValidate className="mt-4">
+          <label className="block">
+            <span className={LABEL}>
+              {account.role === "auctioneer" && !account.admin ? "Code of a room you created" : "Room code"}
+            </span>
+            <input
+              type="password"
+              value={code}
+              onChange={(event) => {
+                setCode(event.target.value.toUpperCase());
+                setFormError(null);
+              }}
+              maxLength={24}
+              autoComplete="one-time-code"
+              autoCapitalize="characters"
+              spellCheck={false}
+              className={`${INPUT} font-num tracking-[0.18em]`}
+            />
+          </label>
+          {formError && (
+            <p role="alert" className="mt-3 font-ui text-[11.5px] leading-relaxed text-[#C0453A]">
+              {formError}
+            </p>
+          )}
+          <button type="submit" className={`${PRIMARY} mt-4 w-full`} disabled={!code.trim()}>
+            Enter room
+          </button>
+        </form>
       )}
-
-      <button type="submit" className={`${PRIMARY} mt-5 w-full`} disabled={!code.trim()}>
-        Enter room
-      </button>
-    </motion.form>
+    </motion.section>
   );
 }

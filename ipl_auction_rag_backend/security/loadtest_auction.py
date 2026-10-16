@@ -31,6 +31,11 @@ Usage (against a local server; never point this at production unannounced):
 `--rooms-param` sends each auction to its own room (?room=<code>). Without it
 every simulated auction dials the same socket, which is how the server behaved
 before it had rooms.
+
+Rooms are created and seated by account (accounts/), so with `--rooms-param`
+the script registers an Auctioneer account per room and a Delegate account per
+seat before it starts. Run the server with ACCOUNTS_DB_PATH pointed at a
+throwaway file so these accounts do not land in the real accounts database.
 """
 from __future__ import annotations
 
@@ -43,6 +48,7 @@ import statistics
 import subprocess
 import sys
 import time
+import uuid
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -106,6 +112,10 @@ class Room:
         self.members: set[str] = set()
         self.last_bid_at = 0.0
         self.done = asyncio.Event()
+        # Session cookies: the room's auctioneer account, and one delegate
+        # account per team. Empty when rooms are not in play.
+        self.auctioneer_cookie: str | None = None
+        self.delegate_cookies: dict[int, str] = {}
 
     def observe(self, who: str, state: dict[str, Any]) -> None:
         lot = state.get("lot")
@@ -126,9 +136,12 @@ class Room:
             self.stats.bids_confirmed += 1
 
 
-async def connect(room: Room, who: str):
+async def connect(room: Room, who: str, cookie: str | None = None):
     try:
-        return await websockets.connect(room.ws_url, open_timeout=15, max_size=2**22, ping_interval=20)
+        headers = {"Cookie": cookie} if cookie else None
+        return await websockets.connect(
+            room.ws_url, open_timeout=15, max_size=2**22, ping_interval=20, additional_headers=headers
+        )
     except Exception as exc:  # noqa: BLE001
         room.stats.connect_failures[type(exc).__name__ + ": " + str(exc)[:60]] += 1
         return None
@@ -147,7 +160,7 @@ async def frames(ws, room: Room):
 
 async def franchise(room: Room, team_id: int, delay: tuple[float, float], appetite: float) -> None:
     who = f"{room.code}/t{team_id}"
-    ws = await connect(room, who)
+    ws = await connect(room, who, room.delegate_cookies.get(team_id))
     if ws is None:
         return
     room.members.add(who)
@@ -220,7 +233,7 @@ async def franchise(room: Room, team_id: int, delay: tuple[float, float], appeti
 
 async def auctioneer(room: Room, password: str, pool: list[int], lots: int, hammer: float, settled: asyncio.Event) -> None:
     who = f"{room.code}/auc"
-    ws = await connect(room, who)
+    ws = await connect(room, who, room.auctioneer_cookie)
     if ws is None:
         room.done.set()
         return
@@ -340,6 +353,24 @@ async def scenario(args, mega: int, mini: int, label: str) -> dict[str, Any]:
         code = f"LT{run}-{i}"  # a valid room code: letters, digits, dashes
         url = ws_base + (f"?room={code}&kind={kind}" if args.rooms_param else "")
         rooms.append(Room(code, kind, teams, url, stats))
+
+    if args.rooms_param:
+        # One auctioneer account per room, one delegate account per seat.
+        async with httpx.AsyncClient(timeout=60) as http:
+            async def account(role: str) -> str:
+                email = f"lt-{role}-{uuid.uuid4().hex[:12]}@loadtest.auctoniq.test"
+                r = await http.post(
+                    base + "/api/v1/accounts/register",
+                    json={"name": f"Load test {role}", "email": email, "password": "load-test-password", "role": role},
+                )
+                r.raise_for_status()
+                http.cookies.clear()
+                return f"auctoniq_session={r.cookies.get('auctoniq_session')}"
+
+            for room in rooms:
+                room.auctioneer_cookie = await account("auctioneer")
+                for team_id in range(1, room.teams + 1):
+                    room.delegate_cookies[team_id] = await account("delegate")
 
     cpu0 = server_cpu_seconds(args.server_pid)
     t0 = time.perf_counter()

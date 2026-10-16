@@ -13,6 +13,8 @@
  *   /auction         the live room: auctioneer or franchise
  *   /auction/demo    the standalone war-room on its mock feed (Phase 3)
  *   /aucteam         AUCTEAM: build a playing XI, then SCOUT grades it
+ *   /login           log in, or create an account (auctioneer / delegate / member)
+ *   /account         the signed-in account and its tag
  *   /about           what AUCTONIQ is, how it works, the disclaimer
  *   /console         the unified Phase 2/3 console, unchanged
  *
@@ -52,6 +54,10 @@ const LiveAuction = lazy(() => import("./pages/LiveAuction"));
 const About = lazy(() => import("./pages/About"));
 // AUCTEAM: the drag-and-drop playing-XI builder and its SCOUT report.
 const Aucteam = lazy(() => import("./pages/Aucteam"));
+// Accounts: log in or register (as an auctioneer, a delegate or a member), and
+// the signed-in account with its tag.
+const Login = lazy(() => import("./pages/Login"));
+const Account = lazy(() => import("./pages/Account"));
 const AuctionConsole = lazy(() => import("./components/Console/AuctionConsole"));
 const AuctionBlock = lazy(() => import("./components/Auction/AuctionBlock"));
 // The scene bench, while the 3D landing is being built piece by piece.
@@ -106,6 +112,8 @@ export default function App() {
           <Route path="/lab/opening" element={<OpeningLab />} />
           <Route path="/lab/prototype" element={<PrototypeLab />} />
           <Route path="/aucteam" element={<Aucteam />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/account" element={<Account />} />
           <Route path="/about" element={<About />} />
           <Route path="/console" element={<AuctionConsole />} />
           <Route path="*" element={<NotFound />} />

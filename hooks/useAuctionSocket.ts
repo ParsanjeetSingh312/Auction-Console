@@ -33,6 +33,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { wsUrl } from "../console/apiBase";
+import { useAccount } from "../console/accountStore";
 import { useRoom, withRoom } from "../console/auctionRoom";
 
 /* ------------------------------------------------------------------ *
@@ -258,7 +259,7 @@ function socketUrl(): string {
 /** Backoff schedule, in ms. Caps rather than growing without bound. */
 const BACKOFF = [400, 900, 1800, 3000, 5000, 8000];
 /** Close codes for a room code the server will not serve: no retry. */
-const ROOM_REFUSALS = new Set([4400, 4404, 4429]);
+const ROOM_REFUSALS = new Set([4400, 4403, 4404, 4429]);
 const PING_INTERVAL = 25_000;
 
 export interface AuctionSocket {
@@ -381,6 +382,11 @@ export function useAuctionSocket(): AuctionSocket {
   // The room this tab is in (console/auctionRoom.ts). The connection below is
   // to that room, and moves when it does.
   const room = useRoom();
+  // Whose account this tab is signed in as. The server reads it from the
+  // session cookie when the socket opens, so a different account means a new
+  // connection; while the first check is in flight there is nothing to send.
+  const signedIn = useAccount();
+  const accountKey = signedIn.status === "loading" ? "loading" : String(signedIn.account?.id ?? "none");
 
   /* ---------------- the connection ---------------- */
 
@@ -403,6 +409,10 @@ export function useAuctionSocket(): AuctionSocket {
     // nothing to connect to.
     if (!room.chosen) {
       setStatus("closed");
+      return;
+    }
+    if (accountKey === "loading") {
+      setStatus("connecting");
       return;
     }
 
@@ -501,10 +511,11 @@ export function useAuctionSocket(): AuctionSocket {
       socketRef.current?.close();
       socketRef.current = null;
     };
-    // The room itself: entering one, leaving for the entry, or moving between
-    // codes. Not `creating` clearing once the chair is taken -- same room.
+    // The room itself (entering one, leaving for the entry, moving between
+    // codes) and the account. Not `creating` clearing once the chair is taken
+    // -- same room, same account.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room.chosen, room.code]);
+  }, [room.chosen, room.code, accountKey]);
 
   /* ---------------- countdown ---------------- */
 

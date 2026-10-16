@@ -31,6 +31,7 @@ from config.settings import get_settings
 from api.routes import router as api_router
 from api.routes_scout import router as scout_router
 from api.routes_aucteam import router as aucteam_router
+from api.routes_accounts import router as accounts_router
 from auction.room import room as auction_room
 from auction.ws import router as auction_router
 
@@ -269,6 +270,15 @@ async def lifespan(app: FastAPI):
             exc,
         )
 
+    # Demo accounts, when DEMO_ACCOUNTS_PASSWORD is set (accounts/demo.py).
+    if get_settings().DEMO_ACCOUNTS_PASSWORD:
+        try:
+            from accounts.demo import ensure_demo_accounts
+
+            await asyncio.to_thread(ensure_demo_accounts, get_settings().DEMO_ACCOUNTS_PASSWORD)
+        except Exception as exc:  # noqa: BLE001 - startup must not die here
+            logger.warning("Could not create the demo accounts: %s", exc)
+
     # Pre-warm the Hugging Face models. Deliberately the last thing before the
     # server starts accepting traffic: everything above is cheap, and this is
     # the one step that takes seconds rather than milliseconds.
@@ -411,6 +421,10 @@ app.include_router(scout_router)
 # the two above -- registered before the SPA catch-all so /api/v1/aucteam/*
 # is never answered with index.html.
 app.include_router(aucteam_router)
+
+# Accounts: register, log in and out, who am I. Before the SPA catch-all for the
+# same reason as the routers above.
+app.include_router(accounts_router)
 
 
 # ---------------------------------------------------------------------------
