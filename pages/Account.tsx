@@ -6,11 +6,13 @@
  * Live Bidding, and the server enforces it (console/accountStore.ts). Signed
  * out, this sends the visitor to log in and brings them back.
  */
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 
-import { ADMIN_BLURB, logOut, ROLE_BLURB, ROLE_TAG, useAccount } from "../console/accountStore";
+import { ADMIN_BLURB, changeEmail, changePassword, logOut, ROLE_BLURB, ROLE_TAG, useAccount } from "../console/accountStore";
+import type { Account as AccountRecord } from "../console/accountStore";
 import { cardVariants, gridVariants } from "../console/motion";
 import StadiumBackdrop from "../components/Sections/StadiumBackdrop";
 import { RoleTag } from "./Login";
@@ -110,8 +112,154 @@ export default function Account() {
               Loading your account…
             </motion.p>
           )}
+
+          {/* Administrators only: the server refuses these for anyone else. */}
+          {account?.admin && <AdminSettings account={account} />}
         </motion.div>
       </div>
     </div>
+  );
+}
+
+const LABEL = "font-ui text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-body";
+const INPUT =
+  "mt-1 w-full rounded-lg border border-line bg-surface-sunken px-3 py-2 font-ui text-[13px] text-slate-ink outline-none transition-colors focus:border-slate-faint";
+
+function Note({ kind, text }: { kind: "ok" | "err"; text: string }) {
+  return (
+    <p
+      role={kind === "err" ? "alert" : "status"}
+      className={`mt-3 rounded-lg border px-3 py-2 font-ui text-[11.5px] leading-relaxed ${
+        kind === "err"
+          ? "border-[#C0453A]/40 bg-[#C0453A]/10 text-[#C0453A]"
+          : "border-[#1E6B47]/40 bg-[#1E6B47]/10 text-[#3FA372]"
+      }`}
+    >
+      {text}
+    </p>
+  );
+}
+
+/**
+ * Account settings, for administrators only: change the email (to another
+ * address already on ADMIN_EMAILS, since admin follows the email) and change
+ * the password (which signs out every other device). Both ask for the current
+ * password. The server refuses both for anyone who is not an administrator.
+ */
+function AdminSettings({ account }: { account: AccountRecord }) {
+  const [email, setEmail] = useState("");
+  const [emailPassword, setEmailPassword] = useState("");
+  const [emailNote, setEmailNote] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [passwordNote, setPasswordNote] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submitEmail = async (event: FormEvent) => {
+    event.preventDefault();
+    setEmailNote(null);
+    setBusy(true);
+    try {
+      const updated = await changeEmail(email, emailPassword);
+      setEmail("");
+      setEmailPassword("");
+      setEmailNote({
+        kind: "ok",
+        text: `Your email is now ${updated.email}. Remove the old address from ADMIN_EMAILS when you are ready.`,
+      });
+    } catch (exc) {
+      setEmailNote({ kind: "err", text: exc instanceof Error ? exc.message : "Could not change the email." });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitPassword = async (event: FormEvent) => {
+    event.preventDefault();
+    setPasswordNote(null);
+    if (next.length < 8) {
+      setPasswordNote({ kind: "err", text: "Use a new password of at least 8 characters." });
+      return;
+    }
+    setBusy(true);
+    try {
+      await changePassword(current, next);
+      setCurrent("");
+      setNext("");
+      setPasswordNote({ kind: "ok", text: "Password changed. Your other devices have been signed out." });
+    } catch (exc) {
+      setPasswordNote({ kind: "err", text: exc instanceof Error ? exc.message : "Could not change the password." });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <motion.section
+      variants={cardVariants}
+      className="mt-4 rounded-xl border border-line bg-surface-card p-6 shadow-soft"
+      aria-label="Account settings"
+    >
+      <span className="font-ui text-[9.5px] font-semibold uppercase tracking-[0.16em] text-slate-faint">
+        Administrators only
+      </span>
+      <h2 className="mt-1 font-head text-[18px] font-bold leading-tight text-slate-ink">Account settings</h2>
+
+      <form onSubmit={submitEmail} className="mt-4 border-t border-line pt-4" aria-label="Change email">
+        <h3 className="font-ui text-[12px] font-semibold text-slate-ink">Change email</h3>
+        <p className="mt-1 font-ui text-[11.5px] leading-relaxed text-slate-muted">
+          Currently {account.email}. Add the new address to ADMIN_EMAILS first: an administrator can only move to an
+          email on that list.
+        </p>
+        <label className="mt-3 block">
+          <span className={LABEL}>New email</span>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" className={INPUT} />
+        </label>
+        <label className="mt-3 block">
+          <span className={LABEL}>Current password</span>
+          <input
+            type="password"
+            value={emailPassword}
+            onChange={(e) => setEmailPassword(e.target.value)}
+            autoComplete="current-password"
+            className={INPUT}
+          />
+        </label>
+        {emailNote && <Note {...emailNote} />}
+        <button type="submit" disabled={busy || !email || !emailPassword} className={`${PRIMARY} mt-4 disabled:opacity-60`}>
+          Change email
+        </button>
+      </form>
+
+      <form onSubmit={submitPassword} className="mt-5 border-t border-line pt-4" aria-label="Change password">
+        <h3 className="font-ui text-[12px] font-semibold text-slate-ink">Change password</h3>
+        <label className="mt-3 block">
+          <span className={LABEL}>Current password</span>
+          <input
+            type="password"
+            value={current}
+            onChange={(e) => setCurrent(e.target.value)}
+            autoComplete="current-password"
+            className={INPUT}
+          />
+        </label>
+        <label className="mt-3 block">
+          <span className={LABEL}>New password</span>
+          <input
+            type="password"
+            value={next}
+            onChange={(e) => setNext(e.target.value)}
+            autoComplete="new-password"
+            minLength={8}
+            className={INPUT}
+          />
+          <span className="mt-1 block font-ui text-[10.5px] text-slate-faint">At least 8 characters.</span>
+        </label>
+        {passwordNote && <Note {...passwordNote} />}
+        <button type="submit" disabled={busy || !current || !next} className={`${PRIMARY} mt-4 disabled:opacity-60`}>
+          Change password
+        </button>
+      </form>
+    </motion.section>
   );
 }

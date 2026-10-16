@@ -299,3 +299,46 @@ class TestDelegateRooms:
             with client.websocket_connect(f"{ws}?room=OFFICIAL1", headers=as_account(delegate)) as seat:
                 seat.send_json({"type": "join", "role": "franchise", "team_id": 2})
                 assert answer(seat)["type"] == "joined"
+
+
+class TestAdminSettings:
+    def test_only_admins_change_email_or_password(self, client):
+        token = register(client, "auctioneer", email="plain-user@example.test", password="right-password")
+        for path, body in (
+            ("/api/v1/accounts/email", {"new_email": "new@example.test", "password": "right-password"}),
+            ("/api/v1/accounts/password", {"current_password": "right-password", "new_password": "another-password"}),
+        ):
+            assert client.post(path, json=body, headers=as_account(token)).status_code == 403
+        assert client.post("/api/v1/accounts/email", json={"new_email": "x@example.test", "password": "y"}).status_code == 401
+
+    def test_admin_moves_only_to_a_listed_email(self, client, monkeypatch):
+        token = register(client, "member", email="old-admin@example.test", password="right-password")
+        monkeypatch.setattr(get_settings(), "ADMIN_EMAILS", "old-admin@example.test,new-admin@example.test")
+        headers = as_account(token)
+        wrong = client.post("/api/v1/accounts/email", json={"new_email": "new-admin@example.test", "password": "nope"}, headers=headers)
+        assert wrong.status_code == 401
+        unlisted = client.post("/api/v1/accounts/email", json={"new_email": "random@example.test", "password": "right-password"}, headers=headers)
+        assert unlisted.status_code == 400 and "ADMIN_EMAILS" in unlisted.json()["detail"]
+        moved = client.post("/api/v1/accounts/email", json={"new_email": "New-Admin@example.test", "password": "right-password"}, headers=headers)
+        assert moved.status_code == 200
+        account = moved.json()["account"]
+        assert account["email"] == "new-admin@example.test" and account["admin"] is True
+        # The new email logs in; the old one no longer does.
+        ok = client.post("/api/v1/accounts/login", json={"email": "new-admin@example.test", "password": "right-password"})
+        old = client.post("/api/v1/accounts/login", json={"email": "old-admin@example.test", "password": "right-password"})
+        assert ok.status_code == 200 and old.status_code == 401
+
+    def test_admin_password_change_signs_out_elsewhere(self, client, monkeypatch):
+        here = register(client, "member", email="pw-admin@example.test", password="first-password")
+        monkeypatch.setattr(get_settings(), "ADMIN_EMAILS", "pw-admin@example.test")
+        elsewhere = client.post("/api/v1/accounts/login", json={"email": "pw-admin@example.test", "password": "first-password"}).cookies.get(COOKIE)
+        client.cookies.clear()
+        changed = client.post(
+            "/api/v1/accounts/password",
+            json={"current_password": "first-password", "new_password": "second-password"},
+            headers=as_account(here),
+        )
+        assert changed.status_code == 200
+        assert client.get("/api/v1/accounts/me", headers=as_account(here)).status_code == 200
+        assert client.get("/api/v1/accounts/me", headers=as_account(elsewhere)).status_code == 401
+        assert client.post("/api/v1/accounts/login", json={"email": "pw-admin@example.test", "password": "second-password"}).status_code == 200

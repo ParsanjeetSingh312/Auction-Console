@@ -6,6 +6,8 @@ Registering, logging in and out, and "who am I", under /api/v1/accounts.
     POST /login      email, password             -> the account, logged in
     POST /logout                                 -> logged out
     GET  /me                                     -> the account, or 401
+    POST /email      new_email, password         -> admins only: change email
+    POST /password   current, new password       -> admins only: change password
 
 The session rides in an httpOnly cookie, so page scripts cannot read it, and it
 is sent on the auction WebSocket's handshake as well -- which is how the room
@@ -67,6 +69,24 @@ class RegisterRequest(BaseModel):
         if not EMAIL.match(value):
             raise ValueError("Enter a valid email address.")
         return value
+
+
+class ChangeEmailRequest(BaseModel):
+    new_email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=200)
+
+    @field_validator("new_email")
+    @classmethod
+    def _email(cls, value: str) -> str:
+        value = value.strip().lower()
+        if not EMAIL.match(value):
+            raise ValueError("Enter a valid email address.")
+        return value
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=8, max_length=200)
 
 
 class LoginRequest(BaseModel):
@@ -187,3 +207,56 @@ async def me(request: Request) -> dict[str, Any]:
     if account is None:
         raise HTTPException(status_code=401, detail="Not logged in.")
     return {"account": account.public()}
+
+
+# ------------------------------------------------------- admin settings --
+#
+# Changing an account's email or password is for administrators only. Admin
+# follows the email (ADMIN_EMAILS), so an admin may move only to an address
+# already on that list: anything else would quietly end their own admin
+# access, and a rename is never a way onto the list.
+
+
+async def _admin_with_password(request: Request, password: str) -> Account:
+    """The signed-in administrator, once their current password checks out."""
+    account = await asyncio.to_thread(account_from_request, request)
+    if account is None:
+        raise HTTPException(status_code=401, detail="Not logged in.")
+    if not account.admin:
+        raise HTTPException(status_code=403, detail="Only administrator accounts can change these settings.")
+    key = f"settings:{account.id}"
+    if _too_many(key):
+        raise HTTPException(status_code=429, detail="Too many attempts. Wait a few minutes and try again.")
+    stored = await asyncio.to_thread(store.password_hash_of, account.id)
+    if not stored or not await asyncio.to_thread(verify_password, password, stored):
+        _failed(key)
+        raise HTTPException(status_code=401, detail="Your current password is incorrect.")
+    return account
+
+
+@router.post("/email")
+async def change_email(payload: ChangeEmailRequest, request: Request) -> dict[str, Any]:
+    account = await _admin_with_password(request, payload.password)
+    if payload.new_email == account.email:
+        raise HTTPException(status_code=400, detail="That is already your email.")
+    if payload.new_email not in store.admin_emails():
+        raise HTTPException(
+            status_code=400,
+            detail="Add the new email to ADMIN_EMAILS first, then change it here -- "
+            "otherwise this account would stop being an administrator.",
+        )
+    try:
+        updated = await asyncio.to_thread(store.update_email, account.id, payload.new_email)
+    except EmailTaken:
+        raise HTTPException(status_code=409, detail="Another account already uses that email.")
+    return {"account": updated.public()}
+
+
+@router.post("/password")
+async def change_password(payload: ChangePasswordRequest, request: Request) -> dict[str, Any]:
+    account = await _admin_with_password(request, payload.current_password)
+    new_hash = await asyncio.to_thread(hash_password, payload.new_password)
+    await asyncio.to_thread(store.update_password, account.id, new_hash)
+    # Everywhere else this account is signed in is signed out; this one stays.
+    await asyncio.to_thread(store.close_other_sessions, account.id, request.cookies.get(COOKIE))
+    return {"ok": True}

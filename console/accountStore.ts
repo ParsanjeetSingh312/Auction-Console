@@ -68,7 +68,7 @@ export function canJoinRooms(account: Account | null): boolean {
 /** What each role is for, in a line. */
 export const ROLE_BLURB: Record<Role, string> = {
   auctioneer: "Create auction rooms and run them from the control panel.",
-  delegate: "Join an auctioneer's room with its code and bid, or create a delegate room and run it yourself.",
+  delegate: "Join a room with its code and bid, or create a room of your own and run it.",
   member: "The free tier: the data room, SCOUT and AUCTEAM. No seat in a live room.",
 };
 
@@ -152,6 +152,27 @@ export async function logIn(email: string, password: string): Promise<Account> {
   const account = (await response.json()).account as Account;
   set({ status: "ready", account });
   return account;
+}
+
+/** Administrators only: move the account to another email on the admin list. */
+export async function changeEmail(newEmail: string, password: string): Promise<Account> {
+  const response = await call("/email", {
+    method: "POST",
+    body: JSON.stringify({ new_email: newEmail, password }),
+  });
+  if (!response.ok) throw new Error(await reason(response));
+  const account = (await response.json()).account as Account;
+  set({ status: "ready", account });
+  return account;
+}
+
+/** Administrators only: a new password; other devices are signed out. */
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const response = await call("/password", {
+    method: "POST",
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+  if (!response.ok) throw new Error(await reason(response));
 }
 
 export async function logOut(): Promise<void> {

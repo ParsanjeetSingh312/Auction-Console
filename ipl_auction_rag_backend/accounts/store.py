@@ -160,6 +160,27 @@ def account_with_password(email: str) -> tuple[Account, str] | None:
     return _account(row), row["password_hash"]  # type: ignore[return-value]
 
 
+def update_email(account_id: int, email: str) -> Account:
+    with _connect() as conn:
+        try:
+            conn.execute("UPDATE accounts SET email = ? WHERE id = ?", (email, account_id))
+        except sqlite3.IntegrityError as exc:
+            raise EmailTaken(email) from exc
+        row = conn.execute("SELECT * FROM accounts WHERE id = ?", (account_id,)).fetchone()
+    return _account(row)  # type: ignore[return-value]
+
+
+def update_password(account_id: int, password_hash: str) -> None:
+    with _connect() as conn:
+        conn.execute("UPDATE accounts SET password_hash = ? WHERE id = ?", (password_hash, account_id))
+
+
+def password_hash_of(account_id: int) -> str | None:
+    with _connect() as conn:
+        row = conn.execute("SELECT password_hash FROM accounts WHERE id = ?", (account_id,)).fetchone()
+    return row["password_hash"] if row else None
+
+
 # ------------------------------------------------------------- sessions --
 
 
@@ -188,6 +209,16 @@ def account_for_session(token: str | None) -> Account | None:
             (_hash_token(token), time.time()),
         ).fetchone()
     return _account(row)
+
+
+def close_other_sessions(account_id: int, keep_token: str | None) -> None:
+    """Sign the account out everywhere but the session `keep_token` belongs to."""
+    keep = _hash_token(keep_token) if keep_token else ""
+    with _connect() as conn:
+        conn.execute(
+            "DELETE FROM account_sessions WHERE account_id = ? AND token_hash != ?",
+            (account_id, keep),
+        )
 
 
 def close_session(token: str | None) -> None:
