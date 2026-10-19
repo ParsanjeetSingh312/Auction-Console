@@ -15,6 +15,7 @@
  *   /aucteam         AUCTEAM: build a playing XI, then SCOUT grades it
  *   /login           log in, or create an account (auctioneer / delegate / member)
  *   /account         the signed-in account and its tag
+ *   /connections     friends, friend requests, and sending passes to them
  *   /about           what AUCTONIQ is, how it works, the disclaimer
  *   /console         the unified Phase 2/3 console, unchanged
  *
@@ -47,6 +48,7 @@ import ScoutDrawer from "./components/Scout/ScoutDrawer";
 import ScoutLauncher from "./components/Scout/ScoutLauncher";
 import CricketCursor from "./components/UI/CricketCursor";
 import NotificationToasts from "./components/Global/NotificationToasts";
+import SendPassesDialog from "./components/Ecosystem/SendPassesDialog";
 import { useScoutHotkey } from "./console/scoutStore";
 
 // The AUCTIQ landing — now the front door.
@@ -60,6 +62,8 @@ const Aucteam = lazy(() => import("./pages/Aucteam"));
 // the signed-in account with its tag.
 const Login = lazy(() => import("./pages/Login"));
 const Account = lazy(() => import("./pages/Account"));
+// The ecosystem: connections and friend requests, and sending passes to them.
+const Connections = lazy(() => import("./pages/Connections"));
 const AuctionConsole = lazy(() => import("./components/Console/AuctionConsole"));
 const AuctionBlock = lazy(() => import("./components/Auction/AuctionBlock"));
 // The scene bench, while the 3D landing is being built piece by piece.
@@ -119,6 +123,7 @@ export default function App() {
           <Route path="/aucteam" element={<Aucteam />} />
           <Route path="/login" element={<Login />} />
           <Route path="/account" element={<Account />} />
+          <Route path="/connections" element={<Connections />} />
           <Route path="/about" element={<About />} />
           <Route path="/console" element={<AuctionConsole />} />
           <Route path="*" element={<NotFound />} />
@@ -193,6 +198,7 @@ function GlobalScout() {
       {/* Notification popups, on every route, for the same reason as SCOUT:
           a pass or an announcement has to be seen wherever its owner is. */}
       <NotificationToasts />
+      <SendPassesDialog />
     </>
   );
 }

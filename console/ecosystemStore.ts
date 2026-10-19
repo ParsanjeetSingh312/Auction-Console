@@ -231,3 +231,75 @@ export function useEcosystem(): State {
   return useSyncExternalStore(subscribe, () => state, () => state);
 }
 
+/* ------------------------------------------------------------- sending -- */
+
+export interface SendResult {
+  gifts: number[];
+  balances: Balances;
+}
+
+/** Send passes as gifts to claim. The server checks every rule. */
+export async function sendPasses(details: {
+  recipient_ids: number[];
+  kind: PassKind;
+  quantity: number;
+  note?: string;
+  generate_missing?: boolean;
+}): Promise<SendResult> {
+  const result = await api<SendResult>("/passes/send", { method: "POST", body: JSON.stringify(details) });
+  set({ balances: result.balances });
+  return result;
+}
+
+export interface LedgerEntry {
+  id: number;
+  kind: PassKind;
+  delta: number;
+  reason: string;
+  ref: string | null;
+  counterpart: string | null;
+  created_at: number;
+}
+
+export async function ledger(limit = 30): Promise<LedgerEntry[]> {
+  return (await api<{ entries: LedgerEntry[] }>(`/passes/ledger?limit=${limit}`)).entries;
+}
+
+/** Administrators: an announcement to every bell, or to some roles'. */
+export async function broadcast(details: { title: string; body?: string; link?: string; roles?: string[] }): Promise<number> {
+  return (await api<{ sent: number }>("/notifications/broadcast", { method: "POST", body: JSON.stringify(details) })).sent;
+}
+
+/* ------------------------------------------------- the Send passes dialog -- */
+
+export interface SendIntent {
+  /** People to start with ticked. */
+  recipientIds?: number[];
+  /** A note to start with, such as the room code. */
+  note?: string;
+}
+
+let intent: SendIntent | null = null;
+const intentListeners = new Set<() => void>();
+
+/** Open the Send passes dialog (mounted once, in App) from anywhere. */
+export function openSendPasses(next: SendIntent = {}) {
+  intent = next;
+  for (const listener of intentListeners) listener();
+}
+
+export function closeSendPasses() {
+  intent = null;
+  for (const listener of intentListeners) listener();
+}
+
+export function useSendIntent(): SendIntent | null {
+  return useSyncExternalStore(
+    (listener) => {
+      intentListeners.add(listener);
+      return () => intentListeners.delete(listener);
+    },
+    () => intent,
+    () => intent,
+  );
+}

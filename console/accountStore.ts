@@ -60,9 +60,12 @@ export function canCreateRooms(account: Account | null): boolean {
   return roomTypesFor(account).length > 0;
 }
 
-/** May this account join a room by code? Delegates to bid, auctioneers to rejoin their own. */
+/**
+ * May this account join a room by code? Delegate and Free accounts to bid
+ * (each seat costs a Delegate pass), auctioneers to rejoin their own.
+ */
 export function canJoinRooms(account: Account | null): boolean {
-  return !!account && (account.role !== "member" || !!account.admin);
+  return !!account;
 }
 
 /** What each role is for, in a line. */

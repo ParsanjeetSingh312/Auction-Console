@@ -6,13 +6,19 @@
  * The one place on the site the code is shown (console/auctionRoom.ts): it is
  * rendered only inside the auctioneer's screens, never to a franchise or a
  * spectator. Nothing in the main room, which has no code.
+ *
+ * Beside it, for an account that sends passes, "Send passes": the Send
+ * passes dialog with the code already in the note, so the auctioneer can
+ * hand their players a seat and the room in one step.
  */
 import { useState } from "react";
 
 import { currentRoom } from "../../console/auctionRoom";
+import { openSendPasses, useEcosystem } from "../../console/ecosystemStore";
 
 export default function RoomCodeBadge() {
   const { code } = currentRoom();
+  const { capabilities } = useEcosystem();
   const [copied, setCopied] = useState(false);
   if (!code) return null;
 
@@ -40,6 +46,17 @@ export default function RoomCodeBadge() {
       >
         {copied ? "Copied" : "Copy"}
       </button>
+      {capabilities?.send.includes("D") && (
+        <button
+          type="button"
+          onClick={() => openSendPasses({ note: `Room code ${code}` })}
+          title="Send Delegate passes, with this room's code, to your players"
+          className="rounded-md px-2 py-1 font-ui text-[9.5px] font-bold uppercase tracking-[0.1em] text-[#020617] transition-opacity hover:opacity-90"
+          style={{ background: "linear-gradient(180deg,#cfe2ff,#4d8df6)" }}
+        >
+          Send passes
+        </button>
+      )}
     </div>
   );
 }

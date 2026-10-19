@@ -15,6 +15,7 @@ import { cardVariants, gridVariants } from "../console/motion";
 import StadiumBackdrop from "../components/Sections/StadiumBackdrop";
 import LightSweep from "../components/UI/LightSweep";
 import { RoleTag } from "./Login";
+import WalletPanel from "../components/Ecosystem/WalletPanel";
 
 import "../console/console.css";
 
@@ -108,7 +109,9 @@ export default function Account() {
                 </button>
               </div>
             </motion.section>
-          ) : (
+          ) : null}
+          {account && <WalletPanel account={account} />}
+          {!account && (
             <motion.p variants={cardVariants} className="font-ui text-[12.5px] text-slate-muted">
               Loading your account…
             </motion.p>

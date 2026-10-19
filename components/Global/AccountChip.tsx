@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { logOut, useAccount } from "../../console/accountStore";
-import { useEcosystem } from "../../console/ecosystemStore";
+import { openSendPasses, useEcosystem } from "../../console/ecosystemStore";
 import AuctionPass from "../Passes/AuctionPass";
 import type { Account } from "../../console/accountStore";
 
@@ -35,7 +35,7 @@ function toneOf(account: Account): string {
 
 export default function AccountChip() {
   const { status, account } = useAccount();
-  const { balances } = useEcosystem();
+  const { balances, capabilities } = useEcosystem();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -133,6 +133,22 @@ export default function AccountChip() {
           <Link role="menuitem" to="/auction/live" className={item} onClick={() => setOpen(false)}>
             Live Bidding
           </Link>
+          <Link role="menuitem" to="/connections" className={item} onClick={() => setOpen(false)}>
+            Connections
+          </Link>
+          {(capabilities?.send.length ?? 0) > 0 && (
+            <button
+              role="menuitem"
+              type="button"
+              className={item}
+              onClick={() => {
+                setOpen(false);
+                openSendPasses();
+              }}
+            >
+              Send passes
+            </button>
+          )}
           <button
             role="menuitem"
             type="button"

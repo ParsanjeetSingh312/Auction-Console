@@ -11,9 +11,12 @@
  *                   by the session cookie -- and lands on the control panel,
  *                   where the room's code is shown to send to the franchise
  *                   owners.
- *   Join a room     a Delegate account. The code they were sent takes them
- *                   into the room, where they choose their franchise, read the
- *                   briefing and bid.
+ *   Join a room     a Delegate or Free account. The code they were sent
+ *                   takes them into the room, where they choose their
+ *                   franchise, read the briefing and bid.
+ *
+ * Both cost a pass (accounts/passes.py): opening a room its kind's, a seat a
+ * Delegate pass. Each card says what it will cost and what the wallet holds.
  *
  * The server enforces all of it (auction/room.py): what is hidden here for an
  * account that may not use it is a courtesy, not the lock.
@@ -34,6 +37,9 @@ import type { RoomType } from "../../console/auctionRoom";
 import { cardVariants, gridVariants } from "../../console/motion";
 import type { AuctionSocket } from "../../hooks/useAuctionSocket";
 import LightSweep from "../UI/LightSweep";
+import AuctionPass from "../Passes/AuctionPass";
+import { useEcosystem } from "../../console/ecosystemStore";
+import type { PassKind } from "../../console/ecosystemStore";
 
 const LABEL = "font-ui text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-body";
 const INPUT =
@@ -141,6 +147,7 @@ function WrongAccount({ account, need }: { account: Account; need: string }) {
 /** The auctioneer: their account creates the room and takes its chair. */
 function CreateRoom({ socket }: { socket: AuctionSocket }) {
   const { status, account } = useAccount();
+  const { balances } = useEcosystem();
   const types = roomTypesFor(account);
 
   const create = (type: RoomType) => {
@@ -185,7 +192,13 @@ function CreateRoom({ socket }: { socket: AuctionSocket }) {
           {/* One button for everyone who may create: the kind of room follows
               from the account (an auctioneer's or a delegate's), decided and
               enforced by the server, and never shown here. */}
-          <button type="button" onClick={() => create(types[0])} className={`${PRIMARY} mt-3 w-full`}>
+          <PassCost account={account} kind={types[0] === "auctioneer" ? "A" : "D"} what="Opening the room" />
+          <button
+            type="button"
+            onClick={() => create(types[0])}
+            disabled={!hasPass(account, types[0] === "auctioneer" ? "A" : "D", balances)}
+            className={`${PRIMARY} mt-3 w-full`}
+          >
             Create room &amp; enter control panel
           </button>
         </div>
@@ -238,7 +251,7 @@ function JoinRoom({ socket }: { socket: AuctionSocket }) {
       ) : !account ? (
         <SignInPrompt role="Delegate" />
       ) : !allowed ? (
-        <WrongAccount account={account} need="Member accounts cannot take a seat in a live auction room." />
+        <WrongAccount account={account} need="Log in to take a seat in a live auction room." />
       ) : (
         <form onSubmit={submit} noValidate className="mt-4">
           <label className="block">
@@ -264,11 +277,47 @@ function JoinRoom({ socket }: { socket: AuctionSocket }) {
               {formError}
             </p>
           )}
+          {(account.role === "delegate" || account.role === "member") && (
+            <PassCost account={account} kind="D" what="A franchise seat, once per room," />
+          )}
           <button type="submit" className={`${PRIMARY} mt-4 w-full`} disabled={!code.trim()}>
             Enter room
           </button>
         </form>
       )}
     </motion.section>
+  );
+}
+
+function hasPass(account: Account, kind: PassKind, balances: Record<PassKind, number>): boolean {
+  return !!account.admin || balances[kind] > 0;
+}
+
+/**
+ * What the next step costs, in passes, and what the wallet holds. The server
+ * charges it (auction/ws.py); this is so nobody is surprised by it.
+ */
+function PassCost({ account, kind, what }: { account: Account; kind: PassKind; what: string }) {
+  const { balances } = useEcosystem();
+  const have = balances[kind];
+  const name = kind === "A" ? "gold Auctioneer pass" : "blue Delegate pass";
+  return (
+    <div className="mt-3 flex items-center gap-3 rounded-lg border border-line bg-surface-sunken px-3 py-2.5">
+      <AuctionPass kind={kind} size="xs" count={account.admin ? undefined : have} tilt={false} />
+      <p className="font-ui text-[11.5px] leading-snug text-slate-body">
+        {account.admin ? (
+          <>Free for administrators.</>
+        ) : have > 0 ? (
+          <>
+            {what} uses <b className="text-slate-ink">1 {name}</b>. You have {have}.
+          </>
+        ) : (
+          <>
+            {what} needs a {name}, and you have none.{" "}
+            {kind === "A" ? "Check your notifications, or ask an administrator." : "Ask your Auctioneer to send you one."}
+          </>
+        )}
+      </p>
+    </div>
   );
 }
