@@ -199,8 +199,10 @@ export default function PlayerSelect({ players, stats }: PlayerSelectProps) {
         onUpdate: (self) => {
           gsap.to(glide, {
             v: to(self.progress),
-            duration: 0.9,
-            ease: "power3.out",
+            // Short: Lenis already eases the scroll itself, and a long glide
+            // on top of it made the cards trail the page by a beat.
+            duration: getLenis() ? 0.45 : 0.9,
+            ease: getLenis() ? "power2.out" : "power3.out",
             overwrite: true,
             onUpdate: apply,
           });

@@ -23,7 +23,6 @@
  * TeamBudgetGrid and LedgerPanel are unchanged and still used by the console.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 
 import { money } from "../../console/format";
@@ -291,12 +290,8 @@ export default function DataDashboard() {
             className="util flex items-center gap-1.5"
           />
 
-          <Link to="/auction" className="util" style={{ textDecoration: "none" }}>
-            Live bidding →
-          </Link>
-          <Link to="/" className="util" style={{ textDecoration: "none" }}>
-            ← AUCTONIQ
-          </Link>
+          {/* The "Live bidding →" and "← AUCTONIQ" links that sat here are
+              covered by the site menu above the page (DataRoom.tsx). */}
         </motion.nav>
       </motion.header>
 

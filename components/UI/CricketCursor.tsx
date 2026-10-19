@@ -17,9 +17,13 @@
  * in a search field is a real usability cost for no visual gain.
  *
  * **It is off wherever it would be wrong**: a coarse pointer has no cursor to
- * replace, reduced motion means no chasing elements, and the effect is scoped
- * to the landing rather than following the user into the console, where a
- * bouncing ball over a live auction grid would be a distraction during bidding.
+ * replace, and reduced motion means no chasing elements.
+ *
+ * **It is the pointer on every page.** Mounted once in App.tsx, so it follows
+ * the user from the landing into the Data Interface, the live room, AUCTEAM
+ * and the war-room demo. It sits on the very top layer (see `TOP`) so no modal,
+ * drawer or full-screen overlay can paint over it and leave the page with no
+ * visible pointer at all.
  *
  * Positioned by writing `transform` straight to the node on an animation frame.
  * Pointer position changes faster than React should ever re-render.
@@ -30,6 +34,9 @@ import { useReducedMotion } from "framer-motion";
 
 /** How much of the remaining distance the trail closes each frame. */
 const TRAIL_EASE = 0.18;
+
+/** Above every overlay in the app: the war room is z-80, the opening z-200. */
+const TOP = 2147483646;
 
 /** Anything that should make the ball grow. */
 const INTERACTIVE = 'a, button, [role="button"], input, select, textarea, label, summary, [tabindex]:not([tabindex="-1"])';
@@ -134,8 +141,9 @@ export default function CricketCursor() {
       <div
         ref={trail}
         aria-hidden
-        className="pointer-events-none fixed left-0 top-0 z-[60] h-7 w-7 rounded-full opacity-0"
+        className="pointer-events-none fixed left-0 top-0 h-7 w-7 rounded-full opacity-0"
         style={{
+          zIndex: TOP,
           background:
             "radial-gradient(circle at 50% 50%, rgba(212,64,79,0.30), rgba(212,64,79,0) 70%)",
           transition: "opacity 200ms ease",
@@ -147,8 +155,9 @@ export default function CricketCursor() {
       <div
         ref={ball}
         aria-hidden
-        className="pointer-events-none fixed left-0 top-0 z-[61] h-[17px] w-[17px] rounded-full opacity-0"
+        className="pointer-events-none fixed left-0 top-0 h-[17px] w-[17px] rounded-full opacity-0"
         style={{
+          zIndex: TOP + 1,
           background:
             "radial-gradient(circle at 32% 28%, #d4404f, #7d1622 72%, #4a0d14)",
           boxShadow: "0 0 14px -2px rgba(212,64,79,0.75)",

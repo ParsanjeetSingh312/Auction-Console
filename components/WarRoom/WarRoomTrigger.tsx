@@ -4,12 +4,13 @@
  *
  * It used to share the right column with Trending Players. That card is gone
  * (kept on disk, unmounted) and this one takes the whole column, so it carries
- * more than a still: a scripted lot replays on a loop -- four franchises
- * bidding Virat Kohli up from the base to 20 crore, a clock that drains
- * between bids, the hammer -- and then starts again.
+ * more than a still: scripted lots play on a loop -- four franchises bidding
+ * a trending player up from the base, a clock that drains between bids, the
+ * hammer -- and then the next trending player (Kohli, Dhoni, Rohit, Bumrah,
+ * Jadeja, KL Rahul) comes to the block. See LOTS.
  *
  * **It is a simulation and says so.** The header reads "Simulated", the
- * figures come from SCRIPT below, and nothing here reads the auction socket.
+ * figures come from LOTS below, and nothing here reads the auction socket.
  * The real bid control is BlockView's, inside the overlay; nothing on the
  * landing can reach a live room.
  *
@@ -31,43 +32,130 @@ import gsap from "gsap";
 
 import GlowingButton from "../UI/GlowingButton";
 import { FRANCHISES, type FranchiseCode } from "../../console/franchises";
+import { SHOWCASE_PLAYERS } from "../../utils/players";
 
 // The overlay pulls in the whole block view and its animations. Nobody who
 // never opens the demo should download it.
 const WarRoomOverlay = lazy(() => import("./WarRoomOverlay"));
 
-const LOT = {
-  jersey: "18",
-  name: "Virat Kohli",
-  role: "Batter",
-  base: 2.0,
-  // Kohli's 2026 franchise colour, from franchises.ts.
-  tint: FRANCHISES.BLR.primary,
-};
+interface DemoLot {
+  jersey: string;
+  name: string;
+  base: number;
+  /** The shirt tile's colour: the player's franchise accent. */
+  tint: string;
+  /** The four bidders, in the order their rows are drawn. */
+  bidders: FranchiseCode[];
+  /** The replayed bids, in order. Amounts in crore; the last one wins. */
+  script: { team: FranchiseCode; amount: number }[];
+}
 
-/** The replayed lot, in order. Amounts in crore. */
-const SCRIPT: { team: FranchiseCode; amount: number }[] = [
-  { team: "KOL", amount: 5.0 },
-  { team: "BLR", amount: 10.0 },
-  { team: "CHE", amount: 14.5 },
-  { team: "BLR", amount: 16.0 },
-  { team: "CHE", amount: 18.0 },
-  { team: "MUM", amount: 20.0 },
+/** Find a trending player's card data, so names and shirts match the showcase. */
+function trending(surname: string) {
+  const player = SHOWCASE_PLAYERS.find((p) => p.surname === surname);
+  if (!player) throw new Error(`No showcase player named ${surname}`);
+  return {
+    jersey: String(player.number),
+    name: `${player.name} ${player.surname}`,
+    tint: player.accent,
+  };
+}
+
+/**
+ * The lots the panel rotates through: every trending player in turn, each with
+ * its own room and its own hammer price, so the landing never looks like it
+ * only knows one name.
+ */
+const LOTS: DemoLot[] = [
+  {
+    ...trending("Kohli"),
+    base: 2.0,
+    bidders: ["MUM", "CHE", "BLR", "KOL"],
+    script: [
+      { team: "KOL", amount: 5.0 },
+      { team: "BLR", amount: 10.0 },
+      { team: "CHE", amount: 14.5 },
+      { team: "BLR", amount: 16.0 },
+      { team: "CHE", amount: 18.0 },
+      { team: "MUM", amount: 20.0 },
+    ],
+  },
+  {
+    ...trending("Dhoni"),
+    base: 2.0,
+    bidders: ["CHE", "MUM", "RAJ", "DEL"],
+    script: [
+      { team: "DEL", amount: 4.0 },
+      { team: "CHE", amount: 8.5 },
+      { team: "MUM", amount: 11.0 },
+      { team: "RAJ", amount: 14.0 },
+      { team: "CHE", amount: 16.5 },
+    ],
+  },
+  {
+    ...trending("Sharma"),
+    base: 2.0,
+    bidders: ["MUM", "HYD", "PBK", "LKO"],
+    script: [
+      { team: "PBK", amount: 6.0 },
+      { team: "MUM", amount: 9.5 },
+      { team: "LKO", amount: 12.0 },
+      { team: "MUM", amount: 15.0 },
+      { team: "HYD", amount: 17.5 },
+      { team: "MUM", amount: 19.0 },
+    ],
+  },
+  {
+    ...trending("Bumrah"),
+    base: 2.0,
+    bidders: ["MUM", "BLR", "AHM", "CHE"],
+    script: [
+      { team: "AHM", amount: 7.0 },
+      { team: "MUM", amount: 12.0 },
+      { team: "BLR", amount: 15.5 },
+      { team: "AHM", amount: 18.0 },
+      { team: "MUM", amount: 21.0 },
+      { team: "BLR", amount: 22.5 },
+    ],
+  },
+  {
+    ...trending("Jadeja"),
+    base: 2.0,
+    bidders: ["RAJ", "CHE", "KOL", "HYD"],
+    script: [
+      { team: "KOL", amount: 5.0 },
+      { team: "CHE", amount: 8.0 },
+      { team: "RAJ", amount: 11.0 },
+      { team: "HYD", amount: 12.5 },
+      { team: "CHE", amount: 14.0 },
+      { team: "RAJ", amount: 15.5 },
+    ],
+  },
+  {
+    ...trending("Rahul"),
+    base: 2.0,
+    bidders: ["DEL", "LKO", "PBK", "BLR"],
+    script: [
+      { team: "LKO", amount: 6.5 },
+      { team: "DEL", amount: 9.0 },
+      { team: "BLR", amount: 11.5 },
+      { team: "LKO", amount: 13.0 },
+      { team: "DEL", amount: 14.5 },
+    ],
+  },
 ];
-
-/** The four bidders, in the order their rows are drawn. */
-const BIDDERS: FranchiseCode[] = ["MUM", "CHE", "BLR", "KOL"];
 
 const STEP_MS = 1700;
 const SOLD_HOLD_MS = 3200;
-const LAST = SCRIPT.length - 1;
-const TOP = SCRIPT[LAST].amount;
+
+const lastStep = (lot: DemoLot) => lot.script.length - 1;
+const topBid = (lot: DemoLot) => lot.script[lastStep(lot)].amount;
 
 /** Each bidder's highest bid once `step` bids have been placed. */
-function standing(step: number): Record<FranchiseCode, number> {
-  const out = {} as Record<FranchiseCode, number>;
-  for (const code of BIDDERS) out[code] = 0;
-  for (let i = 0; i <= step; i++) out[SCRIPT[i].team] = SCRIPT[i].amount;
+function standing(lot: DemoLot, step: number): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const code of lot.bidders) out[code] = 0;
+  for (let i = 0; i <= step; i++) out[lot.script[i].team] = lot.script[i].amount;
   return out;
 }
 
@@ -75,16 +163,17 @@ export default function WarRoomTrigger() {
   const [open, setOpen] = useState(false);
   const reduced = useReducedMotion();
 
-  // Starts at the sold state, so the panel is complete before any tick.
-  const [step, setStep] = useState(LAST);
+  // Starts at the first lot's sold state, so the panel is complete before any tick.
+  const [lotIndex, setLotIndex] = useState(0);
+  const [step, setStep] = useState(lastStep(LOTS[0]));
   const [sold, setSold] = useState(true);
 
   const panelRef = useRef<HTMLElement>(null);
   const bidRef = useRef<HTMLSpanElement>(null);
   const clockRef = useRef<HTMLDivElement>(null);
-  const shown = useRef(TOP);
+  const shown = useRef(topBid(LOTS[0]));
 
-  // The loop: bid, bid, ... sold, hold, again. Off screen, it waits.
+  // The loop: bid, bid, ... sold, hold, then the next player. Off screen, it waits.
   useEffect(() => {
     if (reduced) return;
     const panel = panelRef.current;
@@ -92,20 +181,26 @@ export default function WarRoomTrigger() {
 
     let visible = true;
     let timer: number | undefined;
-    let cursor = -1;
+    // The first lot is already on screen, sold; the loop opens on the second.
+    let lot = 0;
+    let cursor = lastStep(LOTS[0]);
 
     const tick = () => {
       if (!visible || document.hidden) {
         timer = window.setTimeout(tick, 600);
         return;
       }
+      const LAST = lastStep(LOTS[lot]);
       if (cursor >= LAST) {
+        // Hammer has fallen: bring the next trending player to the block.
+        lot = (lot + 1) % LOTS.length;
         cursor = -1;
+        setLotIndex(lot);
       }
       cursor += 1;
       setSold(false);
       setStep(cursor);
-      if (cursor === LAST) {
+      if (cursor === lastStep(LOTS[lot])) {
         timer = window.setTimeout(() => {
           setSold(true);
           timer = window.setTimeout(tick, SOLD_HOLD_MS);
@@ -127,9 +222,12 @@ export default function WarRoomTrigger() {
   }, [reduced]);
 
   // The bid figure rolls from the last shown amount to the new one.
+  const LOT = LOTS[lotIndex];
+  const TOP = topBid(LOT);
+
   useEffect(() => {
     const el = bidRef.current;
-    const target = SCRIPT[step].amount;
+    const target = LOT.script[step].amount;
     if (!el || reduced) {
       shown.current = target;
       return;
@@ -150,7 +248,7 @@ export default function WarRoomTrigger() {
     return () => {
       tween.kill();
     };
-  }, [step, reduced]);
+  }, [LOT, step, reduced]);
 
   // The clock: full on every bid, draining until the next one or the hammer.
   useEffect(() => {
@@ -170,9 +268,9 @@ export default function WarRoomTrigger() {
     };
   }, [step, sold, reduced]);
 
-  const leader = SCRIPT[step];
+  const leader = LOT.script[step];
   const lead = FRANCHISES[leader.team];
-  const bids = standing(step);
+  const bids = standing(LOT, step);
 
   return (
     <>
@@ -195,7 +293,14 @@ export default function WarRoomTrigger() {
         <div className="neon-rule mt-2.5" />
 
         {/* The lot: shirt, name, and the figure the room is watching. */}
-        <div className="mt-5 flex items-center gap-4">
+        {/* Keyed on the player, so each new lot slides in rather than snapping. */}
+        <motion.div
+          key={LOT.name}
+          initial={reduced ? false : { opacity: 0, x: 18 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+          className="mt-5 flex items-center gap-4"
+        >
           <span
             aria-hidden
             className="grid h-[92px] w-[92px] shrink-0 place-items-center rounded-xl border font-num text-[44px] font-bold tabular-nums"
@@ -223,7 +328,7 @@ export default function WarRoomTrigger() {
               <span className="text-[17px] font-semibold uppercase tracking-[0.04em]">Crore</span>
             </p>
           </div>
-        </div>
+        </motion.div>
 
         {/* Who holds the bid. Swaps in on every raise. */}
         <div className="mt-4 flex h-[44px] items-center gap-2 overflow-hidden">
@@ -274,7 +379,7 @@ export default function WarRoomTrigger() {
 
         {/* The paddles: each franchise's best bid, as a bar against the top. */}
         <ul className="mt-5 space-y-3">
-          {BIDDERS.map((code) => {
+          {LOT.bidders.map((code) => {
             const team = FRANCHISES[code];
             const amount = bids[code];
             const leading = code === leader.team;

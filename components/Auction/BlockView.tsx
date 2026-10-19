@@ -575,9 +575,9 @@ export default function BlockView({
                         ? "Withdraw from this player — you cannot bid on him again; the other franchises carry on"
                         : "Not available while you hold the bid, or once you have withdrawn"
                     }
-                    className="rounded-md border border-neutral-700 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.25em] text-neutral-400 transition-colors hover:border-red-500/60 hover:text-red-300 disabled:cursor-not-allowed disabled:border-neutral-900 disabled:text-neutral-700"
+                    className="min-h-[40px] rounded-lg border border-red-500/50 bg-red-500/10 px-5 py-1.5 font-mono text-[12px] font-bold uppercase tracking-[0.25em] text-red-300 transition-colors hover:border-red-400 hover:bg-red-500/20 hover:text-red-200 disabled:cursor-not-allowed disabled:border-neutral-800 disabled:bg-transparent disabled:text-neutral-700"
                   >
-                    withdraw
+                    Withdraw
                   </button>
                 )}
               </div>
@@ -766,10 +766,10 @@ function JumpBid({
               disabled={disabled || over}
               onClick={() => onJump(price)}
               title={over ? `Above your maximum bid of ${crore(ceiling)}` : `Jump straight to ${crore(price)}`}
-              className="min-h-[36px] rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.15em] text-amber-300 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:border-neutral-800 disabled:bg-transparent disabled:text-neutral-700"
+              className="flex min-h-[48px] min-w-[150px] flex-col items-center justify-center rounded-lg border border-amber-500/60 bg-amber-500/10 px-4 py-1.5 font-mono uppercase text-amber-300 transition-colors hover:border-amber-400 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:border-neutral-800 disabled:bg-transparent disabled:text-neutral-700"
             >
-              +{Math.round((price - anchor) / 100)} Cr
-              <span className="ml-1.5 text-[10px] text-amber-200/70">{crore(price)}</span>
+              <span className="text-[13px] font-bold tracking-[0.12em]">+{Math.round((price - anchor) / 100)} Cr</span>
+              <span className="text-[10px] tracking-[0.14em] text-amber-200/70">jump to {crore(price)}</span>
             </button>
           );
         })}
@@ -777,7 +777,7 @@ function JumpBid({
           type="button"
           disabled={disabled}
           onClick={() => setOpen(true)}
-          className="min-h-[36px] rounded-md border border-neutral-800 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.25em] text-neutral-500 transition-colors hover:border-neutral-600 hover:text-neutral-300 disabled:cursor-not-allowed disabled:opacity-40"
+          className="min-h-[48px] rounded-lg border border-neutral-700 px-4 py-1.5 font-mono text-[11px] uppercase tracking-[0.25em] text-neutral-400 transition-colors hover:border-neutral-500 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
         >
           custom jump
         </button>

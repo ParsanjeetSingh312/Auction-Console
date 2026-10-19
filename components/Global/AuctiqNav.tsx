@@ -1,12 +1,12 @@
 /**
  * AuctiqNav.tsx
- * The landing's header bar: mark on the left, destinations across the middle,
- * social and the call to action on the right.
+ * The site's header bar: destinations across the middle, social and the call
+ * to action on the right. Mounted on every AUCTONIQ page — floating over the
+ * landing, About and AUCTEAM, and as an opaque `placement="static"` bar above
+ * the Data Interface and the live room — so no page is a dead end.
  *
- * Restyled from the reference mockup, which mirrors what was here before — the
- * mark used to pin itself to the top-right and the links sat in a glass pill on
- * the left. The bar is one row now, so the mark comes in through
- * `AuctiqLogo inline` rather than floating separately above the page.
+ * The mark that used to sit on the left was removed: it was small, and the
+ * HOME link already does what clicking it did.
  *
  * **The destinations are the real ones.** The reference's row reads HOME · LIVE
  * SCORES · PLAYERS · AUCTIONS · TEAM · MORE, and four of those six go nowhere in
@@ -46,7 +46,6 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
 
-import AuctiqLogo from "./AuctiqLogo";
 import SocialRow from "./SocialRow";
 import AccountChip from "./AccountChip";
 
@@ -302,7 +301,18 @@ function AboutDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-export default function AuctiqNav() {
+export interface AuctiqNavProps {
+  /**
+   * `fixed`  — floats over the page on a fading scrim. The landing, About and
+   *            AUCTEAM, whose heroes are laid out to sit under it.
+   * `static` — an opaque bar in normal flow. The Data Interface and the live
+   *            room fill the viewport themselves, and a fixed bar would sit on
+   *            top of their own headers.
+   */
+  placement?: "fixed" | "static";
+}
+
+export default function AuctiqNav({ placement = "fixed" }: AuctiqNavProps = {}) {
   const { pathname } = useLocation();
 
   /*
@@ -315,18 +325,25 @@ export default function AuctiqNav() {
   const visible = DESTINATIONS.filter((destination) => !destination.hidden);
 
   return (
-    <header className="auctiq-drop-in fixed inset-x-0 top-0 z-40 bg-gradient-to-b from-auctiq-void/92 via-auctiq-void/55 to-transparent">
-      <div className="mx-auto flex w-full max-w-[1400px] flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:flex-nowrap sm:px-8 sm:py-4">
+    <header
+      className={
+        placement === "fixed"
+          ? "auctiq-drop-in fixed inset-x-0 top-0 z-40 bg-gradient-to-b from-auctiq-void/92 via-auctiq-void/55 to-transparent"
+          : "relative z-40 border-b border-white/10 bg-auctiq-void/90 backdrop-blur-md"
+      }
+    >
+      <div
+        className={`mx-auto flex w-full max-w-[1400px] flex-wrap items-center gap-x-3 gap-y-2 px-4 sm:flex-nowrap sm:px-8 ${
+          placement === "fixed" ? "py-3 sm:py-4" : "py-1.5 sm:py-2"
+        }`}
+      >
         {/*
-          The mark is wrapped so the bar can be a true three-column row above
-          `sm`: both flanks take `flex-1` and the nav between them does not, which
-          puts the links on the viewport's centre line. Left to `mx-auto` alone
-          the nav centres inside whatever space the flanks leave over, and since
-          the mark is wider than the actions it sat about 50px left of centre.
+          The left flank, now empty. The mark that sat here was small and went
+          nowhere useful, so it was taken off the bar; the flank stays as a
+          `flex-1` spacer so the links keep the viewport's centre line against
+          the actions on the right.
         */}
-        <div className="order-1 flex items-center sm:flex-1">
-          <AuctiqLogo inline to="/" />
-        </div>
+        <div aria-hidden className="order-1 hidden sm:block sm:flex-1" />
 
         {/*
           Below `sm` the row drops beneath the mark and scrolls sideways rather
@@ -367,10 +384,14 @@ export default function AuctiqNav() {
                     */
                     aria-current={current ? "page" : undefined}
                     data-testid={`nav-${destination.label.toLowerCase().replace(/\s+/g, "-")}`}
-                    className={`flex min-h-[44px] items-center whitespace-nowrap px-2.5 font-tech text-[12px] font-medium uppercase tracking-[0.12em] transition-colors duration-200 sm:px-3 ${
+                    /*
+                      13.5px semibold: these five are the product's main
+                      functions, so they read as controls rather than captions.
+                    */
+                    className={`flex min-h-[44px] items-center whitespace-nowrap px-2.5 font-tech text-[13.5px] font-semibold uppercase tracking-[0.12em] transition-colors duration-200 sm:px-3 ${
                       current
                         ? "text-neon-cyan"
-                        : "text-auctiq-dim hover:text-auctiq-text"
+                        : "text-auctiq-text/80 hover:text-auctiq-text"
                     }`}
                   >
                     {destination.label}

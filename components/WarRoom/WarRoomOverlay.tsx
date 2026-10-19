@@ -31,6 +31,7 @@ import { createPortal } from "react-dom";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
+import { getLenis } from "../../hooks/useJourney";
 import AuctionBlock from "../Auction/AuctionBlock";
 
 const FOCUSABLE =
@@ -67,25 +68,12 @@ export default function WarRoomOverlay({
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    /*
-      Give the pointer back.
+    // Smooth scroll would otherwise keep moving the landing under the modal.
+    const lenis = getLenis();
+    lenis?.stop();
 
-      `CricketCursor` hides the native cursor document-wide and draws a ball at
-      z-60. This overlay sits at z-80, so inside the war room the ball is behind
-      it and the arrow is hidden — leaving no visible pointer at all, over a
-      screen made of buttons.
-
-      Raising the ball above the overlay would be the wrong fix. The cursor's
-      own note already says the effect is scoped to the landing "where a
-      bouncing ball over a live auction grid would be a distraction during
-      bidding", and that applies here: this is an auction UI, and an auction UI
-      wants the pointer that changes shape over its controls.
-    */
-    const hadBallCursor =
-      document.documentElement.classList.contains("auctiq-ball-cursor");
-    if (hadBallCursor) {
-      document.documentElement.classList.remove("auctiq-ball-cursor");
-    }
+    // The red-ball pointer stays on in here: it is drawn above every overlay
+    // (see CricketCursor), so the war room keeps the site's cursor.
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -127,9 +115,7 @@ export default function WarRoomOverlay({
       document.removeEventListener("keydown", onKeyDown);
       window.clearTimeout(id);
       document.body.style.overflow = previousOverflow;
-      if (hadBallCursor) {
-        document.documentElement.classList.add("auctiq-ball-cursor");
-      }
+      lenis?.start();
       returnTo.current?.focus?.();
     };
   }, [open, close]);

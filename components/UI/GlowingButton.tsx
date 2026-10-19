@@ -22,8 +22,8 @@
  * whole point is how they look. When the socket layer is wired up, passing
  * `onClick` is the entire change.
  *
- * The brackets are decorative and `aria-hidden`, so the accessible name is
- * "Place bid" rather than "open bracket place bid close bracket".
+ * The label is plain text: the square brackets the mockup drew around it were
+ * removed, so "Enter War Room" reads as a button rather than as code.
  */
 import type { ReactNode } from "react";
 
@@ -61,14 +61,9 @@ export default function GlowingButton({
         they are secondary to the figure above them. 38px is still comfortably
         above the 24px minimum for a pointer target and the row stays reachable.
       */
-      /* No `gap` on the flex row: the brackets are punctuation around the
-         label, and a 4px gap renders them as "[ PLACE BID ]" where the
-         reference has them closed up against the words. */
       className={`inline-flex min-h-[38px] flex-1 items-center justify-center rounded-[5px] px-3 font-tech text-[11px] font-semibold uppercase tracking-[0.12em] transition-all duration-200 ${TONES[tone]} ${className}`}
     >
-      <span aria-hidden>[</span>
       {children}
-      <span aria-hidden>]</span>
     </button>
   );
 }

@@ -15,13 +15,16 @@
  * theme none of them will ever be shown in.
  */
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useReducedMotion } from "framer-motion";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+
+import { useSmoothScroll } from "../hooks/useJourney";
 
 // The opening runs on the refined copy of the Intro modules (detailed crowd,
 // turf, boards, floodlights, depth of field and grade) built at /lab/prototype.
 // The original modules are untouched in components/Intro: switching back is
 // this import and the stylesheet below.
 import StadiumIntro from "../components/Prototype/intro/StadiumIntro";
-import CricketCursor from "../components/UI/CricketCursor";
 import AuctiqFooter from "../components/Global/AuctiqFooter";
 import AuctiqNav from "../components/Global/AuctiqNav";
 import BroadcastHero from "../components/Sections/BroadcastHero";
@@ -134,6 +137,21 @@ export default function Auctiq({ opening = "delivery", alwaysPlay = false }: Auc
   }, [alwaysPlay]);
 
   /*
+    Smooth scrolling: Lenis, driven from GSAP's ticker (see useSmoothScroll),
+    so every ScrollTrigger on the page — the Trending Players deal above all —
+    reads the same eased scroll position on the same frame instead of jumping
+    a notch at a time with the mouse wheel. Off until the opening hands over
+    (the gate is not scrollable) and off for reduced motion, where native
+    scrolling is the correct behaviour rather than a degraded one.
+  */
+  const reduced = useReducedMotion() ?? false;
+  useSmoothScroll(landed && !reduced);
+  useEffect(() => {
+    // The page grows to its real height at the handoff; re-measure the triggers.
+    if (landed) ScrollTrigger.refresh();
+  }, [landed]);
+
+  /*
     No scroll journey on this page any more. The 3D arena that took over from
     the photograph as the page scrolled -- its camera descent and the ball's
     delivery -- made scrolling lag, so the landing keeps the hero's stadium
@@ -195,11 +213,7 @@ export default function Auctiq({ opening = "delivery", alwaysPlay = false }: Auc
       {/* The mark is part of the header bar now — AuctiqNav renders it with
           `inline`, so mounting it separately here would put two of them on the
           page, one in the bar and one floating in the opposite corner. */}
-      {/* The pointer, as a cricket ball. Landing only — a ball bouncing over
-          a live auction grid during bidding would be a distraction. */}
-          {/* Only after the handoff: it hides the system pointer, and the gate
-              needs a visible one. */}
-          {landed && <CricketCursor />}
+          {/* The red-ball pointer is mounted once for the whole app in App.tsx. */}
 
           <LandingSections />
 

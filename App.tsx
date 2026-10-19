@@ -45,6 +45,7 @@ import Home from "./pages/Home";
 import ErrorBoundary from "./components/Global/ErrorBoundary";
 import ScoutDrawer from "./components/Scout/ScoutDrawer";
 import ScoutLauncher from "./components/Scout/ScoutLauncher";
+import CricketCursor from "./components/UI/CricketCursor";
 import { useScoutHotkey } from "./console/scoutStore";
 
 // The AUCTIQ landing — now the front door.
@@ -150,6 +151,13 @@ export default function App() {
       <ErrorBoundary label="SCOUT">
         <GlobalScout />
       </ErrorBoundary>
+
+      {/*
+        The red-ball pointer, on every route. Mounted here rather than per page
+        so moving from the landing into the Data Interface or the live room
+        never drops back to the system arrow.
+      */}
+      <CricketCursor />
     </BrowserRouter>
   );
 }

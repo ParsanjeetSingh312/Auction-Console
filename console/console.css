@@ -184,6 +184,18 @@
   background-size: 20px 20px;
 }
 
+/* A page with the site menu above its shell (/data): one viewport-tall column,
+   the bar at its natural height and the shell taking the rest. */
+.site-chrome {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+.site-chrome > .shell {
+  flex: 1 1 auto;
+  height: auto;
+}
+
 .masthead {
   flex: 0 0 auto;
   background: var(--card);
@@ -1982,4 +1994,130 @@ body:has(.console-dark) {
   filter: grayscale(0.85);
   opacity: 0.55;
   border-style: dashed;
+}
+
+/* ==========================================================================
+   Data Interface masthead and controls, refreshed (night theme only).
+
+   The title takes the landing's display face, Russo One, so the page reads as
+   part of AUCTONIQ rather than a spreadsheet; the view tabs become pills with a
+   cyan glow on the selected one, and the utility buttons and filter chips share
+   the landing's Chakra Petch. Scoped to `.console-dark`, so /console keeps the
+   white enterprise theme exactly as it was.
+   ========================================================================== */
+.console-dark .brand {
+  gap: 12px;
+}
+.console-dark .brand .mark {
+  width: 4px;
+  height: 42px;
+  border-radius: 2px;
+  box-shadow: 0 0 14px rgba(34, 211, 238, 0.45);
+}
+.console-dark .brand h1 {
+  font-family: "Russo One", "Outfit", "Segoe UI", sans-serif;
+  font-weight: 400;
+  font-size: 27px;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  background: linear-gradient(180deg, #ffffff 0%, #a5f3fc 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 12px rgba(34, 211, 238, 0.25));
+}
+.console-dark .brand .eyebrow {
+  margin-top: 6px;
+  font-family: "Chakra Petch", "Inter", sans-serif;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  color: var(--muted);
+}
+
+.console-dark .tabs {
+  gap: 6px;
+  align-items: center;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.console-dark .viewtab {
+  font-family: "Chakra Petch", "Inter", sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 7px 18px;
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--ink-2);
+  transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s;
+}
+.console-dark .viewtab:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink);
+}
+.console-dark .viewtab[aria-selected="true"] {
+  background: var(--teal-tint);
+  border-color: rgba(34, 211, 238, 0.55);
+  color: var(--teal-ink);
+  box-shadow: 0 0 18px -6px rgba(34, 211, 238, 0.7);
+}
+.console-dark .viewtab .cnt {
+  font-family: "Rajdhani", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: inherit;
+  opacity: 0.7;
+  margin-left: 8px;
+}
+.console-dark .util {
+  font-family: "Chakra Petch", "Inter", sans-serif;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 6px 14px;
+  margin: 0 0 0 6px;
+  background: rgba(255, 255, 255, 0.04);
+  transition: border-color 0.2s, color 0.2s, box-shadow 0.2s;
+}
+.console-dark .util:hover:not(:disabled) {
+  box-shadow: 0 0 16px -6px rgba(34, 211, 238, 0.7);
+}
+.console-dark .tabs .tag-neutral {
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-family: "Chakra Petch", "Inter", sans-serif;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+}
+
+/* The pool's filter chips, in the same voice as the tabs. */
+.console-dark .filters .eyebrow {
+  font-family: "Chakra Petch", "Inter", sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+}
+.console-dark .chip {
+  border-radius: 999px;
+  font-family: "Chakra Petch", "Inter", sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+.console-dark .chip:hover {
+  border-color: rgba(34, 211, 238, 0.5);
+}
+.console-dark .chip[aria-pressed="true"] {
+  box-shadow: 0 0 14px -4px rgba(34, 211, 238, 0.75);
+}
+.console-dark select.pick {
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-family: "Chakra Petch", "Inter", sans-serif;
+  font-weight: 500;
 }

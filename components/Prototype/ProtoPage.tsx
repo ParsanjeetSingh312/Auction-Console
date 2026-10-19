@@ -15,7 +15,6 @@
  */
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
-import CricketCursor from "../UI/CricketCursor";
 import AuctiqFooter from "../Global/AuctiqFooter";
 import AuctiqNav from "../Global/AuctiqNav";
 import BroadcastHero from "../Sections/BroadcastHero";
@@ -78,7 +77,7 @@ export default function ProtoPage() {
           transition: "opacity 1.1s cubic-bezier(0.22, 1, 0.36, 1)",
         }}
       >
-        {landed && <CricketCursor />}
+        {/* The red-ball pointer is mounted once for the whole app in App.tsx. */}
         <LandingSections />
       </div>
     </div>

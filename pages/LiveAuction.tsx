@@ -46,6 +46,7 @@ import StadiumBackdrop from "../components/Sections/StadiumBackdrop";
 import AdminSplitScreen from "../components/Auction/AdminSplitScreen";
 import PostAuctionReport from "../components/Auction/PostAuctionReport";
 import SocketBlock from "../components/Auction/SocketBlock";
+import AuctiqNav from "../components/Global/AuctiqNav";
 import WaitingRoom from "../components/Auction/WaitingRoom";
 import AuctionBriefing from "../components/Auction/AuctionBriefing";
 import LiveMarquee from "../components/Marquee/LiveMarquee";
@@ -75,6 +76,8 @@ export default function LiveAuction() {
   return (
     <div className="console-dark">
       <StadiumBackdrop variant="console" />
+      {/* The site menu, so the room is never a dead end. */}
+      <AuctiqNav placement="static" />
       <LiveAuctionInner />
     </div>
   );

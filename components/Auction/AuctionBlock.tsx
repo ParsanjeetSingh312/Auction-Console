@@ -54,6 +54,9 @@ export interface AuctionSocket {
 
 const TEAMS = ["MUM", "CHE", "BLR", "KOL", "DEL", "PBK", "RAJ", "HYD"] as const;
 
+/** The jump-bid shortcuts, ₹ lakh: +5, +10 and +15 Cr (auction/rules.py). */
+const JUMP_STEPS = [500, 1000, 1500] as const;
+
 /* ------------------------------------------------------------------ *
  * Mock socket
  * ------------------------------------------------------------------ */
@@ -229,6 +232,8 @@ export default function AuctionBlock({
   const [ticker, setTicker] = useState<TickerEntry[]>([]);
   const [clock, setClock] = useState<LotClock | null>(null);
   const [contenders, setContenders] = useState<string[]>([]);
+  /** Whether this station has stepped out of the current lot. */
+  const [withdrawn, setWithdrawn] = useState(false);
 
   // `purse` only seeds state, so a later prop change would otherwise be
   // ignored — which would make the query-string demo lie about its budget.
@@ -261,6 +266,8 @@ export default function AuctionBlock({
       setCurrentBid(next.base);
       setLeadingTeam("");
       setContenders([]);
+      // A withdrawal covers one player; the next lot starts with a clean slate.
+      setWithdrawn(false);
       setClock({
         kind: "opening",
         endsIn: OPENING_MS / 1000,
@@ -334,6 +341,31 @@ export default function AuctionBlock({
     [myTeam],
   );
 
+  /*
+    The +5 / +10 / +15 Cr jumps, as absolute prices.
+
+    The same rule the live room uses (auction/rules.py `jump_options`): before
+    anyone has bid they are counted from the player's base price, afterwards
+    from the standing bid. So a ₹2 Cr player offers ₹7 / ₹12 / ₹17 Cr, a ₹30 L
+    player ₹5.3 / ₹10.3 / ₹15.3 Cr, and the figures move up as the bidding does.
+  */
+  const jumpOptions = lot
+    ? JUMP_STEPS.map((step) => (leadingTeam ? currentBid : lot.base) + step)
+    : [];
+
+  /*
+    Stepping out of a lot. Local to this station, exactly as in the live room:
+    the rivals carry on, this franchise just cannot bid on the player again.
+    Not offered while holding the bid — walking away from a bid you lead is
+    not something the room allows.
+  */
+  const canWithdraw = lot !== null && !withdrawn && leadingTeam !== myTeam;
+  const handleWithdraw = useCallback(() => {
+    if (!canWithdraw) return;
+    setWithdrawn(true);
+    pushTicker({ kind: "withdraw", text: `${myTeam} withdraws`, amount: null, mine: true });
+  }, [canWithdraw, myTeam, pushTicker]);
+
   return (
     <BlockView
       lot={lot}
@@ -345,6 +377,11 @@ export default function AuctionBlock({
       ticker={ticker}
       onBid={handleBid}
       onJumpBid={handleJumpBid}
+      jumpOptions={jumpOptions}
+      onWithdraw={handleWithdraw}
+      canWithdraw={canWithdraw}
+      blockedReason={withdrawn ? "Withdrawn from this player" : null}
+      folded={withdrawn ? [myTeam] : []}
       clock={clock}
       contenders={contenders}
       corner={corner}

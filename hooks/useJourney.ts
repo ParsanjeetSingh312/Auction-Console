@@ -119,6 +119,11 @@ export function useSmoothScroll(enabled: boolean): void {
       easing: (t: number) => Math.min(1, 1.001 - 2 ** (-10 * t)),
       wheelMultiplier: 0.9,
       touchMultiplier: 1.4,
+      // A scrollable panel over the page (the SCOUT transcript, a dropdown)
+      // scrolls itself instead of having Lenis move the page underneath it.
+      allowNestedScroll: true,
+      // In-page links (`#section`) glide too, instead of jumping.
+      anchors: true,
     });
 
     const onScroll = () => ScrollTrigger.update();
