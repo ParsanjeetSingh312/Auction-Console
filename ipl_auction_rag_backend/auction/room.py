@@ -44,6 +44,7 @@ import asyncio
 import copy
 import logging
 import time
+import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -291,6 +292,12 @@ class AuctionRoom:
     # auction of its own). The chair goes to an account of that kind -- the
     # creating one -- and the franchise seats to Delegate accounts either way.
     room_type: Literal["auctioneer", "delegate"] = "auctioneer"
+    # This opening of the room. A code can be opened again once a room closes;
+    # passes are paid per opening (accounts/passes.py), so they key on this.
+    instance: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    # The pass paid to create this room, refunded if no auctioneer ever sits
+    # in it (auction/ws.py). None when it was free (MAIN, an admin's room).
+    create_ref: str | None = None
     rules: dict[str, Any] = field(default_factory=lambda: copy.deepcopy(DEFAULT_RULES))
     # Bumped on every setup change; acknowledgements quote it (rule 7).
     rules_version: int = 1
@@ -638,9 +645,11 @@ class AuctionRoom:
                         about="join",
                     )
             if by_account and role == "franchise":
-                if account_role != "delegate" and not account_admin:
+                # Delegate and Free accounts bid, each paying a Delegate pass
+                # for the seat (auction/ws.py); Auctioneer accounts run rooms.
+                if account_role not in ("delegate", "member") and not account_admin:
                     raise RoomError(
-                        "Only a Delegate account can take a franchise seat. Log in with one.",
+                        "Auctioneer accounts run rooms rather than bid. Join with a Delegate or Free account.",
                         about="join",
                     )
                 held = next(

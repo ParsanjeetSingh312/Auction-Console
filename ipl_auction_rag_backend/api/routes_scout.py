@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -42,6 +42,7 @@ from scout.graph.state import ScoutInput, ScoutOutput
 from scout.schemas.queries import QUESTION_MAX_LENGTH, TeamContext
 
 from api.auth import require_admin
+from api.scout_quota import scout_allowance, use_scout_allowance
 
 logger = logging.getLogger(__name__)
 
@@ -264,7 +265,7 @@ def _team_context(team_id: int | None, room_code: str | None = None) -> tuple[Te
                       "answering without budget context."]
 
 
-@router.post("/advise", response_model=ScoutOutput)
+@router.post("/advise", response_model=ScoutOutput, dependencies=[Depends(use_scout_allowance)])
 async def advise(request: AdviseRequest) -> ScoutOutput:
     """
     Ask SCOUT who to bid on.
@@ -338,7 +339,7 @@ def _sse(payload: dict[str, Any]) -> str:
     return "data: " + json.dumps(payload, default=str) + "\n\n"
 
 
-@router.post("/advise/stream")
+@router.post("/advise/stream", dependencies=[Depends(use_scout_allowance)])
 async def advise_stream(request: AdviseRequest) -> StreamingResponse:
     """
     The same answer as `/advise`, with the graph's progress as it happens.
@@ -490,6 +491,12 @@ async def research(request: ResearchRequest | None = None) -> ScoutOutput:
             (batch.finished_at - batch.started_at).total_seconds(), 2
         ),
     )
+
+
+@router.get("/quota")
+async def quota(request: Request) -> dict[str, Any]:
+    """This caller's SCOUT allowance: unlimited, or used and left in the window."""
+    return await scout_allowance(request)
 
 
 @router.get("/health", response_model=ScoutHealthResponse)

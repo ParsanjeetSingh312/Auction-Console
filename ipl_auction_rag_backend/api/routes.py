@@ -22,6 +22,7 @@ from api.schemas import (
 )
 from db import get_player_db
 from api.auth import require_admin
+from api.scout_quota import use_scout_allowance
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ async def search(request: QueryRequest) -> SearchResponse:
         )
 
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post("/chat", response_model=ChatResponse, dependencies=[Depends(use_scout_allowance)])
 async def chat(request: ChatRequest) -> ChatResponse:
     """
     Conversational RAG endpoint with chat history support.

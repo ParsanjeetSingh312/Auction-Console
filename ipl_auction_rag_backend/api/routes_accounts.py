@@ -33,7 +33,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
-from accounts import store
+from accounts import passes, store
 from accounts.passwords import DUMMY_HASH, hash_password, verify_password
 from accounts.store import Account, EmailTaken, Role
 from config.settings import get_settings
@@ -170,6 +170,9 @@ async def register(payload: RegisterRequest, request: Request, response: Respons
         )
     except EmailTaken:
         raise HTTPException(status_code=409, detail="An account with that email already exists. Log in instead.")
+    # The welcome message, and the first pass of the account's kind, waiting
+    # in its notifications (accounts/passes.py).
+    await asyncio.to_thread(passes.welcome, account)
     token = await asyncio.to_thread(store.open_session, account.id)
     _set_session(response, request, token)
     return {"account": account.public()}

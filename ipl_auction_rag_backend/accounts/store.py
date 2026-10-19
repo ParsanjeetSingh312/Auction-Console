@@ -56,6 +56,74 @@ SCHEMA = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS account_sessions_account ON account_sessions(account_id)",
+    # --- The ecosystem: passes, gifts, notifications, connections. ---
+    # Every movement of a pass is a ledger row and a balance is their sum, so
+    # nothing is ever overwritten and any balance can be explained row by row
+    # (accounts/passes.py).
+    """
+    CREATE TABLE IF NOT EXISTS pass_ledger (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        account_id      INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        kind            TEXT    NOT NULL CHECK (kind IN ('A', 'D')),
+        delta           INTEGER NOT NULL,
+        reason          TEXT    NOT NULL,
+        ref             TEXT,
+        counterpart_id  INTEGER,
+        created_at      REAL    NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS pass_ledger_account ON pass_ledger(account_id, kind)",
+    "CREATE INDEX IF NOT EXISTS pass_ledger_ref ON pass_ledger(account_id, ref)",
+    """
+    CREATE TABLE IF NOT EXISTS pass_gifts (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        sender_id    INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+        recipient_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        kind         TEXT    NOT NULL CHECK (kind IN ('A', 'D')),
+        quantity     INTEGER NOT NULL CHECK (quantity > 0),
+        note         TEXT,
+        status       TEXT    NOT NULL DEFAULT 'pending'
+                     CHECK (status IN ('pending', 'claimed', 'returned', 'expired')),
+        created_at   REAL    NOT NULL,
+        expires_at   REAL    NOT NULL,
+        resolved_at  REAL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS pass_gifts_recipient ON pass_gifts(recipient_id, status)",
+    """
+    CREATE TABLE IF NOT EXISTS notifications (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        kind        TEXT    NOT NULL,
+        title       TEXT    NOT NULL,
+        body        TEXT    NOT NULL DEFAULT '',
+        gift_id     INTEGER REFERENCES pass_gifts(id) ON DELETE SET NULL,
+        link        TEXT,
+        created_at  REAL    NOT NULL,
+        read_at     REAL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS notifications_account ON notifications(account_id, id)",
+    """
+    CREATE TABLE IF NOT EXISTS connections (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        requester_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        addressee_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        low_id       INTEGER NOT NULL,
+        high_id      INTEGER NOT NULL,
+        status       TEXT    NOT NULL CHECK (status IN ('pending', 'accepted')),
+        created_at   REAL    NOT NULL,
+        responded_at REAL,
+        UNIQUE (low_id, high_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS scout_usage (
+        key TEXT NOT NULL,
+        at  REAL NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS scout_usage_key ON scout_usage(key, at)",
 )
 
 
@@ -173,6 +241,12 @@ def update_email(account_id: int, email: str) -> Account:
 def update_password(account_id: int, password_hash: str) -> None:
     with _connect() as conn:
         conn.execute("UPDATE accounts SET password_hash = ? WHERE id = ?", (password_hash, account_id))
+
+
+def account_by_id(account_id: int) -> Account | None:
+    with _connect() as conn:
+        row = conn.execute("SELECT * FROM accounts WHERE id = ?", (account_id,)).fetchone()
+    return _account(row)
 
 
 def password_hash_of(account_id: int) -> str | None:

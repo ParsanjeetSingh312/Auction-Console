@@ -178,15 +178,21 @@ class TestRoomsByAccount:
             host.send_json({"type": "join", "role": "auctioneer"})
             assert answer(host)["type"] == "joined"
 
-    def test_only_delegates_bid_one_seat_each(self, client):
+    def test_delegates_and_free_bid_one_seat_each(self, client):
         owner = register(client, "auctioneer")
+        other_auctioneer = register(client, "auctioneer")
         delegate = register(client, "delegate")
         member = register(client, "member")
         with client.websocket_connect("/api/v1/auction/ws?room=SEATS1&open=1", headers=as_account(owner)) as host:
             drain(host, lambda m: m.get("type") == "state")
+            # Auctioneer accounts run rooms; they do not bid in them.
+            with client.websocket_connect("/api/v1/auction/ws?room=SEATS1", headers=as_account(other_auctioneer)) as rival:
+                rival.send_json({"type": "join", "role": "franchise", "team_id": 1})
+                assert "run rooms rather than bid" in answer(rival)["message"]
+            # A Free account bids (paying a Delegate pass when passes are on).
             with client.websocket_connect("/api/v1/auction/ws?room=SEATS1", headers=as_account(member)) as free:
-                free.send_json({"type": "join", "role": "franchise", "team_id": 1})
-                assert "Delegate account" in answer(free)["message"]
+                free.send_json({"type": "join", "role": "franchise", "team_id": 3})
+                assert answer(free)["type"] == "joined"
             with client.websocket_connect("/api/v1/auction/ws?room=SEATS1", headers=as_account(delegate)) as first, \
                  client.websocket_connect("/api/v1/auction/ws?room=SEATS1", headers=as_account(delegate)) as second:
                 first.send_json({"type": "join", "role": "franchise", "team_id": 1})

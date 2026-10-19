@@ -41,3 +41,21 @@ def _never_touch_production_postgres():
         yield
     finally:
         settings.DATABASE_URL = original
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _ecosystem_off_by_default():
+    """
+    Rooms free and SCOUT unlimited for the suite, as before passes existed, so
+    tests about bidding are not tests about passes. tests/test_ecosystem.py
+    switches both back on for itself.
+    """
+    from config.settings import get_settings
+
+    settings = get_settings()
+    original = settings.PASSES_ENFORCED, settings.SCOUT_FREE_LIMIT
+    settings.PASSES_ENFORCED, settings.SCOUT_FREE_LIMIT = False, 0
+    try:
+        yield
+    finally:
+        settings.PASSES_ENFORCED, settings.SCOUT_FREE_LIMIT = original

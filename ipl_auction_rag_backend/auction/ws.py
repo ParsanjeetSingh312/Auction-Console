@@ -39,6 +39,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Response, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
+from accounts import notifications, passes
 from accounts import store as accounts
 from accounts.store import Account
 from api.routes_accounts import COOKIE, origin_allowed
@@ -201,6 +202,20 @@ def _room_for(code_raw: str | None) -> AuctionRoom:
     return entry.room
 
 
+def _refund_unclaimed(entry: RoomEntry) -> None:
+    """A room closed before any auctioneer sat in it: its pass goes back."""
+    room = entry.room
+    if not entry.claimed and room.create_ref and room.owner_account_id is not None:
+        if passes.refund(room.owner_account_id, room.create_ref):
+            notifications.notify(
+                room.owner_account_id, "gift_returned", "Room pass refunded",
+                f"Room {room.code} closed before it started, so its pass is back in your wallet.",
+            )
+
+
+registry.on_close.append(_refund_unclaimed)
+
+
 @router.websocket("/ws")
 async def auction_socket(
     websocket: WebSocket,
@@ -252,16 +267,39 @@ async def auction_socket(
                 else "Only a Delegate account can create a delegate room.",
             )
             return
+        # Creating a room costs its kind of pass: an A-pass for an auctioneer
+        # room, a D-pass for a delegate room. Admins pay nothing.
+        instance = uuid.uuid4().hex[:12]
+        create_ref: str | None = None
+        pass_kind = passes.room_pass(account, "create", room_type)
+        if pass_kind is not None:
+            ref = f"room:{code}:{instance}:create"
+            try:
+                if await asyncio.to_thread(passes.spend, account, pass_kind, ref):
+                    create_ref = ref
+            except passes.PassError as exc:
+                await _refuse(websocket, 4402, str(exc))
+                return
         try:
             entry = registry.open(
                 code,
                 normalise_kind(kind) if kind else "mini",
                 owner_account_id=account.id,
                 room_type=room_type,
+                instance=instance,
             )
         except RoomsFull:
+            if create_ref:
+                await asyncio.to_thread(passes.refund, account.id, create_ref)
             await _refuse(websocket, 4429, "Every auction room is in use. Try again once one has finished.")
             return
+        if entry.room.instance != instance:
+            # Someone opened this code while the pass was being taken: this
+            # connection joins their room, and its pass goes back.
+            if create_ref:
+                await asyncio.to_thread(passes.refund, account.id, create_ref)
+        else:
+            entry.room.create_ref = create_ref
     manager = manager_for(entry)
     client_id = await manager.connect(websocket)
     if client_id is None:
@@ -370,16 +408,39 @@ async def _dispatch(
         return
 
     if kind == "join":
-        seat = await room.join(
-            client_id,
-            message.role,
-            message.team_id,
-            message.display_name,
-            message.password,
-            account_id=account.id if account else None,
-            account_role=account.role if account else None,
-            account_admin=account.admin if account else False,
-        )
+        # A franchise seat in an account-run room costs a Delegate or Free
+        # account one D-pass, once per room: reconnecting is free, and a
+        # seat refused below gives the pass straight back.
+        spent_ref: str | None = None
+        if (
+            message.role == "franchise"
+            and account is not None
+            and room.owner_account_id is not None
+            and account.role in ("delegate", "member")
+        ):
+            pass_kind = passes.room_pass(account, "seat", room.room_type)
+            if pass_kind is not None:
+                ref = f"room:{room.code}:{room.instance}:seat"
+                try:
+                    if await asyncio.to_thread(passes.spend, account, pass_kind, ref):
+                        spent_ref = ref
+                except passes.PassError as exc:
+                    raise RoomError(str(exc), about="pass") from exc
+        try:
+            seat = await room.join(
+                client_id,
+                message.role,
+                message.team_id,
+                message.display_name,
+                message.password,
+                account_id=account.id if account else None,
+                account_role=account.role if account else None,
+                account_admin=account.admin if account else False,
+            )
+        except RoomError:
+            if spent_ref and account is not None:
+                await asyncio.to_thread(passes.refund, account.id, spent_ref)
+            raise
         if seat.role == "auctioneer":
             entry = registry.get(room.code)
             if entry is not None:
@@ -395,6 +456,7 @@ async def _dispatch(
                     "team_code": team["code"] if team else None,
                     "client_id": client_id,
                 },
+                "pass_spent": spent_ref is not None,
             },
         )
 

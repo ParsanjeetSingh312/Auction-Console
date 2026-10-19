@@ -73,5 +73,16 @@ def ensure_demo_accounts(password: str) -> int:
                     "UPDATE accounts SET name = ?, role = ?, password_hash = ? WHERE email = ?",
                     (name, role, password_hash, email),
                 )
+    # Passes to try the rooms with at once: A-passes for the auctioneers,
+    # D-passes for the delegates and the member (DEMO_PASS_BALANCE).
+    from accounts import passes
+    from config.settings import get_settings
+
+    target = get_settings().DEMO_PASS_BALANCE
+    if target > 0:
+        for email, _name, role in DEMO_ACCOUNTS:
+            found = store.account_with_password(email)
+            if found is not None:
+                passes.top_up(found[0].id, "A" if role == "auctioneer" else "D", target)
     logger.info("Demo accounts ready: %d on %s", len(DEMO_ACCOUNTS), DOMAIN)
     return len(DEMO_ACCOUNTS)

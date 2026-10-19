@@ -314,6 +314,29 @@ class Settings(BaseSettings):
     def admin_password(self) -> str:
         return self.ADMIN_PASSWORD or self.ADMIN_INITIAL_PASSWORD
 
+    # --- Auction passes (accounts/passes.py) ---
+    # Rooms cost passes: an A-pass to create an auctioneer room, a D-pass to
+    # create a delegate room or to take a franchise seat. False lets every
+    # room through free, as before passes existed (the test suite's default).
+    PASSES_ENFORCED: bool = True
+    # The welcome gift a new account finds in its notifications.
+    WELCOME_AUCTIONEER_PASSES: int = 1
+    WELCOME_DELEGATE_PASSES: int = 1
+    # D-passes an Auctioneer account may generate in 24 hours. Admins: no cap.
+    AUCTIONEER_DAILY_GENERATE_CAP: int = 50
+    # A gift nobody claims goes back to its sender after this long.
+    GIFT_EXPIRY_DAYS: int = 14
+    # Demo accounts (DEMO_ACCOUNTS_PASSWORD) are topped up to this many of
+    # their kind of pass at startup, so the flows can be tried at once.
+    DEMO_PASS_BALANCE: int = 5
+
+    # --- SCOUT quota for the free tier ---
+    # Requests a Member account (or a signed-out visitor, by address) may make
+    # in a rolling window. Auctioneer, Delegate and admin accounts: no limit.
+    # 0 switches the allowance off.
+    SCOUT_FREE_LIMIT: int = 10
+    SCOUT_FREE_WINDOW_SECONDS: int = 2 * 3600
+
     # Admin key for the destructive and expensive endpoints: POST /api/v1/ingest
     # (rebuilds the whole player pool) and POST /api/v1/scout/research (spends a
     # scrape/embed budget). Sent as the `X-Admin-Key` header and compared in

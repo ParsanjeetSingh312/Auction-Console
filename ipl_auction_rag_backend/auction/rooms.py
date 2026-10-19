@@ -41,7 +41,7 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 from auction.room import AuctionRoom, room as main_room
 from auction.rules import TEAMS_BY_KIND
@@ -99,6 +99,9 @@ class RoomRegistry:
     def __init__(self, main: AuctionRoom) -> None:
         self._rooms: dict[str, RoomEntry] = {MAIN: RoomEntry(MAIN, "mega", main)}
         self._pool: list[dict[str, Any]] = []
+        #: Called with each room the sweep closes (auction/ws.py refunds the
+        #: pass of a room no auctioneer ever sat in).
+        self.on_close: list[Callable[[RoomEntry], None]] = []
 
     # ------------------------------------------------------------ pool --
 
@@ -132,6 +135,7 @@ class RoomRegistry:
         kind: Kind,
         owner_account_id: int | None = None,
         room_type: Literal["auctioneer", "delegate"] = "auctioneer",
+        instance: str | None = None,
     ) -> RoomEntry:
         """
         The room with this code, opening it as `kind` if it is not open. A room
@@ -144,6 +148,8 @@ class RoomRegistry:
         if len(self._rooms) >= MAX_ROOMS:
             raise RoomsFull(f"{MAX_ROOMS} auctions are already open.")
         room = AuctionRoom(code=code, kind=kind, owner_account_id=owner_account_id, room_type=room_type)
+        if instance:
+            room.instance = instance
         room.configure_seats(TEAMS_BY_KIND[kind])
         if self._pool:
             room.load_players(self._pool)
@@ -171,8 +177,14 @@ class RoomRegistry:
             and now - entry.last_seen > (IDLE_SECONDS if entry.claimed else UNCLAIMED_IDLE_SECONDS)
         ]
         for code in closed:
-            self._rooms.pop(code).room._disarm()
+            entry = self._rooms.pop(code)
+            entry.room._disarm()
             logger.info("Closed idle auction room %s", code)
+            for hook in self.on_close:
+                try:
+                    hook(entry)
+                except Exception:  # noqa: BLE001 - one hook must not stop the sweep
+                    logger.exception("on_close hook failed for room %s", code)
         return closed
 
     def entries(self) -> list[RoomEntry]:

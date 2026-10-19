@@ -32,6 +32,7 @@ from api.routes import router as api_router
 from api.routes_scout import router as scout_router
 from api.routes_aucteam import router as aucteam_router
 from api.routes_accounts import router as accounts_router
+from api.routes_ecosystem import router as ecosystem_router
 from auction.room import room as auction_room
 from auction.ws import router as auction_router
 
@@ -289,6 +290,18 @@ async def lifespan(app: FastAPI):
         except Exception as exc:  # noqa: BLE001 - startup must not die here
             logger.warning("Could not create the demo accounts: %s", exc)
 
+    # Accounts made before passes existed never got a welcome: give each one
+    # its welcome message and gift now, so nobody is locked out of the rooms
+    # by the deploy that introduced passes. Once per account (accounts/passes.py).
+    try:
+        from accounts.passes import welcome_missing
+
+        welcomed = await asyncio.to_thread(welcome_missing)
+        if welcomed:
+            logger.info("Sent the welcome gift to %d existing account(s)", welcomed)
+    except Exception as exc:  # noqa: BLE001 - startup must not die here
+        logger.warning("Could not send the welcome gifts: %s", exc)
+
     # Pre-warm the Hugging Face models. Deliberately the last thing before the
     # server starts accepting traffic: everything above is cheap, and this is
     # the one step that takes seconds rather than milliseconds.
@@ -435,6 +448,9 @@ app.include_router(aucteam_router)
 # Accounts: register, log in and out, who am I. Before the SPA catch-all for the
 # same reason as the routers above.
 app.include_router(accounts_router)
+
+# The ecosystem: auction passes, the notification bell and connections.
+app.include_router(ecosystem_router)
 
 
 # ---------------------------------------------------------------------------
