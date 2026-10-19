@@ -11,6 +11,8 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { logOut, useAccount } from "../../console/accountStore";
+import { useEcosystem } from "../../console/ecosystemStore";
+import AuctionPass from "../Passes/AuctionPass";
 import type { Account } from "../../console/accountStore";
 
 const TYPE_LABEL: Record<Account["role"], string> = {
@@ -33,6 +35,7 @@ function toneOf(account: Account): string {
 
 export default function AccountChip() {
   const { status, account } = useAccount();
+  const { balances } = useEcosystem();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -115,6 +118,14 @@ export default function AccountChip() {
           <div className="border-b border-white/10 px-3.5 py-2.5">
             <div className="truncate font-ui text-[12.5px] font-medium text-auctiq-text">{account.name}</div>
             <div className="truncate font-ui text-[11px] text-auctiq-dim">{account.email}</div>
+          </div>
+          {/* The wallet, at a glance. */}
+          <div className="flex items-center gap-3 border-b border-white/10 px-3.5 py-2.5">
+            <AuctionPass kind="A" size="xs" count={balances.A} tilt={false} />
+            <AuctionPass kind="D" size="xs" count={balances.D} tilt={false} />
+            <span className="font-tech text-[10px] uppercase leading-tight tracking-[0.14em] text-auctiq-dim">
+              Passes
+            </span>
           </div>
           <Link role="menuitem" to="/account" className={item} onClick={() => setOpen(false)}>
             Account

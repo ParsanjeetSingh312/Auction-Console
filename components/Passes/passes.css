@@ -1,0 +1,334 @@
+.pass__brand {
+  top: 0.9em;
+  left: 41%;
+  font-family: "Russo One", "Chakra Petch", sans-serif;
+  font-size: 0.6em;
+  letter-spacing: 0.34em;
+}
+.pass__label {
+  top: 2.05em;
+  left: 41%;
+  font-family: "Russo One", "Chakra Petch", sans-serif;
+  font-size: 1.12em;
+  letter-spacing: 0.03em;
+}
+.pass__label small {
+  display: block;
+  margin-top: 0.4em;
+  font-family: "Chakra Petch", "Inter", system-ui, sans-serif;
+  font-size: 0.46em;
+  font-weight: 700;
+  letter-spacing: 0.26em;
+  opacity: 0.85;
+}
+.pass__admit {
+  left: 41%;
+  bottom: 2.15em;
+  font-size: 0.5em;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  opacity: 0.85;
+}
+.pass__serial {
+  left: 41%;
+  bottom: 0.95em;
+  font-family: "Consolas", "SF Mono", ui-monospace, monospace;
+  font-size: 0.5em;
+  letter-spacing: 0.16em;
+  opacity: 0.75;
+}
+/*
+ * passes.css
+ * The auction pass: a foil ticket. Gold for Auctioneers (A), sapphire for
+ * Delegates (D).
+ *
+ * Every size inside the card is in `em`, and the card's font-size is a
+ * twentieth of its width, so one `--pass-w` scales the whole ticket -- the
+ * 120px chip in a popup and the 360px hero on the account page are the same
+ * drawing.
+ */
+
+.pass {
+  --pass-w: 340px;
+  position: relative;
+  width: var(--pass-w);
+  aspect-ratio: 1.586;
+  font-size: calc(var(--pass-w) / 20);
+  perspective: 900px;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.pass[data-size="xs"] { --pass-w: 84px; }
+.pass[data-size="sm"] { --pass-w: 132px; }
+.pass[data-size="md"] { --pass-w: min(236px, calc(100vw - 48px)); }
+/* A phone has less width to give a chip-sized ticket. */
+@media (max-width: 639px) {
+  .pass[data-size="sm"] { --pass-w: 104px; }
+}
+.pass[data-size="lg"] { --pass-w: min(340px, calc(100vw - 48px)); }
+
+/* The tilting body. GSAP drives rotateX/rotateY; the glare follows --gx/--gy. */
+.pass__body {
+  position: absolute;
+  inset: 0;
+  border-radius: 0.9em;
+  overflow: hidden;
+  transform-style: preserve-3d;
+  will-change: transform;
+  /* The die-cut: two half-moons where the stub tears off. */
+  -webkit-mask:
+    radial-gradient(circle 0.62em at 77% 0, transparent 98%, #000) top / 100% 51% no-repeat,
+    radial-gradient(circle 0.62em at 77% 100%, transparent 98%, #000) bottom / 100% 51% no-repeat;
+  mask:
+    radial-gradient(circle 0.62em at 77% 0, transparent 98%, #000) top / 100% 51% no-repeat,
+    radial-gradient(circle 0.62em at 77% 100%, transparent 98%, #000) bottom / 100% 51% no-repeat;
+}
+
+/* --- grounds ------------------------------------------------------------- */
+
+.pass[data-kind="A"] .pass__body {
+  background:
+    radial-gradient(120% 90% at 18% 10%, rgba(255, 240, 196, 0.55), transparent 55%),
+    linear-gradient(128deg, #3b2806 0%, #8c6212 22%, #e9b949 44%, #fff0bf 52%, #d9a43a 60%, #7a520c 82%, #2f1f04 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 226, 150, 0.55), inset 0 0 2.2em rgba(60, 35, 0, 0.55);
+}
+
+.pass[data-kind="D"] .pass__body {
+  background:
+    radial-gradient(120% 90% at 18% 10%, rgba(190, 220, 255, 0.45), transparent 55%),
+    linear-gradient(128deg, #020b24 0%, #0a2e78 24%, #2f6fe4 44%, #cfe2ff 52%, #3b7cf0 60%, #0b2f80 80%, #020a20 100%);
+  box-shadow: inset 0 0 0 1px rgba(160, 200, 255, 0.55), inset 0 0 2.2em rgba(0, 10, 40, 0.6);
+}
+
+/* Fine security print over the foil. */
+.pass__guilloche {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.28;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+/* The perforation between ticket and stub. */
+.pass__perf {
+  position: absolute;
+  top: 0.75em;
+  bottom: 0.75em;
+  left: 77%;
+  width: 0;
+  border-left: 0.09em dashed rgba(255, 255, 255, 0.42);
+  transform: translateX(-50%);
+}
+.pass[data-kind="A"] .pass__perf { border-color: rgba(70, 40, 0, 0.45); }
+
+/* --- the monogram -------------------------------------------------------- */
+
+.pass__mono {
+  position: absolute;
+  left: 3%;
+  top: 50%;
+  height: 74%;
+  aspect-ratio: 1;
+  transform: translateY(-48%);
+  filter: drop-shadow(0 0.12em 0.18em rgba(0, 0, 0, 0.45));
+  overflow: visible;
+}
+
+/* --- type ---------------------------------------------------------------- */
+
+.pass__brand,
+.pass__label,
+.pass__serial,
+.pass__admit,
+.pass__stub {
+  position: absolute;
+  font-family: "Chakra Petch", "Inter", system-ui, sans-serif;
+  text-transform: uppercase;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.pass__brand {
+  top: 0.85em;
+  left: 43%;
+  font-family: "Russo One", "Chakra Petch", sans-serif;
+  font-size: 0.62em;
+  letter-spacing: 0.34em;
+}
+.pass__label {
+  top: 2.05em;
+  left: 43%;
+  font-size: 1.02em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.pass__label small {
+  display: block;
+  margin-top: 0.42em;
+  font-size: 0.5em;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  opacity: 0.82;
+}
+.pass__admit {
+  left: 43%;
+  bottom: 2.1em;
+  font-size: 0.48em;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  opacity: 0.85;
+}
+.pass__serial {
+  left: 43%;
+  bottom: 0.95em;
+  font-family: "Consolas", "SF Mono", ui-monospace, monospace;
+  font-size: 0.5em;
+  letter-spacing: 0.18em;
+  opacity: 0.75;
+}
+.pass__stub {
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 23%;
+  display: grid;
+  place-items: center;
+}
+.pass__stub span {
+  transform: rotate(90deg);
+  font-size: 0.56em;
+  font-weight: 700;
+  letter-spacing: 0.42em;
+  opacity: 0.8;
+}
+
+.pass[data-kind="A"] .pass__brand,
+.pass[data-kind="A"] .pass__label,
+.pass[data-kind="A"] .pass__admit,
+.pass[data-kind="A"] .pass__serial,
+.pass[data-kind="A"] .pass__stub { color: #2a1802; text-shadow: 0 1px 0 rgba(255, 236, 180, 0.5); }
+
+.pass[data-kind="D"] .pass__brand,
+.pass[data-kind="D"] .pass__label,
+.pass[data-kind="D"] .pass__admit,
+.pass[data-kind="D"] .pass__serial,
+.pass[data-kind="D"] .pass__stub { color: #eef5ff; text-shadow: 0 1px 0 rgba(0, 12, 50, 0.55); }
+
+/* Below `sm` the ticket is a chip: monogram and count only. */
+.pass[data-size="xs"] :is(.pass__brand, .pass__label, .pass__admit, .pass__serial, .pass__stub, .pass__perf),
+.pass[data-size="sm"] :is(.pass__admit, .pass__serial) { display: none; }
+.pass[data-size="xs"] .pass__mono { left: 50%; height: 80%; transform: translate(-50%, -48%); }
+
+/* --- light ---------------------------------------------------------------- */
+
+/* The holographic band GSAP sweeps across. */
+.pass__sheen {
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 38%;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0) 18%,
+    rgba(255, 255, 255, 0.55) 46%,
+    rgba(255, 214, 250, 0.35) 52%,
+    rgba(180, 255, 245, 0.3) 58%,
+    rgba(255, 255, 255, 0) 82%,
+    transparent 100%
+  );
+  mix-blend-mode: soft-light;
+  transform: translateX(-160%) skewX(-14deg);
+  pointer-events: none;
+}
+
+/* Glare under the pointer while tilting. */
+.pass__glare {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at var(--gx, 50%) var(--gy, 30%), rgba(255, 255, 255, 0.38), transparent 46%);
+  mix-blend-mode: overlay;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.pass:hover .pass__glare { opacity: 1; }
+
+/* The bloom under the card. */
+.pass__halo {
+  position: absolute;
+  inset: 12% 6% -10%;
+  border-radius: 50%;
+  filter: blur(1.4em);
+  opacity: 0.55;
+  z-index: -1;
+  pointer-events: none;
+}
+.pass[data-kind="A"] .pass__halo { background: radial-gradient(closest-side, rgba(246, 196, 90, 0.85), transparent); }
+.pass[data-kind="D"] .pass__halo { background: radial-gradient(closest-side, rgba(77, 141, 246, 0.85), transparent); }
+
+/* --- count ---------------------------------------------------------------- */
+
+.pass__count {
+  position: absolute;
+  top: -0.55em;
+  right: -0.55em;
+  min-width: 2.1em;
+  height: 2.1em;
+  padding: 0 0.55em;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-family: "Rajdhani", "Chakra Petch", sans-serif;
+  font-size: max(0.9em, 11px);
+  font-weight: 700;
+  color: #020617;
+  z-index: 2;
+  box-shadow: 0 0 0 2px #020617, 0 0.3em 0.8em rgba(0, 0, 0, 0.5);
+}
+.pass[data-kind="A"] .pass__count { background: linear-gradient(180deg, #ffe7a3, #e3b23c); }
+.pass[data-kind="D"] .pass__count { background: linear-gradient(180deg, #cfe2ff, #4d8df6); }
+
+/* None left: the ticket is shown, but spent. */
+.pass[data-empty="true"] .pass__body { filter: grayscale(0.85) brightness(0.55); }
+.pass[data-empty="true"] .pass__halo { opacity: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pass__sheen { display: none; }
+}
+
+/* --- the claim burst (ClaimBurst.tsx) --------------------------------------- */
+
+.claim-burst {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 90;
+}
+.claim-burst i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 2px;
+}
+.claim-burst b {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%);
+  font-family: "Rajdhani", "Chakra Petch", sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+}

@@ -48,6 +48,7 @@ import { Link, useLocation } from "react-router-dom";
 
 import SocialRow from "./SocialRow";
 import AccountChip from "./AccountChip";
+import NotificationBell from "./NotificationBell";
 
 /**
  * The legal notice, verbatim.
@@ -423,6 +424,7 @@ export default function AuctiqNav({ placement = "fixed" }: AuctiqNavProps = {}) 
             sky a cyan outline with no fill all but vanished. The plate carries
             its own contrast, so the button reads the same over any page.
           */}
+          <NotificationBell />
           <AccountChip />
 
           <Link

@@ -46,6 +46,7 @@ import ErrorBoundary from "./components/Global/ErrorBoundary";
 import ScoutDrawer from "./components/Scout/ScoutDrawer";
 import ScoutLauncher from "./components/Scout/ScoutLauncher";
 import CricketCursor from "./components/UI/CricketCursor";
+import NotificationToasts from "./components/Global/NotificationToasts";
 import { useScoutHotkey } from "./console/scoutStore";
 
 // The AUCTIQ landing — now the front door.
@@ -73,6 +74,8 @@ const MarqueeLab = lazy(() => import("./pages/MarqueeLab"));
 const OpeningLab = lazy(() => import("./pages/OpeningLab"));
 // Prototype of a reworked opening and landing. Not linked from anywhere.
 const PrototypeLab = lazy(() => import("./pages/PrototypeLab"));
+// The auction passes and notification popups, on a bench. Not linked.
+const PassLab = lazy(() => import("./pages/PassLab"));
 
 export default function App() {
   return (
@@ -112,6 +115,7 @@ export default function App() {
           <Route path="/lab/marquee" element={<MarqueeLab />} />
           <Route path="/lab/opening" element={<OpeningLab />} />
           <Route path="/lab/prototype" element={<PrototypeLab />} />
+          <Route path="/lab/passes" element={<PassLab />} />
           <Route path="/aucteam" element={<Aucteam />} />
           <Route path="/login" element={<Login />} />
           <Route path="/account" element={<Account />} />
@@ -186,6 +190,9 @@ function GlobalScout() {
     <>
       <ScoutDrawer />
       <ScoutLauncher />
+      {/* Notification popups, on every route, for the same reason as SCOUT:
+          a pass or an announcement has to be seen wherever its owner is. */}
+      <NotificationToasts />
     </>
   );
 }
