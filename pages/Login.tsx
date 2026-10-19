@@ -176,10 +176,15 @@ function LoginForm({ onDone }: { onDone: () => void }) {
 }
 
 function RegisterForm({ onDone }: { onDone: () => void }) {
+  const [params] = useSearchParams();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<Role | null>(null);
+  // `?role=delegate` (AUCTEAM's "Sign up with a Delegate account") picks it.
+  const [role, setRole] = useState<Role | null>(() => {
+    const asked = params.get("role");
+    return asked === "auctioneer" || asked === "delegate" || asked === "member" ? asked : null;
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

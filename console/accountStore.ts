@@ -70,10 +70,45 @@ export function canJoinRooms(account: Account | null): boolean {
 
 /** What each role is for, in a line. */
 export const ROLE_BLURB: Record<Role, string> = {
-  auctioneer: "Create auction rooms and run them from the control panel.",
-  delegate: "Join a room with its code and bid, or create a room of your own and run it.",
-  member: "The free tier: the data room, SCOUT and AUCTEAM. No seat in a live room.",
+  auctioneer:
+    "Create auction rooms with gold passes and run them. Generate blue passes for your players. Data room and SCOUT, unlimited.",
+  delegate:
+    "Bid in an Auctioneer's room, or run a delegate room, with blue passes. AUCTEAM and SCOUT, unlimited.",
+  member:
+    "The free tier: the data room and 10 SCOUT requests every 2 hours. Bid with a blue pass from your Auctioneer.",
 };
+
+/* ------------------------------------------------------------- tiers -- */
+
+/**
+ * Who is looking, highest first: ADMIN > AUCTIONEER > DELEGATE > FREE, and a
+ * signed-out guest, who sees what the free tier sees.
+ */
+export type Tier = "admin" | "auctioneer" | "delegate" | "member" | "guest";
+
+export function tierOf(account: Account | null): Tier {
+  if (!account) return "guest";
+  return account.admin ? "admin" : account.role;
+}
+
+export type Feature = "aucteam" | "data" | "scout_unlimited" | "send_passes";
+
+/**
+ * The feature matrix. The server holds the locks that matter (AUCTEAM's
+ * report, SCOUT's allowance, every pass); this mirrors them so the site
+ * shows each tier what it can actually use.
+ */
+export const ACCESS: Record<Feature, readonly Tier[]> = {
+  aucteam: ["admin", "delegate"],
+  // Delegates scout through AUCTEAM instead; the data room is not theirs.
+  data: ["admin", "auctioneer", "member", "guest"],
+  scout_unlimited: ["admin", "auctioneer", "delegate"],
+  send_passes: ["admin", "auctioneer"],
+};
+
+export function can(account: Account | null, feature: Feature): boolean {
+  return ACCESS[feature].includes(tierOf(account));
+}
 
 interface State {
   status: "loading" | "ready";

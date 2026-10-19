@@ -22,6 +22,8 @@
 import { useEffect } from "react";
 
 import AuctiqNav from "../components/Global/AuctiqNav";
+import TierGate from "../components/Ecosystem/TierGate";
+import { can, useAccount } from "../console/accountStore";
 import StadiumBackdrop from "../components/Sections/StadiumBackdrop";
 import PoolGrid from "../components/Aucteam/PoolGrid";
 import RosterBoard from "../components/Aucteam/RosterBoard";
@@ -43,7 +45,57 @@ function useClashDisplay(): void {
   }, []);
 }
 
+/**
+ * AUCTEAM is for Delegate accounts and administrators (console/accountStore.ts,
+ * ACCESS). Everyone else gets the gate, and the page below is not mounted at
+ * all -- so a gated visitor never loads the pool. The server refuses the
+ * SCOUT report to them as well (api/routes_aucteam.py).
+ */
 export default function Aucteam() {
+  const { status, account } = useAccount();
+  if (status === "loading") return <div className="auctiq min-h-screen bg-auctiq-void" />;
+  if (can(account, "aucteam")) return <AucteamPage />;
+  const signUp = {
+    label: "Sign up with a Delegate account",
+    to: "/login?mode=register&role=delegate&next=/aucteam",
+    primary: true,
+    signOut: !!account,
+  };
+  if (!account) {
+    return (
+      <TierGate
+        eyebrow="AUCTEAM · Delegate accounts"
+        title="Log in with a Delegate account"
+        body="AUCTEAM is where a Delegate builds a playing XI from the auction pool and has SCOUT grade it. Log in with your Delegate account, or create one."
+        pass="D"
+        actions={[
+          { label: "Log in", to: "/login?next=/aucteam", primary: true },
+          { ...signUp, primary: false, label: "Create a Delegate account" },
+        ]}
+      />
+    );
+  }
+  return (
+    <TierGate
+      eyebrow="AUCTEAM · Delegate accounts"
+      title="AUCTEAM is for Delegate accounts"
+      body={
+        account.role === "auctioneer"
+          ? "Auctioneer accounts run the room. Building a playing XI and having SCOUT grade it is the Delegate's side of the auction: sign up with a Delegate account to use AUCTEAM."
+          : "AUCTEAM comes with a Delegate account. Your free account has the data room and SCOUT; sign up with a Delegate account to build and grade a playing XI."
+      }
+      pass="D"
+      actions={[
+        signUp,
+        account.role === "auctioneer"
+          ? { label: "Open Live Bidding", to: "/auction/live" }
+          : { label: "Open the data room", to: "/data" },
+      ]}
+    />
+  );
+}
+
+function AucteamPage() {
   useClashDisplay();
   const status = useAucteam((s) => s.poolStatus);
   const error = useAucteam((s) => s.poolError);

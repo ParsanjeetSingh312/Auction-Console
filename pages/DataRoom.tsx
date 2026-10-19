@@ -20,8 +20,31 @@
 import AuctiqNav from "../components/Global/AuctiqNav";
 import DataDashboard from "../components/Console/DataDashboard";
 import StadiumBackdrop from "../components/Sections/StadiumBackdrop";
+import TierGate from "../components/Ecosystem/TierGate";
+import { can, useAccount } from "../console/accountStore";
 
+/**
+ * The Data Interface is for Auctioneer and Free accounts, administrators and
+ * signed-out visitors; Delegates scout through AUCTEAM and SCOUT instead
+ * (console/accountStore.ts, ACCESS). For them, a gate in its place.
+ */
 export default function DataRoom() {
+  const { status, account } = useAccount();
+  if (status === "loading") return <div className="console-dark min-h-screen" />;
+  if (!can(account, "data")) {
+    return (
+      <TierGate
+        eyebrow="Data Interface"
+        title="Your scouting lives in AUCTEAM"
+        body="The Data Interface is for Auctioneer and Free accounts. As a Delegate you build and grade your playing XI in AUCTEAM, and SCOUT answers anything else, without limit."
+        pass="D"
+        actions={[
+          { label: "Open AUCTEAM", to: "/aucteam", primary: true },
+          { label: "Live Bidding", to: "/auction/live" },
+        ]}
+      />
+    );
+  }
   return (
     <div className="console-dark site-chrome">
       <StadiumBackdrop variant="console" />

@@ -25,6 +25,7 @@
  * enough to split.
  */
 import { apiUrl } from "./apiBase";
+import { refreshScoutQuota } from "./scoutQuota";
 import { RagError } from "./ragClient";
 
 /* -------------------------------------------------------------------------
@@ -204,12 +205,23 @@ export async function streamAdvice(
   }
 
   if (!response.ok || !response.body) {
+    // The server's own sentence when it has one: the free tier's "You have
+    // used all 10 SCOUT requests for now. More in 42m" is the answer here.
+    let detail: string | null = null;
+    try {
+      const body = (await response.json()) as { detail?: unknown };
+      if (typeof body.detail === "string") detail = body.detail;
+    } catch {
+      // Not JSON.
+    }
+    void refreshScoutQuota();
     throw new RagError(
-      `SCOUT refused the request (${response.status}).`,
+      detail ?? `SCOUT refused the request (${response.status}).`,
       response.status,
       response.status >= 500,
     );
   }
+  void refreshScoutQuota();
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();

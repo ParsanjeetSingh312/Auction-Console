@@ -52,6 +52,7 @@ import { AuctiqMark } from "../Global/AuctiqLogo";
 import AgentOrchestration from "./AgentOrchestration";
 import RichStatsResponse from "./RichStatsResponse";
 import ScoutEmblem from "./ScoutEmblem";
+import ScoutQuotaMeter from "./ScoutQuotaMeter";
 import ScoutOrb, { type ScoutOrbPhase } from "./ScoutOrb";
 
 gsap.registerPlugin(useGSAP);
@@ -276,6 +277,7 @@ export default function ScoutDrawer() {
             </svg>
           </button>
         </header>
+        <ScoutQuotaMeter open={open} />
 
         <div className="relative min-h-0 flex-1">
           {/* ---- welcome: the emblem, before anything has been asked ---- */}

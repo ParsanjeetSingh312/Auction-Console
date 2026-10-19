@@ -37,6 +37,7 @@ def _fresh(monkeypatch, tmp_path):
     settings = get_settings()
     monkeypatch.setattr(settings, "PASSES_ENFORCED", True)
     monkeypatch.setattr(settings, "SCOUT_FREE_LIMIT", 10)
+    monkeypatch.setattr(settings, "TIER_GATES", True)
     monkeypatch.setattr(settings, "ADMIN_EMAILS", "root@example.test")
     _failures.clear()
     registry.set_pool(POOL)
@@ -347,3 +348,17 @@ class TestScoutQuota:
         delegate = person(client, "delegate")
         assert delegate.get("/api/v1/scout/quota").json()["limited"] is False
 
+
+# -------------------------------------------------------------- AUCTEAM --
+
+
+class TestAucteamGate:
+    def test_only_delegates_and_admins_get_the_report(self, client):
+        body = {"team_name": "XI", "player_ids": [1]}
+        assert client.post("/api/v1/aucteam/report", json=body).status_code == 401
+        for role in ("auctioneer", "member"):
+            refused = person(client, role).post("/api/v1/aucteam/report", body)
+            assert refused.status_code == 403 and "Delegate account" in refused.json()["detail"]
+        # Past the gate, a one-player XI is refused by the rules instead.
+        assert person(client, "delegate").post("/api/v1/aucteam/report", body).status_code == 422
+        assert person(client, "x", "root@example.test").post("/api/v1/aucteam/report", body).status_code == 422

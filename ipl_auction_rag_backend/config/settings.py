@@ -330,6 +330,12 @@ class Settings(BaseSettings):
     # their kind of pass at startup, so the flows can be tried at once.
     DEMO_PASS_BALANCE: int = 5
 
+    # --- Features by tier ---
+    # AUCTEAM's SCOUT team report is for Delegate accounts (and admins):
+    # Auctioneer and Free accounts are refused it. False opens it to everyone,
+    # as before tiers existed (the test suite's default).
+    TIER_GATES: bool = True
+
     # --- SCOUT quota for the free tier ---
     # Requests a Member account (or a signed-out visitor, by address) may make
     # in a rolling window. Auctioneer, Delegate and admin accounts: no limit.

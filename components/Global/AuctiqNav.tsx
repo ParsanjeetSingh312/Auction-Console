@@ -48,6 +48,7 @@ import { Link, useLocation } from "react-router-dom";
 
 import SocialRow from "./SocialRow";
 import AccountChip from "./AccountChip";
+import { can, useAccount } from "../../console/accountStore";
 import NotificationBell from "./NotificationBell";
 
 /**
@@ -323,7 +324,12 @@ export default function AuctiqNav({ placement = "fixed" }: AuctiqNavProps = {}) 
     array -- would leave a leading "|" floating at the start of the bar as soon
     as a hidden entry sorted first.
   */
-  const visible = DESTINATIONS.filter((destination) => !destination.hidden);
+  // Delegates do not get the Data Interface (console/accountStore.ts, ACCESS),
+  // so its link is not offered to them either.
+  const { account } = useAccount();
+  const visible = DESTINATIONS.filter(
+    (destination) => !destination.hidden && (destination.to !== "/data" || can(account, "data")),
+  );
 
   return (
     <header

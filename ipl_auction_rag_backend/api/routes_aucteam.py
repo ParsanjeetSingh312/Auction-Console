@@ -22,7 +22,7 @@ import threading
 import time
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from aucteam import store
 from aucteam.analysis import (
@@ -134,7 +134,27 @@ async def validate(payload: TeamPayload) -> ValidateResponse:
     )
 
 
-@router.post("/report", response_model=TeamReport)
+async def require_aucteam(request: Request) -> None:
+    """
+    AUCTEAM is for Delegate accounts and administrators. Auctioneer accounts
+    run rooms instead, and Free accounts have the data room; both are refused
+    the SCOUT team report, the part that costs a model call. The pool and the
+    rules check stay open: they are the same public player data /players
+    serves.
+    """
+    from api.routes_accounts import account_from_request
+    from config.settings import get_settings
+
+    if not get_settings().TIER_GATES:
+        return
+    account = await asyncio.to_thread(account_from_request, request)
+    if account is None:
+        raise HTTPException(status_code=401, detail="Log in with a Delegate account to use AUCTEAM.")
+    if not account.admin and account.role != "delegate":
+        raise HTTPException(status_code=403, detail="AUCTEAM is for Delegate accounts. Sign up with a Delegate account.")
+
+
+@router.post("/report", response_model=TeamReport, dependencies=[Depends(require_aucteam)])
 async def report(payload: ReportRequest) -> TeamReport:
     roster = await asyncio.to_thread(_roster, payload.player_ids)
     metrics = compute_metrics(roster)
