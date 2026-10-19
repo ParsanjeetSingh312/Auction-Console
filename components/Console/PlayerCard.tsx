@@ -381,7 +381,7 @@ export function SetupDialog({
       <div className="mbody">
         {field("purse", "Total Budget", "₹ crore per franchise", "0.25")}
         {field("maxSquad", "Total Squad", "most players a team can have")}
-        {field("minSquad", "Minimum Players", "reserved when computing max bid")}
+        {field("minSquad", "Minimum Players", "each franchise must fill at least this many")}
         {live && field("maxPlayers", "Maximum Players", "players to go under the hammer")}
         {field("maxOverseas", "Maximum overseas")}
         {live && field("minOverseas", "Minimum overseas", "highlighted in the briefing")}

@@ -683,11 +683,11 @@ function BlockBriefing({
 
       <header className="panel-head border-t border-rule-soft">
         <span className="eyebrow">Who can still pay</span>
-        <span className="eyebrow">max bid</span>
+        <span className="eyebrow">purse left</span>
       </header>
       <div className="bars">
         {engine.summaries.map((summary) => {
-          const ceiling = Math.max(1, ...engine.summaries.map((s) => s.maxBid));
+          const ceiling = Math.max(1, ...engine.summaries.map((s) => s.left));
           const blocked = engine.blockedReason(summary.team.id, player, engine.nextAsk);
           return (
             <div
@@ -700,9 +700,9 @@ function BlockBriefing({
                 {summary.team.name}
               </span>
               <span className="bt">
-                <i style={{ width: `${(summary.maxBid / ceiling) * 100}%` }} />
+                <i style={{ width: `${(summary.left / ceiling) * 100}%` }} />
               </span>
-              <span className="bv">{money(summary.maxBid)}</span>
+              <span className="bv">{money(summary.left)}</span>
             </div>
           );
         })}

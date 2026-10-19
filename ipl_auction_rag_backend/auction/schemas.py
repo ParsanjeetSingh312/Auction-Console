@@ -33,7 +33,7 @@ from typing import Annotated, Literal, get_args
 from pydantic import BaseModel, ConfigDict, Field
 
 # The largest bid the rules could ever permit: one franchise's whole purse.
-# A real bid is bounded far below this by `max_bid`, but the parser should
+# A real bid is bounded by the franchise's purse left, but the parser should
 # refuse an absurd integer before the auction logic has to reason about it.
 MAX_AMOUNT_LAKH = 12_000
 
@@ -340,8 +340,8 @@ class TeamState(BaseModel):
     # bidder should be able to price in before committing.
     timeouts_left: int = 0
     uncapped: int = 0
-    # Still owed to reach the room's minimums. Shown so a franchise can see why
-    # its max bid is lower than its purse: those places are reserved.
+    # Still owed to reach the room's minimums: squad places a franchise must
+    # keep free. Places only -- no purse is held back for them.
     overseas_needed: int = 0
     uncapped_needed: int = 0
     # Has this franchise acknowledged the current rules_version?

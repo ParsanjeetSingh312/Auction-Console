@@ -370,7 +370,6 @@ def _squad_strip(card: TeamCard, st: dict, width: float) -> list[Any]:
         ("Overseas", f"{card.overseas} / {rules.get('max_overseas', '—')}"),
         ("Spent", money(card.spent)),
         ("Purse left", money(card.left)),
-        ("Max bid", money(card.max_bid)),
         ("Squad rating", f"{card.squad_rating:.2f}" if card.squad_rating else "—"),
         ("XI rating", f"{card.xi_rating:.2f}" if card.xi_rating else "—"),
     ]

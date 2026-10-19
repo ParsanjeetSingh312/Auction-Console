@@ -234,9 +234,8 @@ def _team_context(team_id: int | None, room_code: str | None = None) -> tuple[Te
 
     Every number here comes from `Room.summary_for`, which is the same
     arithmetic the room uses to accept or refuse a bid -- so the advisor and
-    the auction cannot disagree about what a team can afford. In particular
-    `max_bid` already holds back enough purse to fill a minimum squad, which
-    is why it is smaller than `left` and why it, not `left`, is the ceiling.
+    the auction cannot disagree about what a team can afford. `max_bid` is the
+    ceiling, and it equals `left`: the purse is the whole budget.
     """
     if team_id is None:
         return None, []

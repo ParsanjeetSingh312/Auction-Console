@@ -290,16 +290,6 @@ export function useAuctionEngine(
     [state.block, playerIndex],
   );
 
-  /**
-   * The auction floor, used to reserve budget for a team's remaining minimum
-   * squad slots. Taken from the pool rather than hardcoded so a dataset with a
-   * different floor needs no code change.
-   */
-  const minBase = useMemo(
-    () => (players.length ? Math.min(...players.map((p) => p.base)) : 30),
-    [players],
-  );
-
   const summaries = useMemo<TeamSummary[]>(() => {
     return teams.map((team) => {
       const squad = players.filter((player) => {
@@ -312,7 +302,6 @@ export function useAuctionEngine(
         0,
       );
       const left = rules.purse - spent;
-      const slotsAfterThis = Math.max(0, rules.minSquad - (squad.length + 1));
 
       const composition = { BAT: 0, BOWL: 0, AR: 0, WK: 0 };
       for (const player of squad) composition[player.roleShort] += 1;
@@ -323,12 +312,13 @@ export function useAuctionEngine(
         spent,
         left,
         overseas: squad.filter((p) => p.overseas).length,
-        maxBid: Math.max(0, left - slotsAfterThis * minBase),
+        // The purse is the whole budget: nothing is held back for later places.
+        maxBid: Math.max(0, left),
         composition,
         size: squad.length,
       };
     });
-  }, [teams, players, state.records, rules, minBase]);
+  }, [teams, players, state.records, rules]);
 
   const summaryFor = useCallback(
     (teamId: number) => summaries.find((s) => s.team.id === teamId),
@@ -364,7 +354,7 @@ export function useAuctionEngine(
       if (player.overseas && summary.overseas >= rules.maxOverseas) {
         return `overseas full (${rules.maxOverseas})`;
       }
-      if (amount > summary.maxBid) return `over budget — max ${money(summary.maxBid)}`;
+      if (amount > summary.maxBid) return `over budget — ${money(summary.maxBid)} purse left`;
       return null;
     },
     [summaries, rules],

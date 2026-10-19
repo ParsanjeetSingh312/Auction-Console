@@ -66,7 +66,7 @@ function build(
   const out: Insight[] = [];
 
   // --- Who is still dangerous ------------------------------------------------
-  const richest = [...teams].sort((a, b) => b.maxBid - a.maxBid)[0];
+  const richest = [...teams].sort((a, b) => b.left - a.left)[0];
   if (richest) {
     const overseasLeft = rules.maxOverseas - richest.overseas;
     out.push({
@@ -74,7 +74,7 @@ function build(
       tone: "info",
       label: "Auction insight",
       text:
-        `${richest.team.code} can still bid ${moneyTight(richest.maxBid)} ` +
+        `${richest.team.code} has ${moneyTight(richest.left)} of purse left ` +
         `with ${rules.maxSquad - richest.squad.length} squad slot(s) and ` +
         `${overseasLeft} overseas slot(s) open.`,
     });

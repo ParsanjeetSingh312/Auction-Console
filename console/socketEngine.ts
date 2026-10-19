@@ -177,7 +177,7 @@ export function useSocketEngine(
       if (player.overseas && summary.overseas >= rules.maxOverseas) {
         return `overseas full (${rules.maxOverseas})`;
       }
-      if (amount > summary.maxBid) return `over budget — max ${money(summary.maxBid)}`;
+      if (amount > summary.maxBid) return `over budget — ${money(summary.maxBid)} purse left`;
       return null;
     };
 

@@ -119,7 +119,7 @@ export interface BlockViewProps {
   nextAsk?: number;
   /** The +5 / +10 / +15 Cr jump bids as absolute prices, ₹ lakh. */
   jumpOptions?: number[];
-  /** The most this franchise may bid after the places the room keeps back. */
+  /** The most this franchise may bid: its purse left. */
   maxBid?: number;
   /** Length of the decision buffer, for the control's label. */
   bufferSeconds?: number;
@@ -765,7 +765,7 @@ function JumpBid({
               type="button"
               disabled={disabled || over}
               onClick={() => onJump(price)}
-              title={over ? `Above your maximum bid of ${crore(ceiling)}` : `Jump straight to ${crore(price)}`}
+              title={over ? `Above your purse left of ${crore(ceiling)}` : `Jump straight to ${crore(price)}`}
               className="flex min-h-[48px] min-w-[150px] flex-col items-center justify-center rounded-lg border border-amber-500/60 bg-amber-500/10 px-4 py-1.5 font-mono uppercase text-amber-300 transition-colors hover:border-amber-400 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:border-neutral-800 disabled:bg-transparent disabled:text-neutral-700"
             >
               <span className="text-[13px] font-bold tracking-[0.12em]">+{Math.round((price - anchor) / 100)} Cr</span>
@@ -823,7 +823,7 @@ function JumpBid({
           valid
             ? `Commit ${crore(lakh)}`
             : lakh > ceiling
-              ? `Above your maximum bid of ${crore(ceiling)}`
+              ? `Above your purse left of ${crore(ceiling)}`
               : !onGrid
                 ? `Bids move in steps of ₹${(step / 100).toFixed(2)} Cr`
                 : `Must be at least ${crore(floor)}`

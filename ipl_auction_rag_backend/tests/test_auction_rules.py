@@ -317,6 +317,19 @@ class TestSquadRequirements:
             assert await room.bid("c1") == 150
         run(go())
 
+    def test_the_whole_purse_may_be_bid(self):
+        """The purse is the budget: nothing is held back for later squad places."""
+        async def go():
+            room = await live_room()  # default ₹120 Cr purse, empty squads
+            summary = room.summary_for(1)
+            assert summary["max_bid"] == summary["left"] == room.rules["purse"]
+            # One rung past the purse is refused, and the refusal names the purse.
+            with pytest.raises(RoomError, match="over budget"):
+                await room.bid("c1", room.rules["purse"] + 25)
+            # The full purse itself is a legal bid.
+            assert await room.bid("c1", room.rules["purse"]) == room.rules["purse"]
+        run(go())
+
 
 # --------------------------------------------------------------------- #
 # Auction Setup

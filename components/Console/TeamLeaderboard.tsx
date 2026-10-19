@@ -15,11 +15,8 @@
  * own limit rather than as a bare figure: "18/25" is a position, "18" is
  * trivia.
  *
- * **`maxBid` is shown, not `left`.** They are different numbers and the
- * difference is load-bearing: the room holds back enough purse to fill the
- * minimum squad, so a franchise with ₹30 Cr remaining may only be permitted to
- * bid ₹28.9 Cr. `left` is what they have; `maxBid` is what they can actually
- * do with it, and the second is what decides the next lot.
+ * **The purse is the figure shown.** The purse is each franchise's budget, so
+ * the board shows what is left of it and no separate "max bid" alongside.
  */
 import { moneyTight } from "../../console/format";
 import NumberRoll from "../UI/NumberRoll";
@@ -97,10 +94,10 @@ export default function TeamLeaderboard({
               </div>
 
               <div className="relative mt-1 flex items-center gap-3 pl-6 font-ui text-[10px] text-slate-faint">
-                <span title="What this franchise may actually bid right now">
-                  max bid{" "}
+                <span title="Purse this franchise has left">
+                  purse{" "}
                   <NumberRoll
-                    value={row.maxBid}
+                    value={row.left}
                     format={moneyTight}
                     className="font-num text-slate-ink"
                   />

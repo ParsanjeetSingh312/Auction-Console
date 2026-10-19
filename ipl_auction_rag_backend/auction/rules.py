@@ -249,7 +249,7 @@ def jump_options(base: int, current: int, has_bid: bool, steps: list[int] | tupl
 
 
 # --------------------------------------------------------------------- #
-# Eligibility: what a franchise must keep back
+# Eligibility: the squad places a franchise must keep free
 # --------------------------------------------------------------------- #
 
 
@@ -261,7 +261,6 @@ class SlotPlan:
     overseas_needed: int  # overseas still owed after this signing
     uncapped_needed: int  # uncapped still owed after this signing
     slots_to_fill: int  # signings still required after this one
-    reserve: int  # purse that must survive this bid, lakh
 
 
 def slot_plan(
@@ -272,10 +271,13 @@ def slot_plan(
     uncapped: int,
     signing_overseas: bool = False,
     signing_uncapped: bool = False,
-    cheapest_base: int,
 ) -> SlotPlan:
     """
     What a franchise would still owe after one more signing.
+
+    Places only, never money. The purse is the whole budget: a franchise may
+    bid every rupee of what it has left, and no part of it is held back to
+    fill the rest of the squad.
 
     The overseas and uncapped places are counted as *separate* places (their
     sum), which is the safe reading: it guarantees both minimums can be met
@@ -293,7 +295,6 @@ def slot_plan(
         overseas_needed=overseas_needed,
         uncapped_needed=uncapped_needed,
         slots_to_fill=slots_to_fill,
-        reserve=slots_to_fill * cheapest_base,
     )
 
 

@@ -184,7 +184,7 @@ export interface TeamSummary {
   spent: number;
   left: number;
   overseas: number;
-  /** The most this team can bid without stranding its minimum squad. */
+  /** The most this team may bid: its purse left (the purse is the whole budget). */
   maxBid: number;
   composition: Record<RoleShort, number>;
   size: number;

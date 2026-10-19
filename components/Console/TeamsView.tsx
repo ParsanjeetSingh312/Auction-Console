@@ -50,7 +50,7 @@ function TeamCard({
   engine: AuctionEngine;
   onNotice: (message: string, kind?: "err") => void;
 }) {
-  const { team, squad, spent, left, maxBid, composition, size } = summary;
+  const { team, squad, spent, left, composition, size } = summary;
   const { rules, recordFor } = engine;
   const spentPct = Math.min(100, (spent / rules.purse) * 100);
 
@@ -72,13 +72,10 @@ function TeamCard({
         </h3>
 
         <div className="purse">
+          {/* The purse is the budget: no separate "max bid" figure beside it. */}
           <div>
             <div className="eyebrow">Purse left</div>
             <b className="num">{money(left)}</b>
-          </div>
-          <div className="text-right">
-            <div className="eyebrow">Max bid</div>
-            <span className="font-mono">{money(maxBid)}</span>
           </div>
         </div>
 

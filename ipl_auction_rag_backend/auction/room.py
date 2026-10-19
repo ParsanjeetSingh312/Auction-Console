@@ -374,15 +374,6 @@ class AuctionRoom:
     # Derived readings
     # ---------------------------------------------------------------- #
 
-    def _min_base(self) -> int:
-        """Cheapest player still available — the cost of one more squad slot."""
-        available = [
-            self.players[pid].base
-            for pid, rec in self.records.items()
-            if rec.status == "available" and pid in self.players
-        ]
-        return min(available) if available else BASE_PRICE_FLOOR
-
     def squad_of(self, team_id: int) -> list[Player]:
         return [
             self.players[pid]
@@ -394,9 +385,10 @@ class AuctionRoom:
         """
         A franchise's position.
 
-        `max_bid` holds back enough to fill the minimum squad at the cheapest
-        going rate, so a team cannot spend itself into an illegal squad. Same
-        arithmetic as the client's `summaries`.
+        The purse is the budget: `max_bid` is simply what is left of it, with
+        nothing held back for the rest of the squad. The field is kept (the
+        clients and SCOUT read it as "the most this team may bid") but it now
+        always equals `left`. Same arithmetic as the client's `summaries`.
         """
         squad = self.squad_of(team_id)
         spent = sum(
@@ -407,16 +399,6 @@ class AuctionRoom:
         left = self.rules["purse"] - spent
         overseas = sum(1 for p in squad if p.overseas)
         uncapped = sum(1 for p in squad if p.uncapped)
-        # The general case: one more signing that satisfies none of the
-        # minimums. A signing that does (an overseas or uncapped player) is
-        # re-checked with the real flags in `blocked_reason`.
-        plan = slot_plan(
-            self.rules,
-            size=len(squad),
-            overseas=overseas,
-            uncapped=uncapped,
-            cheapest_base=self._min_base(),
-        )
         return {
             "spent": spent,
             "left": left,
@@ -425,7 +407,7 @@ class AuctionRoom:
             "uncapped": uncapped,
             "overseas_needed": max(0, self.rules["min_overseas"] - overseas),
             "uncapped_needed": max(0, self.rules["min_uncapped"] - uncapped),
-            "max_bid": max(0, left - plan.reserve),
+            "max_bid": max(0, left),
         }
 
     def blocked_reason(self, team_id: int, player: Player, amount: int) -> str | None:
@@ -445,7 +427,6 @@ class AuctionRoom:
             uncapped=summary["uncapped"],
             signing_overseas=player.overseas,
             signing_uncapped=player.uncapped,
-            cheapest_base=self._min_base(),
         )
         owed = plan.overseas_needed + plan.uncapped_needed
         if owed > plan.slots_free:
@@ -455,9 +436,9 @@ class AuctionRoom:
             if plan.uncapped_needed:
                 need.append(f"{plan.uncapped_needed} uncapped")
             return f"keep squad places for {' and '.join(need)}"
-        max_bid = max(0, summary["left"] - plan.reserve)
-        if amount > max_bid:
-            return f"over budget — max {money(max_bid)}"
+        # The whole purse may be bid; nothing is held back for later places.
+        if amount > summary["left"]:
+            return f"over budget — {money(max(0, summary['left']))} purse left"
         return None
 
     @property

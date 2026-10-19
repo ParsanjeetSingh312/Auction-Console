@@ -18,18 +18,11 @@ later". But people ask in crore -- "an all-rounder under 15 Cr" is 1,500 lakh.
 A field called `max_price` invites a parser to put 15 in it. `max_price_lakh`
 does not, and nothing here is a bare number.
 
-**A recommendation cannot exceed what the room would allow.** The obvious
-ceiling is the team's remaining purse, and it is the wrong one.
-`Room.summary_for` computes:
-
-    reserve = slots_needed_after_this * cheapest_base_price
-    max_bid = max(0, left - reserve)
-
-so a franchise holds back enough to fill its minimum squad and cannot spend
-itself into an illegal side. A bid bounded by `left` sails past that and is
-refused by `blocked_reason` with "over budget". `AdvisorRecommendation`
-validates every candidate against `max_bid_lakh` instead, which means the
-advisor is structurally unable to suggest a bid the auction would reject.
+**A recommendation cannot exceed what the room would allow.** The ceiling is
+the team's remaining purse: `Room.summary_for` reports it as `max_bid`, which
+always equals `left` because the purse is the whole budget and nothing is held
+back. `AdvisorRecommendation` validates every candidate against `max_bid_lakh`,
+so the advisor is structurally unable to suggest a bid the auction would reject.
 """
 from __future__ import annotations
 
