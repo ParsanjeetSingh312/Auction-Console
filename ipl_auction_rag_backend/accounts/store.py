@@ -175,6 +175,17 @@ SCHEMA = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS auction_schedule_owner ON auction_schedule(owner_id, starts_at)",
+    # The public "Add to calendar" link for a scheduled auction: an unguessable
+    # token per entry, so delegates can open the auction's page and add it to
+    # their own calendar without an account. Its own table rather than a new
+    # column, so existing databases need no migration.
+    """
+    CREATE TABLE IF NOT EXISTS schedule_shares (
+        entry_id    INTEGER PRIMARY KEY REFERENCES auction_schedule(id) ON DELETE CASCADE,
+        token       TEXT    NOT NULL UNIQUE,
+        created_at  REAL    NOT NULL
+    )
+    """,
     # An account's Google Calendar connection. Only the refresh token is
     # kept long-term; access tokens are short-lived and re-minted from it.
     """

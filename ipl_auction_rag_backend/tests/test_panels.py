@@ -263,3 +263,89 @@ class TestStartGate:
             ok = client.get("/api/v1/rooms/GATE03/waiting", headers=headers(owner_token))
             assert ok.status_code == 200 and ok.json()["ready"] is True
             assert client.get("/api/v1/rooms/GATE03/waiting", headers=headers(other)).status_code == 403
+
+
+# ------------------------------------------------------ add to calendar --
+
+
+def _connect(a, b):
+    with store._connect() as conn:
+        low, high = sorted((a.id, b.id))
+        conn.execute(
+            "INSERT INTO connections (requester_id, addressee_id, low_id, high_id, status, created_at) "
+            "VALUES (?, ?, ?, ?, 'accepted', ?)", (a.id, b.id, low, high, time.time()))
+
+
+class TestAddToCalendar:
+    def _entry(self, client, token, title="Mega auction; round 2, final"):
+        return client.post("/api/v1/schedule", headers=headers(token),
+                           json={"title": title, "starts_at": time.time() + 3 * 24 * 3600,
+                                 "duration_min": 90, "notes": "Bring your strategy.\nTen teams."}).json()["entry"]
+
+    def test_share_link_is_the_owners_and_public_to_read(self, client):
+        owner = register(client, "auctioneer")
+        other = register(client, "auctioneer")
+        entry = self._entry(client, owner)
+        assert client.get(f"/api/v1/schedule/{entry['id']}/share", headers=headers(other)).status_code == 404
+        share = client.get(f"/api/v1/schedule/{entry['id']}/share", headers=headers(owner)).json()
+        assert share["path"] == f"/calendar/{share['token']}"
+        # Asking again gives the same link.
+        again = client.get(f"/api/v1/schedule/{entry['id']}/share", headers=headers(owner)).json()
+        assert again["token"] == share["token"]
+        # Anyone holding the link can read it, logged in or not.
+        public = client.get(f"/api/v1/calendar/{share['token']}").json()
+        assert public["title"] == entry["title"] and public["duration_min"] == 90
+        assert "owner_id" not in public and "email" not in public
+        assert client.get("/api/v1/calendar/not-a-real-token").status_code == 404
+
+    def test_ics_is_a_valid_calendar_file(self, client):
+        owner = register(client, "auctioneer")
+        entry = self._entry(client, owner, title="A very long auction name " * 4)
+        token = client.get(f"/api/v1/schedule/{entry['id']}/share", headers=headers(owner)).json()["token"]
+        r = client.get(f"/api/v1/calendar/{token}/ics")
+        assert r.status_code == 200 and r.headers["content-type"].startswith("text/calendar")
+        assert "attachment" in r.headers["content-disposition"]
+        body = r.content.decode("utf-8")
+        assert body.startswith("BEGIN:VCALENDAR\r\n") and body.endswith("END:VCALENDAR\r\n")
+        lines = body.split("\r\n")
+        assert all(len(line.encode("utf-8")) <= 75 for line in lines)
+        assert any(line.startswith("DTSTART:") and line.endswith("Z") for line in lines)
+        assert "TRIGGER:-PT30M" in lines
+        assert f"UID:auction-{entry['id']}@" in body
+        # Special characters are escaped, newlines turned into \n.
+        unfolded = body.replace("\r\n ", "")
+        assert r"Bring your strategy.\nTen teams." in unfolded
+        assert r"\, run by" in unfolded  # the comma in the description is escaped too
+
+    def test_share_reaches_connections_only(self, client):
+        owner_token = register(client, "auctioneer")
+        owner = store.account_for_session(owner_token)
+        friend = store.account_for_session(register(client, "delegate"))
+        stranger = store.account_for_session(register(client, "delegate"))
+        _connect(owner, friend)
+        entry = self._entry(client, owner_token)
+
+        refused = client.post(f"/api/v1/schedule/{entry['id']}/share", headers=headers(owner_token),
+                              json={"recipient_ids": [friend.id, stranger.id]})
+        assert refused.status_code == 400 and "Connect with" in refused.json()["detail"]
+
+        ok = client.post(f"/api/v1/schedule/{entry['id']}/share", headers=headers(owner_token),
+                         json={"recipient_ids": [friend.id]}).json()
+        assert ok["shared"] == 1
+        with store._connect() as conn:
+            note = conn.execute(
+                "SELECT kind, link FROM notifications WHERE account_id = ? AND kind = 'schedule'", (friend.id,)
+            ).fetchone()
+            nothing = conn.execute(
+                "SELECT COUNT(*) AS n FROM notifications WHERE account_id = ? AND kind = 'schedule'", (stranger.id,)
+            ).fetchone()["n"]
+        assert note["link"] == f"/calendar/{ok['token']}"
+        assert nothing == 0
+
+    def test_removing_the_auction_retires_its_link(self, client):
+        owner = register(client, "auctioneer")
+        entry = self._entry(client, owner)
+        token = client.get(f"/api/v1/schedule/{entry['id']}/share", headers=headers(owner)).json()["token"]
+        client.delete(f"/api/v1/schedule/{entry['id']}", headers=headers(owner))
+        assert client.get(f"/api/v1/calendar/{token}").status_code == 404
+        assert client.get(f"/api/v1/calendar/{token}/ics").status_code == 404

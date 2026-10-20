@@ -22,12 +22,14 @@ import {
   deleteEntry,
   disconnectGoogle,
   fetchSchedule,
+  fetchShareToken,
   googleConnectUrl,
   syncGoogle,
   updateEntry,
 } from "../../console/scheduleApi";
 import type { GoogleStatus, RoomType, ScheduleEntry, SyncResult } from "../../console/scheduleApi";
 import UpcomingAuctionsCard from "../UI/UpcomingAuctionsCard";
+import AddToCalendar from "./AddToCalendar";
 
 const LABEL = "font-ui text-[9.5px] font-semibold uppercase tracking-[0.16em] text-slate-faint";
 const FIELD =
@@ -96,6 +98,22 @@ export default function SchedulePanel() {
   const [note, setNote] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
   const [params, setParams] = useSearchParams();
 
+  // The open auction's share token, for its "Add to calendar" links.
+  const [shareToken, setShareToken] = useState<string | null>(null);
+  const openId = draft?.id ?? null;
+  useEffect(() => {
+    setShareToken(null);
+    if (openId === null) return;
+    let live = true;
+    fetchShareToken(openId)
+      .then((r) => live && setShareToken(r.token))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [openId]);
+  const savedEntry = openId === null ? null : (entries ?? []).find((e) => e.id === openId) ?? null;
+
   const load = useCallback(async () => {
     try {
       const data = await fetchSchedule();
@@ -161,7 +179,8 @@ export default function SchedulePanel() {
       const result = draft.id === null ? await createEntry(input) : await updateEntry(draft.id, input);
       const text = syncMessage(result.sync, google);
       setNote(text ? { tone: result.sync.state === "error" ? "err" : "ok", text } : null);
-      setDraft(null);
+      // Keep it open, saved: its "Add to calendar" buttons appear straight away.
+      setDraft(draftFrom(result.entry));
       await load();
     } catch (e) {
       setNote({ tone: "err", text: e instanceof Error ? e.message : "Could not save." });
@@ -367,6 +386,19 @@ export default function SchedulePanel() {
             }}
           >
             <div className="mt-5 border-t border-line pt-4">
+              {savedEntry && (
+                <div className="mb-5">
+                  <h3 className={LABEL}>Add to calendar</h3>
+                  <p className="mb-2 mt-1 font-ui text-[11.5px] text-slate-muted">
+                    Save it to your calendar for a reminder 30 minutes before, or share it with your delegates.
+                  </p>
+                  <AddToCalendar
+                    event={{ ...savedEntry, host: null }}
+                    token={shareToken}
+                    entryId={savedEntry.id}
+                  />
+                </div>
+              )}
               <h3 className={LABEL}>{draft.id === null ? "Schedule an auction" : "Change this auction"}</h3>
               <div className="mt-2 grid gap-3 sm:grid-cols-2">
                 <label className="block font-ui text-[11px] text-slate-muted sm:col-span-2">

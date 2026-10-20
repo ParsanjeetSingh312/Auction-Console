@@ -15,6 +15,11 @@ pass figures.
 
     GET    /api/v1/auctioneer/overview?days=30 Delegate passes generated, given, claimed
 
+    GET    /api/v1/schedule/{id}/share         the auction's public share link
+    POST   /api/v1/schedule/{id}/share         recipient_ids -> a bell notification each
+    GET    /api/v1/calendar/{token}            the shared auction (public)
+    GET    /api/v1/calendar/{token}/ics        the shared auction as an .ics file (public)
+
 Saving an entry never depends on Google: the entry is stored first, then
 copied, and a failed copy comes back as `sync.error` beside the saved entry.
 """
@@ -25,10 +30,10 @@ from typing import Any, Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel, Field
 
-from accounts import admin_stats, google_calendar, schedule
+from accounts import admin_stats, calendar_share, google_calendar, schedule
 from accounts.store import Account
 from api.routes_accounts import account_from_request
 
@@ -200,3 +205,59 @@ async def google_disconnect(request: Request) -> dict[str, Any]:
 async def auctioneer_overview(request: Request, days: int = 30) -> dict[str, Any]:
     account = await _scheduler(request)
     return await asyncio.to_thread(admin_stats.auctioneer_overview, account, days)
+
+
+# -------------------------------------------------------- add to calendar --
+#
+# No Google sign-in: a share link per auction, an .ics file anyone's calendar
+# imports, and a bell notification to the auctioneer's connections
+# (accounts/calendar_share.py).
+
+
+class ShareIn(BaseModel):
+    recipient_ids: list[int] = Field(min_length=1, max_length=calendar_share.MAX_RECIPIENTS)
+
+
+@router.get("/schedule/{entry_id}/share")
+async def schedule_share_link(entry_id: int, request: Request) -> dict[str, Any]:
+    """The auction's public share link, made on first request."""
+    account = await _scheduler(request)
+    try:
+        token = await asyncio.to_thread(calendar_share.token_for, account, entry_id)
+    except calendar_share.ShareError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"token": token, "path": f"/calendar/{token}"}
+
+
+@router.post("/schedule/{entry_id}/share")
+async def schedule_share(entry_id: int, payload: ShareIn, request: Request) -> dict[str, Any]:
+    """Send the auction to connections' bells, each linking to the share page."""
+    account = await _scheduler(request)
+    try:
+        return await asyncio.to_thread(calendar_share.share, account, entry_id, payload.recipient_ids)
+    except calendar_share.ShareError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/calendar/{token}")
+async def calendar_public(token: str) -> dict[str, Any]:
+    """A shared auction, for its public page. No login: the link is the permission."""
+    entry = await asyncio.to_thread(calendar_share.public_entry, token)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="This auction link is not valid, or the auction was removed.")
+    return {k: entry[k] for k in ("title", "room_type", "starts_at", "duration_min", "notes", "host", "token")}
+
+
+@router.get("/calendar/{token}/ics")
+async def calendar_ics(token: str, request: Request) -> Response:
+    """The shared auction as an .ics file for Apple Calendar, Outlook or Google."""
+    entry = await asyncio.to_thread(calendar_share.public_entry, token)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="This auction link is not valid, or the auction was removed.")
+    site = _site(request)
+    body = calendar_share.ics(entry, site, host_domain=request.headers.get("host", "auctoniq").split(":")[0])
+    return Response(
+        content=body,
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="auctoniq-auction.ics"'},
+    )

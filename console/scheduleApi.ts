@@ -112,3 +112,30 @@ export interface AuctioneerOverview {
 export function fetchAuctioneerOverview(days = 30): Promise<AuctioneerOverview> {
   return api(`/auctioneer/overview?days=${days}`);
 }
+
+/* ------------------------------------------------------- add to calendar -- */
+
+export interface SharedAuction {
+  title: string;
+  room_type: RoomType;
+  starts_at: number;
+  duration_min: number;
+  notes: string;
+  host: string;
+  token: string;
+}
+
+/** The auction's public share link token, made on first request. */
+export function fetchShareToken(id: number): Promise<{ token: string; path: string }> {
+  return api(`/schedule/${id}/share`);
+}
+
+/** Send the auction to connections' bells. */
+export function shareEntry(id: number, recipientIds: number[]): Promise<{ token: string; shared: number }> {
+  return api(`/schedule/${id}/share`, { method: "POST", body: JSON.stringify({ recipient_ids: recipientIds }) });
+}
+
+/** A shared auction, for the public page. No login needed. */
+export function fetchSharedAuction(token: string): Promise<SharedAuction> {
+  return api(`/calendar/${encodeURIComponent(token)}`);
+}

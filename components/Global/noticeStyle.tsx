@@ -3,7 +3,7 @@
  * How each kind of notification looks, shared by the bell's list and the
  * popups so a message wears the same colour and icon in both.
  */
-import { AlarmClock, Gift, Megaphone, RotateCcw, Sparkles, UserPlus } from "lucide-react";
+import { AlarmClock, CalendarPlus, Gift, Megaphone, RotateCcw, Sparkles, UserPlus } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import type { Notice } from "../../console/ecosystemStore";
@@ -33,6 +33,8 @@ export function lookOf(notice: Notice): Look {
       return { icon: UserPlus, tone: "#C084FC", eyebrow: "Connection" };
     case "reminder":
       return { icon: AlarmClock, tone: "#FB923C", eyebrow: "Starting soon" };
+    case "schedule":
+      return { icon: CalendarPlus, tone: "#C084FC", eyebrow: "Auction scheduled" };
     default:
       return { icon: Megaphone, tone: "#E3B23C", eyebrow: "Announcement" };
   }

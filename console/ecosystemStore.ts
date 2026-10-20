@@ -34,6 +34,8 @@ export type NotificationKind =
   | "welcome"
   | "gift"
   | "gift_returned"
+  /** A scheduled auction shared by an auctioneer (accounts/calendar_share.py). */
+  | "schedule"
   | "connection"
   | "reminder"
   | "announcement";
