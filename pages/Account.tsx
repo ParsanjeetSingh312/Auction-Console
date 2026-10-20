@@ -16,6 +16,8 @@ import StadiumBackdrop from "../components/Sections/StadiumBackdrop";
 import LightSweep from "../components/UI/LightSweep";
 import { RoleTag } from "./Login";
 import WalletPanel from "../components/Ecosystem/WalletPanel";
+import AdminPanel from "../components/Account/AdminPanel";
+import AuctioneerPanel from "../components/Account/AuctioneerPanel";
 
 import "../console/console.css";
 
@@ -48,7 +50,13 @@ export default function Account() {
     <div className="console-dark">
       <StadiumBackdrop variant="console" />
       <div className="min-h-screen bg-surface bg-dots px-5 py-10">
-        <motion.div className="mx-auto w-full max-w-xl" variants={gridVariants} initial="initial" animate="animate">
+        {/* Wider for the panels: an admin's or auctioneer's figures need the room. */}
+        <motion.div
+          className={`mx-auto w-full ${account?.admin || account?.role === "auctioneer" ? "max-w-3xl" : "max-w-xl"}`}
+          variants={gridVariants}
+          initial="initial"
+          animate="animate"
+        >
           <motion.header className="mb-6 flex items-start justify-between gap-4" variants={cardVariants}>
             <div>
               <span className="font-ui text-[9.5px] font-semibold uppercase tracking-[0.16em] text-slate-faint">
@@ -110,6 +118,8 @@ export default function Account() {
               </div>
             </motion.section>
           ) : null}
+          {account?.admin && <AdminPanel />}
+          {(account?.role === "auctioneer" || account?.admin) && <AuctioneerPanel />}
           {account && <WalletPanel account={account} />}
           {!account && (
             <motion.p variants={cardVariants} className="font-ui text-[12.5px] text-slate-muted">

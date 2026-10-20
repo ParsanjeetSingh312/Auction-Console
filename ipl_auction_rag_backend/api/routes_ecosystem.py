@@ -12,6 +12,8 @@ Passes, the notification bell and connections, for the signed-in account.
     POST   /api/v1/notifications/read        ids (or none for all)
     POST   /api/v1/notifications/broadcast   admins: title, body, link, roles
 
+    GET    /api/v1/admin/overview?days=7    admins: passes given, auctions held, accounts
+
     GET    /api/v1/connections               friends, incoming and outgoing requests
     GET    /api/v1/connections/search?q=     accounts to connect with
     POST   /api/v1/connections/request       account_id
@@ -30,7 +32,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from accounts import connections, notifications, passes
+from accounts import admin_stats, connections, invites, notifications, passes
 from accounts.store import Account
 from api.routes_accounts import account_from_request
 
@@ -65,6 +67,9 @@ class SendRequest(BaseModel):
     quantity: int = Field(default=1, ge=1, le=passes.MAX_PER_SEND)
     note: str | None = Field(default=None, max_length=200)
     generate_missing: bool = False
+    # Sent from a room's waiting room: the recipients become that room's
+    # invitees, and the auction cannot start until each has sat down.
+    room_code: str | None = Field(default=None, max_length=12)
 
 
 class ClaimRequest(BaseModel):
@@ -96,10 +101,21 @@ async def generate(payload: GenerateRequest, request: Request) -> dict[str, Any]
 @router.post("/passes/send")
 async def send(payload: SendRequest, request: Request) -> dict[str, Any]:
     account = await _account(request)
-    return await _run(
+    room = _own_room(account, payload.room_code) if payload.room_code else None
+    if room is not None and payload.kind != "D":
+        raise HTTPException(status_code=400, detail="Invite delegates to a room with Delegate passes.")
+    if room is not None and room.phase not in ("lobby", "waiting"):
+        raise HTTPException(status_code=400, detail="The auction has started; the invite list is closed.")
+    result = await _run(
         passes.send, account, payload.recipient_ids, payload.kind, payload.quantity,
         payload.note, payload.generate_missing,
     )
+    if room is not None:
+        ids = list(dict.fromkeys(int(i) for i in payload.recipient_ids))
+        await asyncio.to_thread(
+            invites.record, room.code, room.instance, account.id, zip(ids, result["gifts"])
+        )
+    return result
 
 
 @router.post("/passes/claim")
@@ -194,3 +210,83 @@ async def connection_remove(account_id: int, request: Request) -> dict[str, Any]
     account = await _account(request)
     await asyncio.to_thread(connections.remove, account, account_id)
     return {"ok": True}
+
+
+# ----------------------------------------------------------------- admin --
+
+
+def _live_rooms() -> list[dict[str, Any]]:
+    """The rooms open right now, from the in-memory registry."""
+    from accounts import store
+    from auction.rooms import registry
+
+    out = []
+    for entry in registry.entries():
+        room = entry.room
+        owner = store.account_by_id(room.owner_account_id) if room.owner_account_id else None
+        seated = sum(1 for s in room.seats.values() if s.role == "franchise")
+        # MAIN sits idle in the lobby on every server; it is only news once used.
+        if entry.code == "MAIN" and room.phase == "lobby" and entry.connections == 0:
+            continue
+        out.append({
+            "code": entry.code,
+            "phase": room.phase,
+            "room_type": room.room_type,
+            "teams": len(room.teams),
+            "seated": seated,
+            "connections": entry.connections,
+            "owner": owner.name if owner else None,
+        })
+    return out
+
+
+@router.get("/admin/overview")
+async def admin_overview(request: Request, days: int = 7) -> dict[str, Any]:
+    """Administrators: passes given, auctions held, accounts, recent activity."""
+    account = await _account(request)
+    if not account.admin:
+        raise HTTPException(status_code=403, detail="Only administrators can see the admin panel.")
+    live = _live_rooms()
+    return await asyncio.to_thread(admin_stats.overview, account, days, live)
+
+
+# --------------------------------------------------------- waiting room --
+
+
+def _own_room(account: Account, code: str | None):
+    """A room this account runs (or any room, for an admin), still before its start."""
+    from auction.rooms import normalise_code, registry
+
+    key = normalise_code(code)
+    entry = registry.get(key) if key else None
+    if entry is None:
+        raise HTTPException(status_code=404, detail="That room is not open.")
+    room = entry.room
+    if not account.admin and room.owner_account_id != account.id:
+        raise HTTPException(status_code=403, detail="Only the room's auctioneer can invite to it.")
+    return room
+
+
+@router.get("/rooms/{code}/waiting")
+async def waiting_room(code: str, request: Request) -> dict[str, Any]:
+    """The room's invitees and where each stands; what still blocks the start."""
+    account = await _account(request)
+    room = _own_room(account, code)
+    people = await asyncio.to_thread(invites.status, room)
+    blockers = await asyncio.to_thread(invites.blockers, room)
+    return {
+        "code": room.code,
+        "phase": room.phase,
+        "invitees": people,
+        "blockers": blockers,
+        "ready": not blockers,
+    }
+
+
+@router.delete("/rooms/{code}/invites/{account_id}")
+async def waiting_room_remove(code: str, account_id: int, request: Request) -> dict[str, Any]:
+    account = await _account(request)
+    room = _own_room(account, code)
+    if room.phase not in ("lobby", "waiting"):
+        raise HTTPException(status_code=400, detail="The auction has started; the invite list is closed.")
+    return {"removed": await asyncio.to_thread(invites.remove, room, account_id)}

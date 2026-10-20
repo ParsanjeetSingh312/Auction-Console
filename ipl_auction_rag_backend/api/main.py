@@ -33,6 +33,7 @@ from api.routes_scout import router as scout_router
 from api.routes_aucteam import router as aucteam_router
 from api.routes_accounts import router as accounts_router
 from api.routes_ecosystem import router as ecosystem_router
+from api.routes_schedule import router as schedule_router
 from auction.room import room as auction_room
 from auction.ws import router as auction_router
 
@@ -451,6 +452,8 @@ app.include_router(accounts_router)
 
 # The ecosystem: auction passes, the notification bell and connections.
 app.include_router(ecosystem_router)
+# The auctioneer schedule, its Google Calendar link and the auctioneer overview.
+app.include_router(schedule_router)
 
 
 # ---------------------------------------------------------------------------

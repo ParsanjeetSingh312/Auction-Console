@@ -16,7 +16,7 @@ import type { Account } from "../../console/accountStore";
 import { broadcast, ledger, openSendPasses, useEcosystem } from "../../console/ecosystemStore";
 import type { LedgerEntry } from "../../console/ecosystemStore";
 import { cardVariants } from "../../console/motion";
-import AuctionPass from "../Passes/AuctionPass";
+import FlipPass from "../Passes/FlipPass";
 
 const BUTTON =
   "rounded-lg border border-line bg-surface-card px-3.5 py-2 font-ui text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-body transition-colors hover:border-slate-faint/60 hover:text-slate-ink";
@@ -47,6 +47,7 @@ export default function WalletPanel({ account }: { account: Account }) {
   const { balances, capabilities } = useEcosystem();
   const [entries, setEntries] = useState<LedgerEntry[] | null>(null);
   const canSend = (capabilities?.send.length ?? 0) > 0;
+  const tier = account.admin ? "admin" : account.role;
 
   useEffect(() => {
     let live = true;
@@ -67,9 +68,10 @@ export default function WalletPanel({ account }: { account: Account }) {
       >
         <span aria-hidden className="seat-chair__rule" />
         <h2 className="font-ui text-[9.5px] font-semibold uppercase tracking-[0.16em] text-slate-faint">Wallet</h2>
-        <div className="mt-4 flex flex-wrap justify-center gap-6">
-          <AuctionPass kind="A" size="md" count={balances.A} intro />
-          <AuctionPass kind="D" size="md" count={balances.D} intro />
+        {/* Two-sided cards: click to turn one over and read its powers. */}
+        <div className="mt-4 flex flex-wrap justify-center gap-8">
+          <FlipPass kind="A" size="lg" count={balances.A} tier={tier} intro />
+          <FlipPass kind="D" size="lg" count={balances.D} tier={tier} intro />
         </div>
         <p className="mt-5 font-ui text-[12.5px] leading-relaxed text-slate-body">
           {account.admin

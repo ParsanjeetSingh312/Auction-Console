@@ -27,12 +27,12 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import gsap from "gsap";
 import { Gavel } from "lucide-react";
 
-import { currentRoom, leaveRoom, markRoomClaimed, useRoom } from "../console/auctionRoom";
+import { currentRoom, enterRoom, leaveRoom, markRoomClaimed, normaliseRoomCode, useRoom } from "../console/auctionRoom";
 import { money } from "../console/format";
 import { franchiseByCode } from "../console/franchises";
 import { cardVariants, gridVariants } from "../console/motion";
@@ -73,6 +73,23 @@ interface Toast {
  * fixed layer behind it.
  */
 export default function LiveAuction() {
+  /*
+    An invite's link (`/auction/live?room=CODE`, from the bell after a pass is
+    claimed) takes this tab into that room. auctionRoom.ts reads `?room=` only
+    on a fresh page load, so an in-app navigation is handled here.
+  */
+  const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const code = normaliseRoomCode(params.get("room"));
+    if (!params.has("room")) return;
+    if (code) enterRoom(code);
+    params.delete("room");
+    const rest = params.toString();
+    navigate({ pathname: location.pathname, search: rest ? `?${rest}` : "" }, { replace: true });
+  }, [location.search, location.pathname, navigate]);
+
   return (
     <div className="console-dark">
       <StadiumBackdrop variant="console" />

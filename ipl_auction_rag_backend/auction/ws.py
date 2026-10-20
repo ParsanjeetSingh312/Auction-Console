@@ -39,7 +39,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Response, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
-from accounts import notifications, passes
+from accounts import activity, invites, notifications, passes
 from accounts import store as accounts
 from accounts.store import Account
 from api.routes_accounts import COOKIE, origin_allowed
@@ -300,6 +300,7 @@ async def auction_socket(
                 await asyncio.to_thread(passes.refund, account.id, create_ref)
         else:
             entry.room.create_ref = create_ref
+            await asyncio.to_thread(activity.record_room, "opened", entry.room)
     manager = manager_for(entry)
     client_id = await manager.connect(websocket)
     if client_id is None:
@@ -464,7 +465,11 @@ async def _dispatch(
         await room.open_waiting_room(client_id, message.countdown_seconds)
 
     elif kind == "start_auction":
-        await room.start_auction(client_id)
+        # The waiting room's gate: every delegate invited to this room must
+        # have claimed, taken a seat and acknowledged the rules.
+        blockers = await asyncio.to_thread(invites.blockers, room)
+        await room.start_auction(client_id, blockers)
+        await asyncio.to_thread(activity.record_room, "started", room)
 
     elif kind == "put_up":
         await room.put_up(client_id, message.player_id)
@@ -506,9 +511,19 @@ async def _dispatch(
 
     elif kind == "acknowledge_rules":
         await room.acknowledge_rules(client_id, message.rules_version)
+        # The last invited delegate acknowledging, with the waiting room open,
+        # starts the auction for everyone.
+        if room.phase == "waiting" and await asyncio.to_thread(invites.has_invites, room):
+            if not await asyncio.to_thread(invites.blockers, room):
+                try:
+                    await room.start_auction(None)
+                    await asyncio.to_thread(activity.record_room, "started", room)
+                except RoomError:
+                    pass  # e.g. no pool loaded: the auctioneer starts it by hand
 
     elif kind == "finish":
         await room.finish(client_id)
+        await asyncio.to_thread(activity.record_room, "finished", room)
         await manager.send(client_id, {"type": "report", "report": room.report()})
 
     await manager.broadcast(room.state_payload())

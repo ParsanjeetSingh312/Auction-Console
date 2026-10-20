@@ -245,6 +245,8 @@ export async function sendPasses(details: {
   quantity: number;
   note?: string;
   generate_missing?: boolean;
+  /** Sent from a room's waiting room: the recipients become its invitees. */
+  room_code?: string;
 }): Promise<SendResult> {
   const result = await api<SendResult>("/passes/send", { method: "POST", body: JSON.stringify(details) });
   set({ balances: result.balances });
@@ -277,6 +279,11 @@ export interface SendIntent {
   recipientIds?: number[];
   /** A note to start with, such as the room code. */
   note?: string;
+  /**
+   * Opened from a room's control bar: the dialog shows that room's waiting
+   * room, and passes sent are invites to it (the start waits for them).
+   */
+  roomCode?: string;
 }
 
 let intent: SendIntent | null = null;
@@ -302,4 +309,34 @@ export function useSendIntent(): SendIntent | null {
     () => intent,
     () => intent,
   );
+}
+
+/* ------------------------------------------------------- the waiting room -- */
+
+export type InviteState = "sent" | "claimed" | "seated" | "acknowledged" | "returned";
+
+export interface Invitee {
+  account_id: number;
+  name: string;
+  email: string;
+  state: InviteState;
+  team_code: string | null;
+  invited_at: number;
+}
+
+export interface WaitingRoomStatus {
+  code: string;
+  phase: "lobby" | "waiting" | "live" | "finished";
+  invitees: Invitee[];
+  /** One sentence per invitee still holding up the start. */
+  blockers: string[];
+  ready: boolean;
+}
+
+export function fetchWaitingRoom(code: string): Promise<WaitingRoomStatus> {
+  return api<WaitingRoomStatus>(`/rooms/${encodeURIComponent(code)}/waiting`);
+}
+
+export function removeInvitee(code: string, accountId: number): Promise<{ removed: boolean }> {
+  return api(`/rooms/${encodeURIComponent(code)}/invites/${accountId}`, { method: "DELETE" });
 }

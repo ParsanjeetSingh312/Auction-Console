@@ -326,6 +326,17 @@ class Settings(BaseSettings):
     AUCTIONEER_DAILY_GENERATE_CAP: int = 50
     # A gift nobody claims goes back to its sender after this long.
     GIFT_EXPIRY_DAYS: int = 14
+
+    # --- Google Calendar (the auctioneer's schedule) ---
+    # An OAuth 2.0 "Web application" client from Google Cloud Console, with the
+    # Google Calendar API enabled. Empty leaves the schedule working inside
+    # AUCTONIQ and the "Connect Google Calendar" button explaining what is
+    # missing. GOOGLE_REDIRECT_URL must match the client's authorised redirect
+    # URI exactly: https://<your-domain>/api/v1/schedule/google/callback.
+    # Empty works it out from the request's own address.
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URL: str = ""
     # Demo accounts (DEMO_ACCOUNTS_PASSWORD) are topped up to this many of
     # their kind of pass at startup, so the flows can be tried at once.
     DEMO_PASS_BALANCE: int = 5

@@ -36,6 +36,7 @@ import type { PassKind, SendIntent } from "../../console/ecosystemStore";
 import { searchPeople, tierLabel, toneOf, useConnections } from "../../console/connectionsApi";
 import type { Person } from "../../console/connectionsApi";
 import AuctionPass from "../Passes/AuctionPass";
+import WaitingRoomSection from "./WaitingRoomSection";
 
 gsap.registerPlugin(useGSAP);
 
@@ -78,7 +79,9 @@ function Body({ intent }: { intent: SendIntent }) {
   const root = useRef<HTMLDivElement>(null);
   const source = useRef<HTMLDivElement>(null);
 
-  const kinds = capabilities?.send ?? [];
+  // Opened for a room: only Delegate passes, which become that room's invites.
+  const roomCode = intent.roomCode;
+  const kinds = (capabilities?.send ?? []).filter((k) => !roomCode || k === "D");
   const [kind, setKind] = useState<PassKind>(kinds.includes("D") ? "D" : (kinds[0] ?? "D"));
   const [selected, setSelected] = useState<Set<number>>(() => new Set(intent.recipientIds ?? []));
   const [quantity, setQuantity] = useState(1);
@@ -88,6 +91,7 @@ function Body({ intent }: { intent: SendIntent }) {
   const [sent, setSent] = useState<number | null>(null);
   const [extra, setExtra] = useState<Person[]>([]);
   const [genAmount, setGenAmount] = useState(5);
+  const [waitingKey, setWaitingKey] = useState(0);
 
   useEffect(() => {
     if (kinds.length && !kinds.includes(kind)) setKind(kinds[0]);
@@ -159,8 +163,10 @@ function Body({ intent }: { intent: SendIntent }) {
         quantity,
         note: note.trim() || undefined,
         generate_missing: canGenerate,
+        room_code: roomCode,
       });
       setSent(needed);
+      setWaitingKey((k) => k + 1);
       deal(chosen.map((p) => p.id));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not send.");
@@ -188,6 +194,13 @@ function Body({ intent }: { intent: SendIntent }) {
   return (
     <div ref={root} className="p-5 sm:p-6">
       <Head />
+
+      {/* The room's waiting room: who was invited, and who is ready. */}
+      {roomCode && (
+        <div className="mt-4">
+          <WaitingRoomSection code={roomCode} refreshKey={waitingKey} />
+        </div>
+      )}
 
       {/* Which pass. */}
       <div className="mt-5 flex flex-wrap items-center gap-4">

@@ -124,6 +124,70 @@ SCHEMA = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS scout_usage_key ON scout_usage(key, at)",
+    # --- Activity, invites, the schedule (auctoniq-panels-plan.md). ---
+    # Rooms live in memory (auction/rooms.py), so what happened in them is
+    # written here as it happens: the admin panel's "auctions per day" reads
+    # this, not the registry, and survives a restart.
+    """
+    CREATE TABLE IF NOT EXISTS auction_log (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_code   TEXT    NOT NULL,
+        instance    TEXT    NOT NULL DEFAULT '',
+        room_type   TEXT    NOT NULL DEFAULT 'auctioneer',
+        owner_id    INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+        event       TEXT    NOT NULL CHECK (event IN ('opened', 'started', 'finished')),
+        teams       INTEGER,
+        at          REAL    NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS auction_log_at ON auction_log(event, at)",
+    # Who an auctioneer invited to a room from its waiting room. The start
+    # gate (accounts/invites.py) reads this: every row must be seated and
+    # briefed before the auction may start.
+    """
+    CREATE TABLE IF NOT EXISTS room_invites (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_code   TEXT    NOT NULL,
+        instance    TEXT    NOT NULL DEFAULT '',
+        inviter_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        gift_id     INTEGER REFERENCES pass_gifts(id) ON DELETE SET NULL,
+        created_at  REAL    NOT NULL,
+        UNIQUE (room_code, instance, account_id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS room_invites_room ON room_invites(room_code, instance)",
+    # An auctioneer's upcoming auctions. `google_event_id` is set once the
+    # event has been copied into the owner's Google Calendar.
+    """
+    CREATE TABLE IF NOT EXISTS auction_schedule (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_id         INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        title            TEXT    NOT NULL,
+        room_type        TEXT    NOT NULL DEFAULT 'auctioneer'
+                         CHECK (room_type IN ('auctioneer', 'delegate')),
+        starts_at        REAL    NOT NULL,
+        duration_min     INTEGER NOT NULL DEFAULT 120,
+        notes            TEXT    NOT NULL DEFAULT '',
+        google_event_id  TEXT,
+        created_at       REAL    NOT NULL,
+        updated_at       REAL    NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS auction_schedule_owner ON auction_schedule(owner_id, starts_at)",
+    # An account's Google Calendar connection. Only the refresh token is
+    # kept long-term; access tokens are short-lived and re-minted from it.
+    """
+    CREATE TABLE IF NOT EXISTS google_links (
+        account_id     INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+        google_email   TEXT,
+        refresh_token  TEXT    NOT NULL,
+        access_token   TEXT,
+        expires_at     REAL,
+        calendar_id    TEXT    NOT NULL DEFAULT 'primary',
+        linked_at      REAL    NOT NULL
+    )
+    """,
 )
 
 

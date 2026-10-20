@@ -2,96 +2,102 @@
  * UpcomingAuctionsCard.tsx
  * The purple panel: what goes under the hammer next.
  *
- * **On the reference's rows.** The mockup draws each row as two large times
- * either side of a VS — "13:30 TEAM M1 VS 00:55 TEAM M2" — which cannot be
- * right: a fixture has one start time and two sides, not a time each. It is a
- * generated artefact, the time element duplicated across the pair. What is
- * carried over is the treatment, which is the part worth having: one large
- * coloured figure per row, a VS joining two sides, and small dim labels
- * underneath. What is not carried over is the second clock.
+ * It used to draw two hard-coded fixtures. It now draws the auctioneer's real
+ * schedule (accounts/schedule.py, through console/scheduleApi.ts): one row per
+ * auction, the start time large in the viewer's local time, the day and the
+ * room type beneath it. A row that is also in Google Calendar carries a small
+ * "in Google" mark.
  *
- * So a row here is a session: when it starts, and which two franchises are
- * expected to contest it.
- *
- * **On the colour.** The times are `neon-lilac`, not `neon-purple`, and this is
- * the one panel where that distinction earns its keep. `--neon` on a purple
- * card is #A855F7, which measures 5.10:1 on the page ground — legible, but only
- * just, and the labels beneath these figures are 9px. #C084FC measures 7.63:1
- * and carries them with room to spare. The border and its bloom keep the deeper
- * purple, because nothing is read off those.
- *
- * That is why the figures below name their colour outright instead of reading
- * `rgb(var(--neon))` the way GlowingButton does: inheriting the panel's hue is
- * right for a control, and wrong for small type.
+ * **On the colour.** The times are `neon-lilac`, not `neon-purple`: `--neon`
+ * on a purple card is #A855F7, which measures 5.10:1 on the page ground --
+ * legible, but only just, and the labels beneath these figures are small.
+ * #C084FC measures 7.63:1. The border and its bloom keep the deeper purple,
+ * because nothing is read off those.
  */
+import type { ScheduleEntry } from "../../console/scheduleApi";
 
-interface Session {
-  /** 24-hour, because an auction room does not deal in am/pm. */
-  time: string;
-  day: string;
-  home: string;
-  away: string;
+interface Props {
+  entries: ScheduleEntry[];
+  /** At most this many rows. */
+  limit?: number;
+  /** Called with a row the viewer clicks, to edit it. */
+  onSelect?: (entry: ScheduleEntry) => void;
+  className?: string;
 }
 
-const SESSIONS: Session[] = [
-  { time: "13:30", day: "Today", home: "MUM", away: "CHE" },
-  { time: "19:00", day: "Tomorrow", home: "RCB", away: "KKR" },
-];
+const DAY = 24 * 3600 * 1000;
 
-export default function UpcomingAuctionsCard() {
+/** "Today", "Tomorrow", or the weekday and date, in local time. */
+function dayLabel(epoch: number): string {
+  const date = new Date(epoch * 1000);
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const diff = Math.floor((date.getTime() - start.getTime()) / DAY);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Tomorrow";
+  return date.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+}
+
+function clock(epoch: number): string {
+  return new Date(epoch * 1000).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+export default function UpcomingAuctionsCard({ entries, limit = 4, onSelect, className = "" }: Props) {
+  const rows = entries.slice(0, limit);
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
   return (
-    <article className="neon-card neon-card--purple flex flex-col p-4">
+    <article className={`neon-card neon-card--purple flex flex-col p-4 ${className}`}>
       <h2 className="font-stadium text-[17px] font-semibold uppercase tracking-[0.04em] text-auctiq-text">
         Upcoming Auctions
       </h2>
       <div className="neon-rule mt-2" />
 
-      <ul className="mt-3 space-y-3">
-        {SESSIONS.map((session) => (
-          <li key={session.time}>
-            <div className="flex items-baseline justify-between gap-3">
-              {/*
-                `tabular-nums` matters more here than anywhere else on the page:
-                these are clock faces stacked vertically, and proportional digits
-                would leave the colons out of line with each other.
-              */}
-              <span className="font-num text-[24px] font-bold leading-none tabular-nums text-neon-lilac">
-                {session.time}
-              </span>
-              <span className="font-tech text-[9px] uppercase tracking-[0.18em] text-auctiq-dim">
-                {session.day}
-              </span>
-            </div>
-
-            <div className="mt-1.5 flex items-center gap-2">
-              <Side code={session.home} />
-              <span className="font-tech text-[9.5px] uppercase tracking-[0.14em] text-auctiq-dim/80">
-                vs
-              </span>
-              <Side code={session.away} />
-            </div>
-          </li>
-        ))}
-      </ul>
+      {rows.length === 0 ? (
+        <p className="mt-3 font-tech text-[12px] leading-relaxed text-auctiq-dim">
+          Nothing scheduled yet. Pick a date to schedule your next auction.
+        </p>
+      ) : (
+        <ul className="mt-3 space-y-3">
+          {rows.map((entry) => (
+            <li key={entry.id}>
+              <button
+                type="button"
+                disabled={!onSelect}
+                onClick={() => onSelect?.(entry)}
+                className="w-full rounded-md text-left outline-none transition-colors enabled:hover:bg-white/[0.04] focus-visible:ring-1 focus-visible:ring-neon-lilac"
+              >
+                <div className="flex items-baseline justify-between gap-3">
+                  {/* tabular-nums: stacked clock faces keep their colons in line. */}
+                  <span className="font-num text-[24px] font-bold leading-none tabular-nums text-neon-lilac">
+                    {clock(entry.starts_at)}
+                  </span>
+                  <span className="font-tech text-[9.5px] uppercase tracking-[0.18em] text-auctiq-dim">
+                    {dayLabel(entry.starts_at)}
+                  </span>
+                </div>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate font-tech text-[12.5px] font-semibold text-auctiq-text">
+                    {entry.title}
+                  </span>
+                  <span className="rounded-[3px] border border-white/10 bg-white/[0.04] px-2 py-[2px] font-tech text-[10px] font-semibold uppercase tracking-[0.06em] text-auctiq-text">
+                    {entry.room_type === "auctioneer" ? "Auctioneer" : "Delegate"}
+                  </span>
+                  {entry.google_event_id && (
+                    <span className="font-tech text-[9.5px] uppercase tracking-[0.12em] text-neon-lilac" title="Also in Google Calendar">
+                      in Google
+                    </span>
+                  )}
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <p className="mt-auto pt-3 font-tech text-[9.5px] uppercase tracking-[0.16em] text-auctiq-dim/70">
-        All times IST
+        Times in {zone}
       </p>
     </article>
-  );
-}
-
-/**
- * One franchise in a fixture.
- *
- * The three-letter code rather than the full name: at this width "Royal
- * Challengers Bengaluru vs Kolkata Knight Riders" either truncates or wraps to
- * three lines, and the codes are what the rest of the console uses anyway.
- */
-function Side({ code }: { code: string }) {
-  return (
-    <span className="rounded-[3px] border border-white/10 bg-white/[0.04] px-2 py-[2px] font-tech text-[11px] font-semibold uppercase tracking-[0.06em] text-auctiq-text">
-      {code}
-    </span>
   );
 }

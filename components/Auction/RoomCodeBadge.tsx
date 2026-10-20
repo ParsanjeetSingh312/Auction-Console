@@ -49,8 +49,8 @@ export default function RoomCodeBadge() {
       {capabilities?.send.includes("D") && (
         <button
           type="button"
-          onClick={() => openSendPasses({ note: `Room code ${code}` })}
-          title="Send Delegate passes, with this room's code, to your players"
+          onClick={() => openSendPasses({ note: `Room code ${code}`, roomCode: code })}
+          title="Invite delegates: send Delegate passes for this room and watch the waiting room"
           className="rounded-md px-2 py-1 font-ui text-[9.5px] font-bold uppercase tracking-[0.1em] text-[#020617] transition-opacity hover:opacity-90"
           style={{ background: "linear-gradient(180deg,#cfe2ff,#4d8df6)" }}
         >

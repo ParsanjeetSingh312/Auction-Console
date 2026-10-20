@@ -22,7 +22,7 @@
  * standing ask and this franchise's purse — a jumpbid is a request like any
  * other bid, not an instruction.
  */
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 import { countryLabel, headlineFor } from "../../console/format";
 import type { AuctionEngine } from "../../console/useAuctionEngine";
@@ -41,6 +41,19 @@ export default function SocketBlock({ socket, engine, onLeave }: SocketBlockProp
   const room = socket.state;
   const seat = socket.seat;
   const myTeam = socket.myTeam;
+
+  // A franchise cannot leave a running auction: no leave control, and a
+  // warning before the tab is closed or reloaded.
+  const locked = seat?.role === "franchise" && room?.phase === "live";
+  useEffect(() => {
+    if (!locked) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [locked]);
 
   /**
    * The room's lot, restated for the view.
@@ -151,13 +164,27 @@ export default function SocketBlock({ socket, engine, onLeave }: SocketBlockProp
       folded={room?.lot?.folded_codes ?? []}
       corner={
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onLeave}
-            className="rounded border border-neutral-800 bg-neutral-900 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-400 hover:border-neutral-600 hover:text-neutral-200"
-          >
-            ← leave seat
-          </button>
+          {/*
+            No way out while the auction runs: a franchise holds its seat
+            until the hammer falls on the last lot. The control comes back
+            once the auction has finished.
+          */}
+          {locked ? (
+            <span
+              title="Your seat is held until the auction finishes"
+              className="rounded border border-neutral-800 bg-neutral-900 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-500"
+            >
+              seat locked · auction live
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={onLeave}
+              className="rounded border border-neutral-800 bg-neutral-900 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-neutral-400 hover:border-neutral-600 hover:text-neutral-200"
+            >
+              ← leave seat
+            </button>
+          )}
 
           {/*
             Connection state, because on a bidder's station it is load-bearing:

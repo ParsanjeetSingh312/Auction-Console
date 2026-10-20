@@ -988,7 +988,7 @@ class AuctionRoom:
             self._note(f"Waiting room open — {minutes} min to join")
             self.version += 1
 
-    async def start_auction(self, client_id: str) -> None:
+    async def start_auction(self, client_id: str | None, blockers: list[str] | None = None) -> None:
         """
         Begin.
 
@@ -996,8 +996,21 @@ class AuctionRoom:
         override) and straight from `lobby`, because an auctioneer who has
         everyone in the room already should not have to sit through a timer to
         prove it.
+
+        `blockers` is the waiting room's start gate (accounts/invites.py, read
+        by auction/ws.py): one sentence per invited delegate who has not yet
+        claimed, sat down and acknowledged the rules. Any one refuses the start.
+        `client_id=None` is the room starting itself, once the last invitee
+        acknowledges in an open waiting room.
         """
-        self._require_auctioneer(client_id, "start the auction")
+        if client_id is not None:
+            self._require_auctioneer(client_id, "start the auction")
+        if blockers:
+            more = f" (and {len(blockers) - 1} more)" if len(blockers) > 1 else ""
+            raise RoomError(
+                f"Waiting for your delegates: {blockers[0]}{more}.",
+                about="start_auction",
+            )
         async with self._lock:
             if self.phase == "live":
                 raise RoomError("The auction is already running.", about="start_auction")
