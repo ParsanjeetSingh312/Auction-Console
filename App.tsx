@@ -56,6 +56,10 @@ const Auctiq = lazy(() => import("./pages/Auctiq"));
 const DataRoom = lazy(() => import("./pages/DataRoom"));
 const LiveAuction = lazy(() => import("./pages/LiveAuction"));
 const About = lazy(() => import("./pages/About"));
+// The Privacy Policy and Terms of Service: public, and what Google's OAuth
+// review checks before Google Calendar access can be published.
+const Privacy = lazy(() => import("./pages/Privacy"));
+const Terms = lazy(() => import("./pages/Terms"));
 // AUCTEAM: the drag-and-drop playing-XI builder and its SCOUT report.
 const Aucteam = lazy(() => import("./pages/Aucteam"));
 // Accounts: log in or register (as an auctioneer, a delegate or a member), and
@@ -125,6 +129,8 @@ export default function App() {
           <Route path="/account" element={<Account />} />
           <Route path="/connections" element={<Connections />} />
           <Route path="/about" element={<About />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
           <Route path="/console" element={<AuctionConsole />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

@@ -13,7 +13,7 @@
  * which this panel reads once, shows, and clears from the address bar.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { CalendarCheck, ChevronLeft, ChevronRight, RefreshCw, Unlink } from "lucide-react";
 
@@ -206,6 +206,16 @@ export default function SchedulePanel() {
                     ? "Sign in with Google to copy every scheduled auction into your calendar."
                     : "Not set up on this server yet (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET). The schedule still works here."}
             </p>
+            {/* What the access is for, said before it is asked for (Google's review checks this). */}
+            {google?.configured && (
+              <p className="mt-1 font-ui text-[11px] leading-relaxed text-slate-faint">
+                AUCTONIQ only adds, changes and removes the events for auctions you schedule here. It never reads
+                your other events. Disconnect any time.{" "}
+                <Link to="/privacy#google" className="underline underline-offset-2 hover:text-slate-ink">
+                  Privacy Policy
+                </Link>
+              </p>
+            )}
           </div>
         </div>
         <div className="flex gap-2">

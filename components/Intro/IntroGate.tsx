@@ -97,6 +97,20 @@ export default function IntroGate({ armed, onEnter }: IntroGateProps) {
       >
         {armed ? "Enter the auction" : "Setting up the ground"}
       </button>
+
+      {/*
+        What AUCTONIQ is and the policy links, on the very first screen, so a
+        first visit -- Google's OAuth reviewer included -- finds them without
+        playing the film. Plain links: they leave the gate for their page.
+      */}
+      <p className="mt-8 max-w-md text-center font-tech text-[12px] leading-relaxed text-white/55">
+        A virtual cricket auction simulator: research players, run live auction rooms and build your XI.
+      </p>
+      <nav aria-label="Legal" className="mt-3 flex gap-5 font-tech text-[11px] uppercase tracking-[0.16em]">
+        <a href="/about" className="text-white/50 underline-offset-4 hover:text-white hover:underline">About</a>
+        <a href="/privacy" className="text-white/50 underline-offset-4 hover:text-white hover:underline">Privacy</a>
+        <a href="/terms" className="text-white/50 underline-offset-4 hover:text-white hover:underline">Terms</a>
+      </nav>
     </div>
   );
 }

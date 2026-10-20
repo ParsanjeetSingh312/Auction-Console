@@ -40,6 +40,18 @@ export default function AuctiqFooter() {
             © 2026 AUCTONIQ. An independent project — not affiliated with the BCCI
             or the Indian Premier League.
           </p>
+          {/* Public policy links: Google's OAuth review looks for these on the homepage. */}
+          <nav aria-label="Legal" className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-tech text-[11px]">
+            <Link to="/about" className="text-auctiq-dim underline-offset-4 hover:text-auctiq-text hover:underline">
+              About
+            </Link>
+            <Link to="/privacy" className="text-auctiq-dim underline-offset-4 hover:text-auctiq-text hover:underline">
+              Privacy Policy
+            </Link>
+            <Link to="/terms" className="text-auctiq-dim underline-offset-4 hover:text-auctiq-text hover:underline">
+              Terms of Service
+            </Link>
+          </nav>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

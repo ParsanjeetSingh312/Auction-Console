@@ -291,6 +291,11 @@ function RegisterForm({ onDone }: { onDone: () => void }) {
       <button type="submit" disabled={busy || !name || !email || !password} className={`${PRIMARY} mt-5`}>
         {busy ? "Creating account…" : "Create account"}
       </button>
+      <p className="mt-3 font-ui text-[11px] leading-relaxed text-slate-faint">
+        By creating an account you agree to the{" "}
+        <Link to="/terms" className="underline underline-offset-2 hover:text-slate-ink">Terms of Service</Link> and the{" "}
+        <Link to="/privacy" className="underline underline-offset-2 hover:text-slate-ink">Privacy Policy</Link>.
+      </p>
     </motion.form>
   );
 }

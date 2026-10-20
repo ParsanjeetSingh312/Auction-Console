@@ -1,0 +1,129 @@
+/*
+ * legal.css
+ * The Privacy Policy and Terms of Service (LegalPage.tsx).
+ *
+ * Scoped to `.legal-page` for the same reason about.css is scoped: a lazy
+ * route's stylesheet stays in the document after the chunk loads, and generic
+ * class names would follow the visitor to other pages.
+ *
+ * Long-form reading on the dark ground: one column of about 70 characters,
+ * body text in the site's Inter at 15px with generous line height, and links
+ * in the site's cyan, underlined so they read as links without colour.
+ */
+
+.legal-page {
+  background: #020617;
+  color: #e2e8f0;
+}
+
+.legal-page .legal-main {
+  width: min(760px, calc(100% - 32px));
+  margin-inline: auto;
+  padding: 48px 0 72px;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.legal-page .legal-eyebrow {
+  margin: 0;
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: #22d3ee;
+}
+.legal-page h1 {
+  margin: 8px 0 4px;
+  font-family: "Russo One", "Chakra Petch", sans-serif;
+  font-size: clamp(30px, 6vw, 44px);
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  color: #f8fafc;
+}
+.legal-page .legal-updated {
+  margin: 0 0 20px;
+  font-size: 13px;
+  color: #94a3b8;
+}
+.legal-page .legal-intro p { margin: 0 0 12px; color: #cbd5e1; }
+
+.legal-page .legal-toc {
+  margin: 28px 0 8px;
+  padding: 16px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.legal-page .legal-toc p {
+  margin: 0 0 6px;
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+.legal-page .legal-toc ol { margin: 0; padding-left: 20px; list-style: decimal; columns: 2 220px; column-gap: 24px; }
+.legal-page .legal-toc li { font-size: 14px; break-inside: avoid; }
+
+.legal-page .legal-section { padding-top: 32px; scroll-margin-top: 90px; }
+.legal-page .legal-section h2 {
+  margin: 0 0 10px;
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #f8fafc;
+}
+.legal-page .legal-section h3 {
+  margin: 18px 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+.legal-page .legal-section p { margin: 0 0 12px; color: #cbd5e1; }
+.legal-page .legal-section ul { margin: 0 0 12px; padding-left: 22px; color: #cbd5e1; list-style: disc; }
+.legal-page .legal-section li::marker { color: #22d3ee; }
+.legal-page .legal-section li { margin-bottom: 6px; }
+.legal-page .legal-section strong { color: #f8fafc; font-weight: 600; }
+.legal-page .legal-section code {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+/* The one statement Google looks for, set apart so it cannot be missed. */
+.legal-page .legal-callout {
+  margin: 14px 0;
+  padding: 14px 16px;
+  border-left: 3px solid #22d3ee;
+  border-radius: 0 10px 10px 0;
+  background: rgba(34, 211, 238, 0.07);
+  color: #e2e8f0;
+}
+
+.legal-page table { width: 100%; margin: 6px 0 14px; border-collapse: collapse; font-size: 14px; }
+.legal-page th,
+.legal-page td { padding: 9px 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); text-align: left; vertical-align: top; }
+.legal-page th { font-weight: 600; color: #f8fafc; }
+.legal-page td { color: #cbd5e1; }
+
+.legal-page .legal-main a { color: #67e8f9; text-decoration: underline; text-underline-offset: 3px; }
+.legal-page .legal-main a:hover { color: #a5f3fc; }
+
+.legal-page .legal-contact {
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+@media (max-width: 639px) {
+  .legal-page .legal-main { padding-top: 32px; font-size: 14.5px; }
+}
