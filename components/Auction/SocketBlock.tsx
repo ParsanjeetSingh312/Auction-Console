@@ -29,6 +29,7 @@ import type { AuctionEngine } from "../../console/useAuctionEngine";
 import type { AuctionSocket } from "../../hooks/useAuctionSocket";
 import BlockView from "./BlockView";
 import AiCallStrip from "./ai/AiCallStrip";
+import MySquad from "./MySquad";
 import type { Lot, TickerEntry } from "./blockTypes";
 
 export interface SocketBlockProps {
@@ -196,6 +197,9 @@ export default function SocketBlock({ socket, engine, onLeave }: SocketBlockProp
               ← leave seat
             </button>
           )}
+
+          {/* The franchise's own squad, kept as the hammer falls. */}
+          <MySquad socket={socket} />
 
           {/*
             Connection state, because on a bidder's station it is load-bearing:

@@ -49,6 +49,7 @@ from auction.auction_book_pdf import render_franchise_pdf
 from auction.room import AuctionRoom, RoomError
 from auction.rooms import MAIN, RoomEntry, RoomsFull, normalise_code, normalise_kind, registry
 from auction.schemas import ClientMessage
+from auction import squad
 # The AI auctioneer listens to every room through a room event hook.
 from auction import ai_auctioneer  # noqa: F401
 from db import get_player_db
@@ -578,6 +579,19 @@ def _first_error(exc: ValidationError) -> str:
 async def get_state(room: str | None = None) -> dict[str, Any]:
     """A room's current state, same shape the socket broadcasts."""
     return _room_for(room).state_payload()
+
+
+@router.get("/squad")
+async def get_squad(team: int, room: str | None = None) -> dict[str, Any]:
+    """
+    One franchise's squad for its bidder's My Squad panel (auction/squad.py):
+    buys by position, budget, the room's limits, and its playing-XI gaps.
+    Public, like every sale the room announces.
+    """
+    found = squad.squad_for(_room_for(room), team)
+    if found is None:
+        raise HTTPException(status_code=404, detail="No franchise with that id in this room.")
+    return found
 
 
 @router.get("/rooms/stats")

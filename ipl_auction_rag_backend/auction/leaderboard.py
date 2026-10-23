@@ -31,7 +31,7 @@ verdict on each.
 from __future__ import annotations
 
 import statistics
-from typing import Any
+from typing import Any, Callable
 
 from auction import report_card
 
@@ -39,7 +39,20 @@ ROLES = ("WK", "BAT", "AR", "BOWL")
 RECENT = 6
 
 
-def standings(room: Any) -> dict[str, Any]:
+def sold_records(room: Any) -> list[tuple[int, Any]]:
+    return [
+        (pid, rec) for pid, rec in room.records.items()
+        if rec.status == "sold" and rec.price is not None and pid in room.players
+    ]
+
+
+def valuer(room: Any) -> tuple[Callable[[Any], float | None], Callable[[Any], float | None]]:
+    """
+    (pct_of, expected_of) for this room: a player's rating percentile in the
+    pool, and his AUCTONIQ value in lakh -- the report card's curve against
+    the purse, calibrated once on every sale the room has made. Shared by the
+    standings and the squads, so a verdict reads the same everywhere.
+    """
     purse = int(room.rules.get("purse") or 0)
     ratings = [float(p.rating) for p in room.players.values() if p.rating is not None]
     pct = report_card._percentile_map(ratings) if ratings else {}
@@ -47,13 +60,8 @@ def standings(room: Any) -> dict[str, Any]:
     def pct_of(player: Any) -> float | None:
         return pct.get(float(player.rating)) if player.rating is not None else None
 
-    sold = [
-        (pid, rec) for pid, rec in room.records.items()
-        if rec.status == "sold" and rec.price is not None and pid in room.players
-    ]
-    # One calibration for the room, as the report card does it.
     factor, _ = report_card._calibration(
-        [(pct_of(room.players[pid]) or 0.0, room.players[pid].base, int(rec.price)) for pid, rec in sold],
+        [(pct_of(room.players[pid]) or 0.0, room.players[pid].base, int(rec.price)) for pid, rec in sold_records(room)],
         purse,
     )
 
@@ -62,6 +70,14 @@ def standings(room: Any) -> dict[str, Any]:
         if p is None:
             return None
         return max(1.0, report_card._curve_expected(p, player.base, purse) * factor)
+
+    return pct_of, expected_of
+
+
+def standings(room: Any) -> dict[str, Any]:
+    purse = int(room.rules.get("purse") or 0)
+    pct_of, expected_of = valuer(room)
+    sold = sold_records(room)
 
     teams: dict[int, dict[str, Any]] = {}
     for team in room.teams:
