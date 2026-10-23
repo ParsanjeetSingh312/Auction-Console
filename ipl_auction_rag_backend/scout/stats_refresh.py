@@ -228,6 +228,58 @@ async def _refresh(
     return status
 
 
+def career_rows_in_ledger() -> int:
+    """
+    How many career figures SCOUT's ledger holds -- what a re-ingest can replay.
+
+    Zero means a rebuilt table would be left on the spreadsheet's figures: the
+    ledger is a local file, and a deployment that lost it (no persistent disk)
+    has nothing to put back.
+    """
+    from scout.agents.career_stats import SOURCE_ID
+    from scout.tools.rag_pipeline import _connect, ensure_schema
+
+    ensure_schema()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM scout_player_updates WHERE source_id = ?", (SOURCE_ID,)
+        ).fetchone()
+    return int(row[0]) if row else 0
+
+
+#: The background run `start_refresh` launched, held so it is not collected
+#: mid-flight -- asyncio keeps only a weak reference to a bare task.
+_background: asyncio.Task[Any] | None = None
+
+
+def start_refresh(reason: str) -> bool:
+    """Run a refresh in the background. False if one is already running."""
+    global _background
+    if _lock.locked() or (_background is not None and not _background.done()):
+        return False
+    _background = asyncio.create_task(refresh(reason=reason), name="stats-refresh")
+    return True
+
+
+async def after_ingest() -> str:
+    """
+    Bring a freshly rebuilt pool back to current careers. Called by POST /ingest.
+
+    The replay has already put the ledger's career figures back into the table,
+    but `run_ingestion` embedded the spreadsheet's text, so SCOUT's semantic
+    search would quote the old totals. Re-embedding from the table fixes that.
+    If the ledger had nothing to replay, a full refresh is started instead.
+    """
+    if await asyncio.to_thread(career_rows_in_ledger) == 0:
+        started = start_refresh("after ingest: no career figures in the ledger")
+        return "career refresh started" if started else "career refresh already running"
+    from ingestion.data_loader import reembed_pool
+
+    season = load_status().get("season_through")
+    count = await asyncio.to_thread(reembed_pool, season)
+    return f"re-embedded {count} player summaries with current careers"
+
+
 async def run_scheduler() -> None:
     """
     The quarterly loop. Started from the API's lifespan and cancelled on shutdown.

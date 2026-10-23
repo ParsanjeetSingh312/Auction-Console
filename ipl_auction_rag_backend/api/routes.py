@@ -215,6 +215,19 @@ async def ingest(request: IngestRequest | None = None) -> IngestResponse:
 
         await asyncio.to_thread(sync_jersey_numbers)
 
+        # The replay restored the career figures in the table, but the vector
+        # summaries were just rebuilt from the spreadsheet. Re-embed them -- or,
+        # if the ledger had no careers to replay, start a full stats refresh
+        # (scout/stats_refresh.py). Only after a reset: an additive ingest left
+        # the existing rows alone.
+        if reset:
+            try:
+                from scout.stats_refresh import after_ingest
+
+                logger.info("After ingest: %s", await after_ingest())
+            except Exception as exc:  # noqa: BLE001 - ingestion itself succeeded
+                logger.warning("Could not restore current careers after ingest: %s", exc)
+
         # Refresh the auction room's copy of the pool.
         #
         # The room reads the player table once, at startup, because it needs
