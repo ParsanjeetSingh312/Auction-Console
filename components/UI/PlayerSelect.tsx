@@ -26,7 +26,7 @@
  * is choreography (the scrubbed deal, the select timeline). Geometry is
  * measured: one ResizeObserver reads the stage and every size is a ratio of it.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -35,6 +35,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, CornerDownLeft } from "lucide-rea
 
 import { getLenis } from "../../hooks/useJourney";
 import { ROLE_TINT, type ShowcasePlayer } from "../../utils/players";
+import { liveShowcase, overlayStats, useLivePool } from "../../console/statsApi";
 import { formatStat, type PlayerStatSheet, type SelectStat } from "../../utils/playerStats";
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
@@ -89,7 +90,20 @@ export interface PlayerSelectProps {
   stats: Record<number, PlayerStatSheet>;
 }
 
-export default function PlayerSelect({ players, stats }: PlayerSelectProps) {
+export default function PlayerSelect({ players: givenPlayers, stats: givenStats }: PlayerSelectProps) {
+  // The figures these cards were written with are spreadsheet values typed in
+  // by hand; the live pool's current careers replace them once it loads.
+  const lookup = useLivePool();
+  const players = useMemo(() => givenPlayers.map((p) => liveShowcase(p, lookup)), [givenPlayers, lookup]);
+  const stats = useMemo(() => {
+    const out: Record<number, PlayerStatSheet> = {};
+    for (const [id, sheet] of Object.entries(givenStats)) {
+      const who = givenPlayers.find((p) => p.id === Number(id));
+      const row = who ? lookup(`${who.name} ${who.surname}`) : null;
+      out[Number(id)] = { left: overlayStats(sheet.left, row), right: overlayStats(sheet.right, row) };
+    }
+    return out;
+  }, [givenStats, givenPlayers, lookup]);
   const reduced = useReducedMotion() ?? false;
   const wrapRef = useRef<HTMLElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);

@@ -36,6 +36,7 @@ import {
 import { readOnlyEngine } from "../../console/readOnlyEngine";
 import type { ConsolePlayer, PoolFilters, SortKey } from "../../console/types";
 import { useAuctionEngine } from "../../console/useAuctionEngine";
+import StatsFreshness from "../UI/StatsFreshness";
 import { useScout } from "../../console/useScout";
 
 import ReloadPoolButton from "../ReloadPoolButton";
@@ -223,6 +224,7 @@ export default function DataDashboard() {
                 ? "Loading the pool…"
                 : `AUCTONIQ · ${engine.players.length} players · read-only analytics`}
             </div>
+            <StatsFreshness className="mt-1.5" />
           </div>
         </motion.div>
 

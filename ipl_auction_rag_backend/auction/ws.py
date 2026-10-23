@@ -44,7 +44,8 @@ from accounts import store as accounts
 from accounts.store import Account
 from api.routes_accounts import COOKIE, origin_allowed
 from auction.report_card import build_team_card
-from auction.report_pdf import render_team_pdf
+from auction.auction_book import build_franchise_report
+from auction.auction_book_pdf import render_franchise_pdf
 from auction.room import AuctionRoom, RoomError
 from auction.rooms import MAIN, RoomEntry, RoomsFull, normalise_code, normalise_kind, registry
 from auction.schemas import ClientMessage
@@ -229,9 +230,9 @@ async def auction_socket(
     """
     One connection to one room. `?room=<code>` picks it. A code nobody has
     opened is opened only when the connection asks to: `open=1` (the app's
-    "create a room": twelve franchise seats, so ten- to twelve-team auctions
-    all fit) or an explicit `kind` (mega for ten, mini for twelve). No code
-    means MAIN, the room older clients join.
+    "create a room") or an explicit `kind`. Either opens with the ten IPL
+    franchises; the auctioneer adds fictional ones, without limit, before the
+    auction starts. No code means MAIN, the room older clients join.
     """
     code = normalise_code(room)
     if code is None:
@@ -514,6 +515,12 @@ async def _dispatch(
     elif kind == "set_mode":
         await room.set_mode(client_id, message.mode, message.auctioneer)
 
+    elif kind == "add_franchise":
+        await room.add_franchise(client_id, message.name, message.code, message.color)
+
+    elif kind == "remove_franchise":
+        await room.remove_franchise(client_id, message.team_id)
+
     elif kind == "record_sale":
         await room.record_sale(client_id, message.team_id, message.price)
 
@@ -632,13 +639,15 @@ async def get_report(room: str | None = None) -> dict[str, Any]:
 @router.get("/report/{team_id}/pdf")
 async def get_team_pdf(team_id: int, room: str | None = None) -> Response:
     """
-    One franchise's closing report, as a PDF.
+    One franchise's auction report, as a PDF (auction/auction_book.py).
 
-    Per franchise rather than one document for the room, and the document holds
-    that franchise's figures alone — no standings and no rival squads. A report
-    handed to one team that reads out another team's auction is a scouting
-    advantage, which is the same reason `/data` shows participants the narrow
-    sheet.
+    Per franchise rather than one document for the room. Its own pages -- the
+    day in numbers, price bands, role cost and mix, value for money, career
+    record and the AUCTONIQ verdict -- hold that franchise's figures alone: no
+    standings and no rival squads, because a report that reads out another
+    team's auction is a scouting advantage. Four sections are the same in every
+    franchise's copy, because they are the auction's public story: the top bid,
+    the moments, the ten most expensive signings and the awards.
 
     Generated on request rather than written to disk when the auction closes.
     Ten PDFs nobody asked for is ten files to clean up, and the room's state is
@@ -668,8 +677,14 @@ async def get_team_pdf(team_id: int, room: str | None = None) -> Response:
         rows = {}
 
     try:
+        from scout.stats_refresh import load_status
+
         card = build_team_card(auction, team_id, rows)
-        pdf = render_team_pdf(card)
+        report = build_franchise_report(
+            auction, team_id, rows, card=card,
+            season_through=load_status().get("season_through"),
+        )
+        pdf = render_franchise_pdf(report)
     except Exception:
         logger.exception("Failed to render the report for team %s", team_id)
         raise HTTPException(

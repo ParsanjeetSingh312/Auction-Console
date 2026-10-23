@@ -43,6 +43,7 @@ import {
 import PlayerCard from "../UI/PlayerCard";
 import { parallaxDepth } from "../../utils/animations";
 import { SHOWCASE_PLAYERS, type ShowcasePlayer } from "../../utils/players";
+import { liveShowcase, useLivePool } from "../../console/statsApi";
 
 /**
  * Scroll progress at which the deck starts breaking, and finishes landing.
@@ -140,6 +141,8 @@ function usePointerParallax(enabled: boolean) {
 }
 
 export default function PlayerShowcase() {
+  const lookup = useLivePool();
+  const showcase = SHOWCASE_PLAYERS.map((player) => liveShowcase(player, lookup));
   const wrapRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
   const coarse = useCoarsePointer();
@@ -184,7 +187,7 @@ export default function PlayerShowcase() {
         */}
         {reduced ? (
           <div className="mx-auto grid w-full max-w-6xl grid-cols-2 gap-4 px-5 sm:grid-cols-3 sm:px-8">
-            {SHOWCASE_PLAYERS.map((player) => (
+            {showcase.map((player) => (
               <PlayerCard key={player.id} player={player} className="h-[300px]" />
             ))}
           </div>
@@ -210,7 +213,7 @@ export default function PlayerShowcase() {
             </motion.div>
 
             <div className="absolute inset-0 z-10">
-              {SHOWCASE_PLAYERS.map((player, i) => (
+              {showcase.map((player, i) => (
                 <Card
                   key={player.id}
                   player={player}

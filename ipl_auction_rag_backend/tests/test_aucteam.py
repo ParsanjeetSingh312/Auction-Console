@@ -257,7 +257,10 @@ class TestRoutes:
     def test_pool_serves_every_player_with_a_tier(self, client):
         body = client.get("/api/v1/aucteam/pool").json()
         assert body["total"] == 284
-        assert body["tier_counts"] == {"MQ": 13, "PR": 159, "EM": 112}
+        # Tiers follow IPL match counts, so these move when the quarterly
+        # career refresh (scout/stats_refresh.py) brings the pool up to date.
+        # Counts as of the IPL 2026 refresh on 2026-10-23.
+        assert body["tier_counts"] == {"MQ": 18, "PR": 160, "EM": 106}
         assert body["rules"]["squad_size"] == 11
 
     def test_brief_examples_land_in_their_tiers(self, client):

@@ -406,7 +406,7 @@ function FranchiseCard({
             title={`Download ${team.name}'s auction report as a PDF`}
             className="ml-auto rounded-md border border-line px-2.5 py-1 font-ui text-[9.5px] font-semibold uppercase tracking-[0.1em] text-slate-muted no-underline transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
           >
-            PDF report
+            Auction report
           </a>
         )}
 

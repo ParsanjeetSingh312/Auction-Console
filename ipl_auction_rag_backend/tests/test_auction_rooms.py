@@ -3,20 +3,22 @@ test_auction_rooms.py
 Several auctions at once (auction/rooms.py, auction/ws.py).
 
 What must hold: a room code is its own auction -- its own chair, seats, lot and
-broadcasts, invisible to every other room; a mini auction seats twelve and a
+broadcasts, invisible to every other room; every room opens with ten franchises and a
 mega auction ten; no code still means the default room, unchanged; and opening
 rooms is bounded, so made-up codes cannot pile up.
 """
 from __future__ import annotations
 
+import asyncio
 import uuid
+
 
 import pytest
 from fastapi.testclient import TestClient
 
 from auction import rooms as rooms_module
 from auction.rooms import MAIN, RoomRegistry, RoomsFull, normalise_code, registry
-from auction.room import AuctionRoom
+from auction.room import AuctionRoom, RoomError
 from accounts import store as account_store
 from api.routes_accounts import COOKIE
 from config.settings import get_settings
@@ -81,14 +83,15 @@ class TestCodes:
 
 
 class TestRegistry:
-    def test_mini_seats_twelve_and_mega_ten(self):
+    def test_every_room_opens_with_the_ten_ipl_franchises(self):
         reg = RoomRegistry(AuctionRoom())
         reg.set_pool(POOL)
         mini = reg.open("MINI1", "mini").room
         mega = reg.open("MEGA1", "mega").room
-        assert len(mini.teams) == 12 and mini.rules["max_teams"] == 12
-        assert {t["code"] for t in mini.teams} >= {"KOC", "PUN"}
-        assert len(mega.teams) == 10 and mega.rules["max_teams"] == 10
+        for room in (mini, mega):
+            assert len(room.teams) == 10 and room.rules["max_teams"] == 10
+            # Kochi and Pune are gone: extra seats are fictional, host-made.
+            assert not {t["code"] for t in room.teams} & {"KOC", "PUN"}
         assert len(mini.players) == len(POOL)
 
     def test_opening_is_bounded(self, monkeypatch):
@@ -142,7 +145,7 @@ class TestOverTheSocket:
                 first_a = drain(host_a, is_state)
                 first_b = drain(host_b, is_state)
                 assert first_a["room"] == "ROOMA" and len(first_a["teams"]) == 10
-                assert first_b["room"] == "ROOMB" and len(first_b["teams"]) == 12
+                assert first_b["room"] == "ROOMB" and len(first_b["teams"]) == 10
 
                 # Both chairs can be taken: they are different rooms, each its
                 # creator's.
@@ -166,29 +169,37 @@ class TestOverTheSocket:
                 assert client.get("/api/v1/auction/state?room=ROOMB").json()["rules"]["purse"] != 7500
                 assert client.get("/api/v1/auction/state?room=ROOMA").json()["rules"]["purse"] == 7500
 
-    def test_a_created_room_seats_twelve(self):
+    def test_a_created_room_opens_with_ten(self):
         from api.main import app
 
         with TestClient(app) as client:
             owner = account(client, "auctioneer")
             with client.websocket_connect("/api/v1/auction/ws?room=MADE1&open=1", headers=owner) as host, \
                  client.websocket_connect("/api/v1/auction/ws?room=MADE1") as franchise:
-                assert len(drain(host, is_state)["teams"]) == 12
+                assert len(drain(host, is_state)["teams"]) == 10
                 # Joining by the code alone reaches the same room.
                 assert drain(franchise, is_state)["room"] == "MADE1"
 
-    def test_mini_room_seats_a_twelfth_franchise(self):
+    def test_a_fictional_franchise_can_be_added_and_played(self):
         from api.main import app
 
         with TestClient(app) as client:
             owner, delegate = account(client, "auctioneer"), account(client, "delegate")
-            with client.websocket_connect("/api/v1/auction/ws?room=MINIX&kind=mini", headers=owner) as host, \
-                 client.websocket_connect("/api/v1/auction/ws?room=MINIX", headers=delegate) as pune:
+            with client.websocket_connect("/api/v1/auction/ws?room=MINIX&kind=mini", headers=owner) as host,                  client.websocket_connect("/api/v1/auction/ws?room=MINIX", headers=delegate) as goa:
                 drain(host, is_state)
-                drain(pune, is_state)
-                pune.send_json({"type": "join", "role": "franchise", "team_id": 12})
-                joined = drain(pune, lambda m: m.get("type") in ("joined", "error"))
-                assert joined["type"] == "joined" and joined["seat"]["team_code"] == "PUN"
+                drain(goa, is_state)
+                host.send_json({"type": "join", "role": "auctioneer"})
+                assert drain(host, lambda m: m.get("type") in ("joined", "error"))["type"] == "joined"
+                for name, code in (("Goa Gladiators", "GOA"), ("Shimla Snowhawks", "SHM")):
+                    host.send_json({"type": "add_franchise", "name": name, "code": code})
+                state = drain(goa, lambda m: is_state(m) and len(m["teams"]) == 12)
+                added = [t for t in state["teams"] if t["fictional"]]
+                assert [t["code"] for t in added] == ["GOA", "SHM"]
+                assert state["rules"]["max_teams"] == 12
+
+                goa.send_json({"type": "join", "role": "franchise", "team_id": added[0]["id"]})
+                joined = drain(goa, lambda m: m.get("type") in ("joined", "error"))
+                assert joined["type"] == "joined" and joined["seat"]["team_code"] == "GOA"
 
     def test_no_code_is_the_default_room(self):
         from api.main import app
@@ -234,3 +245,56 @@ class TestOverTheSocket:
             assert client.get("/api/v1/auction/report?room=NOSUCHROOM").status_code == 404
             stats = client.get("/api/v1/auction/rooms/stats").json()
             assert stats["rooms_open"] >= 1 and "connections" in stats
+
+
+class TestFictionalFranchises:
+    """The host's own franchises, beyond the ten. No limit on how many."""
+
+    PASSWORD = "rooms-test-secret"
+
+    def _room(self, monkeypatch):
+        from config.settings import get_settings
+
+        monkeypatch.setattr(get_settings(), "AUCTIONEER_PASSWORD", self.PASSWORD)
+        room = AuctionRoom()
+        room.load_players([dict(p) for p in POOL])
+        asyncio.run(room.join("host", "auctioneer", None, "Host", self.PASSWORD))
+        return room
+
+    def test_there_is_no_limit(self, monkeypatch):
+        room = self._room(monkeypatch)
+
+        async def go():
+            for i in range(40):
+                code = chr(65 + i // 26) + chr(65 + i % 26) + "X"
+                await room.add_franchise("host", f"Franchise {i}", code)
+
+        asyncio.run(go())
+        assert len(room.teams) == 50 and room.rules["max_teams"] == 50
+        assert len({t["id"] for t in room.teams}) == 50
+        assert all(t["color"].startswith("#") for t in room.teams)
+
+    def test_names_and_codes_must_be_unique_and_well_formed(self, monkeypatch):
+        room = self._room(monkeypatch)
+        asyncio.run(room.add_franchise("host", "Goa Gladiators", "goa", "#123456"))
+        assert room.teams[-1]["code"] == "GOA" and room.teams[-1]["color"] == "#123456"
+        for name, code in (("goa gladiators", "GGL"), ("Other", "GOA"), ("Other", "G1"),
+                           ("Other", "TOOLONG"), ("X", "XYZ"), ("Mumbai", "MBX")):
+            with pytest.raises(RoomError):
+                asyncio.run(room.add_franchise("host", name, code))
+
+    def test_only_the_auctioneer_and_only_before_the_auction(self, monkeypatch):
+        room = self._room(monkeypatch)
+        with pytest.raises(RoomError):
+            asyncio.run(room.add_franchise("someone", "Goa Gladiators", "GOA"))
+        room.phase = "live"
+        with pytest.raises(RoomError):
+            asyncio.run(room.add_franchise("host", "Goa Gladiators", "GOA"))
+
+    def test_only_added_franchises_can_be_removed(self, monkeypatch):
+        room = self._room(monkeypatch)
+        team = asyncio.run(room.add_franchise("host", "Goa Gladiators", "GOA"))
+        with pytest.raises(RoomError):
+            asyncio.run(room.remove_franchise("host", 1))  # Mumbai stays
+        asyncio.run(room.remove_franchise("host", team["id"]))
+        assert len(room.teams) == 10 and room.rules["max_teams"] == 10

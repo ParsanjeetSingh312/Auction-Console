@@ -38,7 +38,11 @@ async def search(request: QueryRequest) -> SearchResponse:
     try:
         from rag.rag_chain import search as rag_search
         
-        result = rag_search(
+        # On a worker thread: the chain is synchronous and may now spend a few
+        # seconds on live web research, which on the loop would stall every
+        # other request -- auction WebSocket frames included.
+        result = await asyncio.to_thread(
+            rag_search,
             query=request.query,
             top_k=request.top_k,
             use_reranker=request.use_reranker,
@@ -74,7 +78,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
         if request.history:
             history = [{"role": m.role, "content": m.content} for m in request.history]
         
-        result = rag_chat(
+        result = await asyncio.to_thread(
+            rag_chat,
             query=request.query,
             history=history,
             top_k=request.top_k,
@@ -138,11 +143,16 @@ async def list_players(
         params.extend([limit, offset])
         players = player_db.execute_query(query_sql, tuple(params))
         
+        from scout.stats_refresh import load_status
+
+        freshness = load_status()
         return PlayerListResponse(
             total=total,
             players=[PlayerResponse(**p) for p in players],
             limit=limit,
             offset=offset,
+            stats_as_of=freshness.get("refreshed_at"),
+            season_through=freshness.get("season_through"),
         )
     except Exception as e:
         logger.error("Player listing failed: %s", e, exc_info=True)

@@ -31,6 +31,7 @@
 import { crore } from "../Auction/blockTypes";
 import type { ConsolePlayer, Team } from "../../console/types";
 import PlayerSilhouette from "./PlayerSilhouette";
+import StatsFreshness from "../UI/StatsFreshness";
 
 /** A figure worth a cell, or nothing. */
 interface Stat {
@@ -88,6 +89,16 @@ function statsFor(player: ConsolePlayer): Stat[] {
       cell("Bnd% v spin", s.boundary_pct_spin, 1),
       cell("Bnd% v pace", s.boundary_pct_fast, 1),
     );
+    // All-rounders carry a bowling career too since the quarterly refresh
+    // (scout/stats_refresh.py) computes both halves for them.
+    if (player.roleShort === "AR") {
+      rows.push(
+        cell("Wickets", s.wickets),
+        cell("Economy", s.economy, 2),
+        cell("Econ v LHB", s.econ_vs_lhb, 2),
+        cell("Econ v RHB", s.econ_vs_rhb, 2),
+      );
+    }
   }
 
   return rows.filter((row): row is Stat => row !== null);
@@ -217,6 +228,7 @@ export default function PlayerHero({
           ))}
         </dl>
       )}
+      {stats.length > 0 && <StatsFreshness tone="dark" className="mt-4" />}
     </article>
   );
 }

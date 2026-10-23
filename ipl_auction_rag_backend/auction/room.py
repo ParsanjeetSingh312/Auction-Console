@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import re
 import logging
 import random
 import time
@@ -138,14 +139,21 @@ DEFAULT_TEAMS: list[dict[str, Any]] = [
 # Rule 1: the room never seats more franchises than the rulebook allows.
 assert len(DEFAULT_TEAMS) <= MAX_TEAMS
 
-# The two extra franchises a mini auction seats, after the ten. Named for the
-# two IPL franchises that came and went, so they read as part of the league.
-EXTRA_TEAMS: list[dict[str, Any]] = [
-    {"id": 11, "name": "Kochi", "code": "KOC", "color": "#E07A1F"},
-    {"id": 12, "name": "Pune", "code": "PUN", "color": "#3B4BA0"},
+# Every room opens with the ten IPL sides. A host who wants more seats adds
+# fictional franchises of their own (`add_franchise`), as many as they like --
+# which replaced the two retired IPL names, Kochi and Pune, that a mini room
+# used to hard-code as its eleventh and twelfth seats.
+ALL_TEAMS: list[dict[str, Any]] = DEFAULT_TEAMS
+
+#: Colours handed to fictional franchises added without one, in order. Chosen
+#: to sit apart from the ten IPL kits above so a new side never reads as one.
+FICTIONAL_COLORS = [
+    "#E07A1F", "#3B4BA0", "#0F9D8A", "#B03A9C", "#7A8B1F", "#C2185B",
+    "#00838F", "#8D5524", "#5E35B1", "#2E7D32", "#D84315", "#455A64",
 ]
-ALL_TEAMS: list[dict[str, Any]] = DEFAULT_TEAMS + EXTRA_TEAMS
-assert len(ALL_TEAMS) >= MINI_TEAMS
+
+_HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
+_CODE = re.compile(r"^[A-Z]{2,4}$")
 
 DEFAULT_RULES = rulebook.DEFAULT_RULES
 
@@ -206,6 +214,13 @@ class Record:
     # The log sequence of the sale, so standings can replay the order of
     # buys (auction/leaderboard.py). Restored by undo with the record.
     seq: int | None = None
+    # When the lot was settled (epoch seconds) and how many times this player
+    # had already gone unsold before it. The ledger is capped at MAX_LOG lines,
+    # so the per-franchise report reads its timeline -- auction length, the
+    # moments, comebacks from the unsold pile -- from here instead. Restored by
+    # undo with the record.
+    ts: float | None = None
+    unsold_count: int = 0
 
 
 # What a running countdown means, and the switch `_fire` turns on.
@@ -327,6 +342,10 @@ class AuctionRoom:
     seq: int = 0
     version: int = 0
     countdown_ends_at: float | None = None
+    # When bidding opened and when the auction was closed, for the report's
+    # "auction length". Cleared by reset.
+    started_at: float | None = None
+    finished_at: float | None = None
     # The most recent sale, for the "SOLD TO" banner every screen shows. Set by
     # the hammer, cleared by undo so a reversed sale is never announced again.
     last_sale: dict[str, Any] | None = None
@@ -828,10 +847,73 @@ class AuctionRoom:
         them. Called once, when a room is opened and before anyone sits.
         """
         if not 1 <= count <= len(ALL_TEAMS):
-            raise ValueError(f"A room seats 1 to {len(ALL_TEAMS)} franchises, not {count}.")
+            raise ValueError(f"A room opens with 1 to {len(ALL_TEAMS)} franchises, not {count}.")
         self.teams = copy.deepcopy(ALL_TEAMS[:count])
         self.rules["max_teams"] = count
         self._refill_timeouts()
+
+    async def add_franchise(
+        self, client_id: str, name: str, code: str, color: str | None = None
+    ) -> dict[str, Any]:
+        """
+        Seat a fictional franchise of the host's invention. No upper limit.
+
+        Only before bidding starts: a franchise that arrives mid-auction would
+        find the pool half sold and every rival's purse already committed. The
+        name and code must be unique in the room -- the code is how the ledger
+        and the report find a team's lines (`report_card._team_ledger`), so it
+        is letters only, two to four of them.
+        """
+        self._require_auctioneer(client_id, "add a franchise")
+        name = " ".join((name or "").split())
+        code = (code or "").strip().upper()
+        async with self._lock:
+            if self.phase not in ("lobby", "waiting"):
+                raise RoomError("Franchises can only be added before the auction starts.", about="franchise")
+            if not 2 <= len(name) <= 28:
+                raise RoomError("A franchise name is 2 to 28 characters.", about="franchise")
+            if not _CODE.match(code):
+                raise RoomError("A franchise code is 2 to 4 letters, like GOA or BLZ.", about="franchise")
+            if any(t["name"].casefold() == name.casefold() for t in self.teams):
+                raise RoomError(f"There is already a franchise called {name}.", about="franchise")
+            if any(t["code"] == code for t in self.teams):
+                raise RoomError(f"The code {code} is already taken.", about="franchise")
+            fictional = sum(1 for t in self.teams if t.get("fictional"))
+            if not (color and _HEX.match(color)):
+                color = FICTIONAL_COLORS[fictional % len(FICTIONAL_COLORS)]
+
+            team = {
+                "id": max((t["id"] for t in self.teams), default=0) + 1,
+                "name": name,
+                "code": code,
+                "color": color,
+                "fictional": True,
+            }
+            self.teams.append(team)
+            self.rules["max_teams"] = len(self.teams)
+            self.timeouts[team["id"]] = self.rules["timeouts_per_team"]
+            self._note(f"{name} ({code}) joins the auction as a new franchise")
+            self.version += 1
+            return dict(team)
+
+    async def remove_franchise(self, client_id: str, team_id: int) -> None:
+        """Take a fictional franchise out again, before the auction starts."""
+        self._require_auctioneer(client_id, "remove a franchise")
+        async with self._lock:
+            if self.phase not in ("lobby", "waiting"):
+                raise RoomError("Franchises can only be removed before the auction starts.", about="franchise")
+            team = self.team_by_id(team_id)
+            if team is None:
+                raise RoomError("No such franchise.", about="franchise")
+            if not team.get("fictional"):
+                raise RoomError("The ten IPL franchises stay; only added franchises can be removed.", about="franchise")
+            if any(s.role == "franchise" and s.team_id == team_id for s in self.seats.values()):
+                raise RoomError(f"{team['name']} is being played; it can be removed once its seat is empty.", about="franchise")
+            self.teams = [t for t in self.teams if t["id"] != team_id]
+            self.rules["max_teams"] = len(self.teams)
+            self.timeouts.pop(team_id, None)
+            self._note(f"{team['name']} ({team['code']}) removed from the auction")
+            self.version += 1
 
     def _refill_timeouts(self) -> None:
         """Every franchise back to a full set of lifelines."""
@@ -966,8 +1048,10 @@ class AuctionRoom:
         # orphan snapshot on the undo stack.
         if checkpoint:
             self._checkpoint()
+        before = self.records.get(player.id) or Record()
         self.records[player.id] = Record(
-            status="sold", team_id=lot.bidder_id, price=lot.bid
+            status="sold", team_id=lot.bidder_id, price=lot.bid,
+            ts=time.time(), unsold_count=before.unsold_count,
         )
         self._append(
             "sold",
@@ -1002,7 +1086,10 @@ class AuctionRoom:
         player = self.players[lot.player_id]
         if checkpoint:
             self._checkpoint()
-        self.records[player.id] = Record(status="unsold")
+        before = self.records.get(player.id) or Record()
+        self.records[player.id] = Record(
+            status="unsold", ts=time.time(), unsold_count=before.unsold_count + 1
+        )
         self._append("unsold", f"{player.name} unsold" + (f" — {why}" if why else ""))
         self._emit("unsold", {"player_id": player.id, "player": player.name, "base": player.base, "why": why})
         self._disarm()
@@ -1072,6 +1159,8 @@ class AuctionRoom:
                 )
             self._checkpoint()
             self.phase = "live"
+            if self.started_at is None:
+                self.started_at = time.time()
             self.countdown_ends_at = None
             self._note("Auction started")
             self.version += 1
@@ -1205,6 +1294,7 @@ class AuctionRoom:
             self._disarm()
             self._cancel_draw()
             self.phase = "finished"
+            self.finished_at = time.time()
             self.lot = None
             self._note("Auction closed")
             self.version += 1
@@ -1246,6 +1336,8 @@ class AuctionRoom:
             self.ai_paused = False
             self.ai_status = "idle"
             self.phase = "lobby"
+            self.started_at = None
+            self.finished_at = None
             self.countdown_ends_at = None
             self._note("Room reset — pool, purses and lifelines restored")
             self.version += 1
@@ -1822,6 +1914,7 @@ class AuctionRoom:
                     "name": team["name"],
                     "code": team["code"],
                     "color": team["color"],
+                    "fictional": bool(team.get("fictional")),
                     "connected": team["id"] in connected,
                     "buys": buys[team["id"]],
                     "timeouts_left": self.timeouts_left(team["id"]),

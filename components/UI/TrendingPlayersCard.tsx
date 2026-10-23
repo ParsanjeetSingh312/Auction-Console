@@ -25,11 +25,14 @@
  * as both "on the block" and "also worth watching".
  */
 import { ROLE_TINT, SHOWCASE_PLAYERS } from "../../utils/players";
+import { liveShowcase, useLivePool } from "../../console/statsApi";
 
 /** Everyone but the player on the block in LiveBiddingCard. */
 const TRENDING = SHOWCASE_PLAYERS.slice(1);
 
 export default function TrendingPlayersCard() {
+  const lookup = useLivePool();
+  const trending = TRENDING.map((player) => liveShowcase(player, lookup));
   return (
     <article className="neon-card neon-card--orange flex flex-col p-4">
       <h2 className="font-stadium text-[17px] font-semibold uppercase tracking-[0.04em] text-auctiq-text">
@@ -58,7 +61,7 @@ export default function TrendingPlayersCard() {
           </tr>
         </thead>
         <tbody>
-          {TRENDING.map((player, i) => (
+          {trending.map((player, i) => (
             <tr key={player.id}>
               <td className="font-num text-[12px] tabular-nums text-auctiq-dim">
                 {i + 1}

@@ -60,7 +60,7 @@ class Join(BaseModel):
     role: Literal["auctioneer", "franchise"]
     # Required for a franchise, ignored for the auctioneer. Validated against
     # the actual team list in the room, not just this range.
-    team_id: int | None = Field(default=None, ge=1, le=100)
+    team_id: int | None = Field(default=None, ge=1, le=100_000)
     display_name: str | None = Field(default=None, max_length=40)
     # Sent only for an auctioneer login, ignored for a franchise. The chair is
     # password-gated (settings.AUCTIONEER_PASSWORD); this carries the attempt.
@@ -149,7 +149,7 @@ class RecordSale(BaseModel):
 
     model_config = Strict
     type: Literal["record_sale"]
-    team_id: int = Field(ge=1, le=100)
+    team_id: int = Field(ge=1, le=100_000)
     # Up to the largest purse a room can set (rules.SETUP_FIELDS["purse"]).
     price: int = Field(ge=1, le=1_000_000)
 
@@ -283,6 +283,28 @@ class AcknowledgeRules(BaseModel):
     rules_version: int = Field(ge=0)
 
 
+class AddFranchise(BaseModel):
+    """
+    Auctioneer, before the auction starts: seat a fictional franchise of the
+    host's own invention alongside the ten IPL sides. There is no limit on how
+    many a room may add. `color` is a #RRGGBB hex; omitted, the room picks one.
+    """
+
+    model_config = Strict
+    type: Literal["add_franchise"]
+    name: str = Field(min_length=2, max_length=28)
+    code: str = Field(min_length=2, max_length=4)
+    color: str | None = Field(default=None, max_length=7)
+
+
+class RemoveFranchise(BaseModel):
+    """Auctioneer, before the auction starts: take a fictional franchise out again."""
+
+    model_config = Strict
+    type: Literal["remove_franchise"]
+    team_id: int = Field(ge=1, le=100_000)
+
+
 class Ping(BaseModel):
     """Keepalive. Answered with a pong; touches no state."""
 
@@ -308,6 +330,8 @@ ClientMessage = Annotated[
     | RecordSale
     | AiControl
     | AcknowledgeRules
+    | AddFranchise
+    | RemoveFranchise
     | Ping,
     Field(discriminator="type"),
 ]

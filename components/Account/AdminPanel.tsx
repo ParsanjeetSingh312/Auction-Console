@@ -22,6 +22,7 @@ import { RefreshCw } from "lucide-react";
 import { fetchAdminOverview } from "../../console/adminApi";
 import type { AdminOverview, AuctionDay, PerKind } from "../../console/adminApi";
 import { cardVariants } from "../../console/motion";
+import { loadStatsStatus, refreshStatsNow, useStatsStatus } from "../../console/statsApi";
 
 const RANGES = [7, 14, 30] as const;
 
@@ -136,6 +137,9 @@ export default function AdminPanel() {
             />
             <Tile label="Accounts" value={data.accounts.total} sub={`+${data.accounts.joined} in ${data.days}d`} />
           </div>
+
+          {/* ---- player statistics ---- */}
+          <StatsRefresh />
 
           {/* ---- auctions per day ---- */}
           <h3 className={`${LABEL} mt-6 border-t border-line pt-4`}>Auctions started per day</h3>
@@ -269,6 +273,70 @@ export default function AdminPanel() {
         </>
       )}
     </motion.section>
+  );
+}
+
+/**
+ * The quarterly career refresh: when it last ran, how much it covered, and a
+ * button to run it now. Polls while a run is in progress (a full run downloads
+ * the archive and walks every IPL match, so it takes a few minutes).
+ */
+function StatsRefresh() {
+  const status = useStatsStatus();
+  const [asking, setAsking] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const running = Boolean(status?.running) || asking;
+
+  useEffect(() => {
+    if (!status?.running) return;
+    const timer = window.setInterval(() => void loadStatsStatus(true), 5000);
+    return () => window.clearInterval(timer);
+  }, [status?.running]);
+
+  const run = async () => {
+    setAsking(true);
+    setNote(null);
+    try {
+      const result = await refreshStatsNow();
+      setNote(result.accepted === false ? (result.note ?? "A refresh is already running.") : "Refresh started.");
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : "Could not start the refresh.");
+    } finally {
+      setAsking(false);
+    }
+  };
+
+  const refreshed = status?.refreshed_at ? new Date(status.refreshed_at) : null;
+  const due = status?.next_due ? new Date(status.next_due) : null;
+  return (
+    <>
+      <h3 className={`${LABEL} mt-6 border-t border-line pt-4`}>Player statistics</h3>
+      <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-2 font-ui text-[12.5px] text-slate-body">
+        <span>
+          {status?.season_through ? `IPL careers through ${status.season_through}` : "Never refreshed"}
+          {refreshed && <span className="text-slate-muted"> · refreshed {refreshed.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</span>}
+        </span>
+        {status?.players_updated != null && (
+          <span className="text-slate-muted">
+            {status.players_updated} of {status.players_in_pool} players
+            {status.split_coverage != null && ` · splits ${(status.split_coverage * 100).toFixed(0)}% covered`}
+            {status.styles_pending ? ` · ${status.styles_pending} style lookups pending` : ""}
+          </span>
+        )}
+        {due && <span className="text-slate-muted">next due {due.toLocaleDateString(undefined, { day: "numeric", month: "short" })}</span>}
+        {status?.state === "failed" && <span className="text-[var(--unsold)]">last attempt failed</span>}
+        <button
+          type="button"
+          onClick={() => void run()}
+          disabled={running}
+          className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1 font-ui text-[10.5px] font-semibold uppercase tracking-[0.1em] text-slate-ink transition-colors hover:bg-surface-sunken disabled:opacity-50"
+        >
+          <RefreshCw size={12} className={running ? "animate-spin" : undefined} />
+          {running ? "Refreshing…" : "Refresh stats now"}
+        </button>
+      </div>
+      {note && <p className="mt-1 font-ui text-[11px] text-slate-muted">{note}</p>}
+    </>
   );
 }
 

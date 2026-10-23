@@ -55,6 +55,8 @@ export interface TeamState {
   name: string;
   code: string;
   color: string;
+  /** A franchise the host invented, beyond the ten IPL sides. Removable before the start. */
+  fictional?: boolean;
   spent: number;
   left: number;
   size: number;
@@ -435,6 +437,15 @@ export interface AuctionSocket {
   setMode: (mode: RoomMode, auctioneer?: AuctioneerKind) => void;
   /** Auctioneer, offline: the room sold the lot by placard to `teamId` for `price` lakh. */
   recordSale: (teamId: number, price: number) => void;
+  /**
+   * Auctioneer, before the start: seat a fictional franchise of their own.
+   * No limit on how many. `code` is 2-4 letters; `color` a #RRGGBB hex, or
+   * omitted for the room to pick one. A refusal (a taken name, a bad code)
+   * arrives as an `error` frame like every other one.
+   */
+  addFranchise: (name: string, code: string, color?: string) => void;
+  /** Auctioneer, before the start: take a fictional franchise out again. */
+  removeFranchise: (teamId: number) => void;
   /** The room is offline: no bid controls, no clock. */
   offline: boolean;
   /** The chair of an AI room: pause or resume the AI auctioneer, or take over. */
@@ -729,6 +740,9 @@ export function useAuctionSocket(): AuctionSocket {
         send({ type: "set_mode", mode, auctioneer }),
       recordSale: (teamId: number, price: number) =>
         send({ type: "record_sale", team_id: teamId, price }),
+      addFranchise: (name: string, code: string, color?: string) =>
+        send({ type: "add_franchise", name, code: code.toUpperCase(), color: color ?? null }),
+      removeFranchise: (teamId: number) => send({ type: "remove_franchise", team_id: teamId }),
       aiControl: (action: "pause" | "resume" | "take_over") => send({ type: "ai_control", action }),
     }),
     [send],

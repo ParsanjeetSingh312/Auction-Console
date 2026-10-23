@@ -83,11 +83,14 @@ ENV HOME=/home/user \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # --- root-only build steps ---------------------------------------------------
+# fonts-dejavu-core gives the auction report PDF (auction/auction_book_pdf.py) a
+# face with the rupee sign; without it the document falls back to "Rs".
 # build-essential is kept although most pins ship manylinux wheels: a source
 # build that fails costs a full rebuild to discover, and ~300 MB is not material
 # against an image this size.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 # torch, CPU-only, installed BEFORE requirements.txt.

@@ -17,7 +17,7 @@
     },
     {
       "name": "Jos Buttler",
-      "jersey_number": null,
+      "jersey_number": 63,
       "country": "England",
       "role": "Wicket Keeper",
       "cap_status": "Capped",
@@ -28,7 +28,7 @@
     },
     {
       "name": "Pat Cummins",
-      "jersey_number": null,
+      "jersey_number": 30,
       "country": "Australia",
       "role": "All Rounder",
       "cap_status": "Capped",
@@ -50,7 +50,7 @@
     },
     {
       "name": "Shreyas Iyer",
-      "jersey_number": null,
+      "jersey_number": 41,
       "country": "India",
       "role": "Batsman",
       "cap_status": "Capped",
@@ -61,7 +61,7 @@
     },
     {
       "name": "Rashid Khan",
-      "jersey_number": null,
+      "jersey_number": 19,
       "country": "Afghanistan",
       "role": "All Rounder",
       "cap_status": "Capped",
@@ -83,7 +83,7 @@
     },
     {
       "name": "Rishabh Pant",
-      "jersey_number": null,
+      "jersey_number": 17,
       "country": "India",
       "role": "Wicket Keeper",
       "cap_status": "Capped",
@@ -94,7 +94,7 @@
     },
     {
       "name": "Arshdeep Singh",
-      "jersey_number": null,
+      "jersey_number": 2,
       "country": "India",
       "role": "Bowler",
       "cap_status": "Capped",
@@ -105,7 +105,7 @@
     },
     {
       "name": "Mitchell Starc",
-      "jersey_number": null,
+      "jersey_number": 56,
       "country": "Australia",
       "role": "Bowler",
       "cap_status": "Capped",
@@ -127,7 +127,7 @@
     },
     {
       "name": "Trent Boult",
-      "jersey_number": null,
+      "jersey_number": 18,
       "country": "New Zealand",
       "role": "Bowler",
       "cap_status": "Capped",
@@ -138,7 +138,7 @@
     },
     {
       "name": "Ravindra Jadeja",
-      "jersey_number": null,
+      "jersey_number": 8,
       "country": "India",
       "role": "All Rounder",
       "cap_status": "Capped",
@@ -149,7 +149,7 @@
     },
     {
       "name": "Hardik Pandya",
-      "jersey_number": null,
+      "jersey_number": 33,
       "country": "India",
       "role": "All Rounder",
       "cap_status": "Capped",
@@ -160,7 +160,7 @@
     },
     {
       "name": "Axar Patel",
-      "jersey_number": null,
+      "jersey_number": 20,
       "country": "India",
       "role": "All Rounder",
       "cap_status": "Capped",
@@ -171,7 +171,7 @@
     },
     {
       "name": "KL Rahul",
-      "jersey_number": null,
+      "jersey_number": 1,
       "country": "India",
       "role": "Batsman",
       "cap_status": "Capped",
@@ -182,7 +182,7 @@
     },
     {
       "name": "Kagiso Rabada",
-      "jersey_number": null,
+      "jersey_number": 25,
       "country": "South Africa",
       "role": "Bowler",
       "cap_status": "Capped",
@@ -193,7 +193,7 @@
     },
     {
       "name": "Sanju Samson",
-      "jersey_number": null,
+      "jersey_number": 9,
       "country": "India",
       "role": "Wicket Keeper",
       "cap_status": "Capped",
@@ -215,7 +215,7 @@
     },
     {
       "name": "Suryakumar Yadav",
-      "jersey_number": null,
+      "jersey_number": 63,
       "country": "India",
       "role": "Batsman",
       "cap_status": "Capped",
@@ -237,7 +237,7 @@
     },
     {
       "name": "Ruturaj Gaikwad",
-      "jersey_number": null,
+      "jersey_number": 31,
       "country": "India",
       "role": "Batsman",
       "cap_status": "Capped",
@@ -248,7 +248,7 @@
     },
     {
       "name": "Travis Head",
-      "jersey_number": null,
+      "jersey_number": 62,
       "country": "Australia",
       "role": "Batsman",
       "cap_status": "Capped",
@@ -259,7 +259,7 @@
     },
     {
       "name": "Yashasvi Jaiswal",
-      "jersey_number": null,
+      "jersey_number": 64,
       "country": "India",
       "role": "Batsman",
       "cap_status": "Capped",
@@ -292,7 +292,7 @@
     },
     {
       "name": "Rinku Singh",
-      "jersey_number": null,
+      "jersey_number": 35,
       "country": "India",
       "role": "Batsman",
       "cap_status": "Capped",
@@ -303,7 +303,7 @@
     },
     {
       "name": "Nicholas Pooran",
-      "jersey_number": null,
+      "jersey_number": 29,
       "country": "West Indies",
       "role": "Batsman",
       "cap_status": "Capped",
@@ -314,7 +314,7 @@
     },
     {
       "name": "Shivam Dube",
-      "jersey_number": null,
+      "jersey_number": 25,
       "country": "India",
       "role": "All Rounder",
       "cap_status": "Capped",
@@ -336,7 +336,7 @@
     },
     {
       "name": "Glenn Maxwell",
-      "jersey_number": null,
+      "jersey_number": 32,
       "country": "Australia",
       "role": "All Rounder",
       "cap_status": "Capped",
@@ -347,7 +347,7 @@
     },
     {
       "name": "Sunil Narine",
-      "jersey_number": null,
+      "jersey_number": 74,
       "country": "West Indies",
       "role": "All Rounder",
       "cap_status": "Capped",
@@ -358,7 +358,7 @@
     },
     {
       "name": "Liam Livingstone",
-      "jersey_number": null,
+      "jersey_number": 23,
       "country": "England",
       "role": "All Rounder",
       "cap_status": "Capped",
@@ -380,7 +380,7 @@
     },
     {
       "name": "Abhishek Sharma",
-      "jersey_number": null,
+      "jersey_number": 4,
       "country": "India",
       "role": "All Rounder",
       "cap_status": "Capped",
@@ -391,7 +391,7 @@
     },
     {
       "name": "Marcus Stoinis",
-      "jersey_number": null,
+      "jersey_number": 17,
       "country": "Australia",
       "role": "All Rounder",
       "cap_status": "Capped",
@@ -402,7 +402,7 @@
     },
     {
       "name": "Tilak Varma",
-      "jersey_number": null,
+      "jersey_number": 72,
       "country": "India",
       "role": "All Rounder",
       "cap_status": "Capped",
@@ -424,7 +424,7 @@
     },
     {
       "name": "Quinton de Kock",
-      "jersey_number": null,
+      "jersey_number": 12,
       "country": "South Africa",
       "role": "Wicket Keeper",
       "cap_status": "Capped",
@@ -435,7 +435,7 @@
     },
     {
       "name": "Ishan Kishan",
-      "jersey_number": null,
+      "jersey_number": 32,
       "country": "India",
       "role": "Wicket Keeper",
       "cap_status": "Capped",
@@ -512,7 +512,7 @@
     },
     {
       "name": "Deepak Chahar",
-      "jersey_number": null,
+      "jersey_number": 90,
       "country": "India",
       "role": "Bowler",
       "cap_status": "Capped",
@@ -556,7 +556,7 @@
     },
     {
       "name": "Bhuvneshwar Kumar",
-      "jersey_number": null,
+      "jersey_number": 15,
       "country": "India",
       "role": "Bowler",
       "cap_status": "Capped",
@@ -589,7 +589,7 @@
     },
     {
       "name": "Mohammed Shami",
-      "jersey_number": null,
+      "jersey_number": 11,
       "country": "India",
       "role": "Bowler",
       "cap_status": "Capped",
@@ -600,7 +600,7 @@
     },
     {
       "name": "Mohammed Siraj",
-      "jersey_number": null,
+      "jersey_number": 13,
       "country": "India",
       "role": "Bowler",
       "cap_status": "Capped",
@@ -622,7 +622,7 @@
     },
     {
       "name": "Ravi Bishnoi",
-      "jersey_number": null,
+      "jersey_number": 56,
       "country": "India",
       "role": "Bowler",
       "cap_status": "Capped",
@@ -633,7 +633,7 @@
     },
     {
       "name": "Yuzvendra Chahal",
-      "jersey_number": null,
+      "jersey_number": 3,
       "country": "India",
       "role": "Bowler",
       "cap_status": "Capped",
@@ -655,7 +655,7 @@
     },
     {
       "name": "Varun Chakravarthy",
-      "jersey_number": null,
+      "jersey_number": 29,
       "country": "India",
       "role": "Bowler",
       "cap_status": "Capped",
@@ -688,7 +688,7 @@
     },
     {
       "name": "Kuldeep Yadav",
-      "jersey_number": null,
+      "jersey_number": 23,
       "country": "India",
       "role": "Bowler",
       "cap_status": "Capped",

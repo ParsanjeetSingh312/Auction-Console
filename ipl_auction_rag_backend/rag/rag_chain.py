@@ -4,7 +4,11 @@ Final RAG synthesis chain. Merges SQL results, vector-retrieved context,
 and user query into a structured prompt, then generates the final
 analytical response using whichever LLM provider is configured.
 """
+import asyncio
+import concurrent.futures
 import logging
+import re
+from datetime import datetime
 from typing import Any, Callable
 
 from rag import local_analyst
@@ -93,11 +97,20 @@ def _gather(query: str, top_k: int, use_reranker: bool) -> dict[str, Any]:
             )
             keyword_rows = local_analyst.keyword_search(query, top_k=top_k)
 
+    # --- live web stage ---
+    # Only worth its seconds when a model will read it: the rule-based analyst
+    # composes from the table and has no use for prose.
+    web_text = None
+    if has_llm:
+        web_text, web_notes = live_research(query)
+        notes.extend(web_notes)
+
     return {
         "route": route,
         "sql_result": sql_result,
         "documents": documents,
         "keyword_rows": keyword_rows,
+        "web": web_text,
         "notes": notes,
         "has_llm": has_llm,
     }
@@ -153,6 +166,99 @@ RULES:
 6. Keep responses concise but informative.
 7. Use markdown formatting for better readability.
 """
+
+
+def system_prompt() -> str:
+    """
+    SYSTEM_PROMPT plus what the model cannot know on its own: today's date and
+    how current the figures in front of it are.
+
+    Built per request because both change. Without it the model fell back on
+    its training data and quoted career totals from a season or two ago --
+    confidently, and in disagreement with the table it had just been handed.
+    """
+    from scout.stats_refresh import load_status
+
+    status = load_status()
+    season = status.get("season_through")
+    refreshed = status.get("refreshed_at")
+    lines = [
+        "",
+        "DATA FRESHNESS:",
+        f"- Today is {datetime.now():%d %B %Y}.",
+    ]
+    if season:
+        when = ""
+        if refreshed:
+            try:
+                when = f", recomputed on {datetime.fromisoformat(refreshed):%d %B %Y}"
+            except ValueError:
+                when = ""
+        lines.append(
+            f"- Matches, runs, wickets, strike rates, economies and the spin/pace "
+            f"and left/right-hand splits in the data context are complete IPL "
+            f"career figures through the IPL {season} season{when}."
+        )
+    lines += [
+        "- The data context and the live web research are more current than "
+        "your own memory. Where they disagree with what you remember, they win. "
+        "Never quote a career total, season figure or squad from memory.",
+        "- When LIVE WEB RESEARCH is present it comes from ESPNcricinfo, Cricbuzz "
+        "and other reference sites; use it for form, injuries, availability and "
+        "anything after the last completed season, and name the source.",
+    ]
+    return SYSTEM_PROMPT + "\n".join(lines) + "\n"
+
+
+#: Words that mean a question is about the present rather than the table.
+_RECENCY = re.compile(
+    r"\b(form|injur\w*|news|latest|recent\w*|current\w*|now|today|this season|"
+    r"last season|20\d\d|fit|fitness|availab\w*|retain\w*|released|trade\w*|"
+    r"captain\w*|squad|sold|bought|price)\b",
+    re.I,
+)
+
+
+def _mentions_player(query: str) -> bool:
+    lowered = query.lower()
+    for name in local_analyst.known_player_names():
+        parts = name.lower().split()
+        if name.lower() in lowered or (len(parts) > 1 and len(parts[-1]) >= 5
+                                       and re.search(rf"\b{re.escape(parts[-1])}\b", lowered)):
+            return True
+    return False
+
+
+def live_research(query: str) -> tuple[str | None, list[str]]:
+    """
+    Live web context for a question, from the same researcher the SCOUT drawer uses.
+
+    Only for questions about the present or about a named player -- "top five
+    economies" is answered by the table and needs no search. Runs its own event
+    loop on a worker thread, so it is safe from both a request thread and a
+    coroutine, and is bounded by SCOUT_LIVE_CONTEXT_TIMEOUT either way.
+    """
+    from config.settings import get_settings
+    from scout.agents.live_context import gather
+    from scout.tools.search_engine import search_available
+
+    if not search_available():
+        return None, []
+    if not (_RECENCY.search(query) or _mentions_player(query)):
+        return None, []
+
+    timeout = get_settings().SCOUT_LIVE_CONTEXT_TIMEOUT
+
+    def _run():
+        return asyncio.run(asyncio.wait_for(gather(query, timeout=timeout), timeout=timeout + 1))
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            found = pool.submit(_run).result(timeout=timeout + 3)
+    except Exception as exc:  # noqa: BLE001 - the table still answers
+        logger.warning("Live research failed: %s", exc)
+        return None, [f"Live web research did not finish ({type(exc).__name__}); answered from the data."]
+    return found.text, found.notes
 
 
 def _format_sql_context(sql_result: dict[str, Any]) -> str:
@@ -285,7 +391,7 @@ def _answer(
 
     if gathered["has_llm"]:
         try:
-            context = _build_context(sql_result, documents, keyword_rows)
+            context = _build_context(sql_result, documents, keyword_rows, gathered.get("web"))
             return synthesise(context), MODE_LLM
         except LLMError as exc:
             logger.warning("LLM synthesis failed (%s); using the local analyst", exc)
@@ -301,9 +407,12 @@ def _build_context(
     sql_result: dict[str, Any],
     documents: list[RetrievedDocument],
     keyword_rows: list[dict[str, Any]],
+    web: str | None = None,
 ) -> str:
     """Assemble everything retrieved into one prompt context."""
     parts: list[str] = []
+    if web:
+        parts.append(f"**LIVE WEB RESEARCH (ESPNcricinfo, Cricbuzz and reference sites):**\n{web}")
     if sql_result.get("results") or sql_result.get("error"):
         parts.append(_format_sql_context(sql_result))
     if documents:
@@ -336,7 +445,7 @@ def _synthesize_chat(
 
     try:
         return llm_provider.complete(
-            SYSTEM_PROMPT, messages, task="rag", temperature=0.3, max_tokens=1500
+            system_prompt(), messages, task="rag", temperature=0.3, max_tokens=1500
         )
     except LLMError:
         raise  # handled by _answer, which falls back to the local analyst
@@ -360,7 +469,7 @@ def _synthesize(query: str, context: str) -> str:
 
     try:
         return llm_provider.complete(
-            SYSTEM_PROMPT,
+            system_prompt(),
             [{"role": "user", "content": user_message}],
             task="rag",
             temperature=0.3,

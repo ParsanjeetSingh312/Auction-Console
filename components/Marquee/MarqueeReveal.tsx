@@ -35,6 +35,7 @@ import { useQuality } from "../3D/rig/quality";
 import { createIntroStage, type IntroStage } from "../Intro/introScene";
 import type { MarqueePlayer } from "./marqueePlayers";
 import "./marquee.css";
+import { livePlayerNow, overlayStats, prefetchLivePool } from "../../console/statsApi";
 
 export interface MarqueeRevealProps {
   /** The player to reveal. A new object (or a new `runKey`) plays it. */
@@ -111,6 +112,8 @@ export default function MarqueeReveal({
   skippable = true,
 }: MarqueeRevealProps) {
   const quality = useQuality();
+  // Warm the live pool as soon as the reveal mounts, well before a player is put up.
+  useEffect(() => prefetchLivePool(), []);
   const root = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLDivElement>(null);
   const stageRef = useRef<IntroStage | null>(null);
@@ -166,11 +169,16 @@ export default function MarqueeReveal({
       gsap.set(q(".mq-card, .mq-backdrop, .mq-flash, .mq-flicker"), { autoAlpha: 0 });
       gsap.set(q(".mq-stage"), { autoAlpha: 1, filter: "blur(0px) brightness(1)" });
 
+      // The figures the entry was written with, replaced by the pool's current
+      // career where it has loaded. Read once, at the moment the reveal plays,
+      // so a pool arriving mid-animation cannot restart it.
+      const liveStats = overlayStats(player.stats, livePlayerNow(player.poolName));
+
       if (reduced) {
         gsap.set(q(".mq-card, .mq-backdrop"), { autoAlpha: 1 });
         gsap.set(q(".mq-stage"), { autoAlpha: 0 });
         q(".mq-stat-value").forEach((el, i) => {
-          el.textContent = fmt(player.stats[i].value, player.stats[i].decimals);
+          el.textContent = fmt(liveStats[i].value, liveStats[i].decimals);
         });
         const t = gsap.delayedCall(3, done);
         tlRef.current = gsap.timeline().add(t);
@@ -232,7 +240,7 @@ export default function MarqueeReveal({
       q(".mq-stat").forEach((row, i) => {
         const at = 2.75 + i * 0.6;
         const valueEl = row.querySelector<HTMLElement>(".mq-stat-value");
-        const stat = player.stats[i];
+        const stat = liveStats[i];
         const counter = { v: 0 };
         tl.fromTo(row, { x: -48, autoAlpha: 0 }, { x: 0, autoAlpha: 1, duration: 0.55, ease: "expo.out" }, at)
           .fromTo(

@@ -288,6 +288,24 @@ def _context_block(
         ]
     else:
         lines += ["", "No team context: do not suggest bid amounts."]
+
+    # How current the candidate figures are, so the model trusts them over its
+    # own memory of an older season (scout/stats_refresh.py writes this).
+    from datetime import datetime
+
+    from scout.stats_refresh import load_status
+
+    season = load_status().get("season_through")
+    lines += [
+        "",
+        f"DATA FRESHNESS: today is {datetime.now():%d %B %Y}."
+        + (
+            f" Candidate figures are complete IPL career records through the IPL "
+            f"{season} season. Quote them, never older totals from memory."
+            if season
+            else " Quote only the figures given here, never totals from memory."
+        ),
+    ]
     return "\n".join(lines)
 
 

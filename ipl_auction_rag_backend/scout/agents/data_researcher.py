@@ -35,6 +35,7 @@ from typing import Any
 from config.settings import get_settings
 from scout.graph.state import ScoutState, seconds_left
 from scout.schemas.player import (
+    PlayerFact,
     PlayerStatUpdate,
     PlayerUpdate,
     PlayerValuation,
@@ -169,8 +170,45 @@ def aggregate_cricsheet(
     return dict(tally), notes
 
 
+def form_stats(row: dict[str, float], *, bowls: bool) -> dict[str, float]:
+    """
+    One player's recent-form figures from a tally, in the pool's role shape:
+    batting for everyone but a Bowler, bowling for a Bowler only.
+    """
+    stats: dict[str, float] = {}
+
+    if not bowls and row["balls"] >= MIN_BALLS_FACED:
+        stats["bat_sr"] = round(row["runs"] / row["balls"] * 100, 2)
+        if row["outs"]:
+            stats["bat_avg"] = round(row["runs"] / row["outs"], 2)
+        stats["total_runs"] = int(row["runs"])
+
+    if bowls and row["bowled"] >= MIN_BALLS_BOWLED:
+        stats["economy"] = round(row["conceded"] / (row["bowled"] / 6), 2)
+        stats["runs_conceded"] = int(row["conceded"])
+        stats["wickets"] = int(row["wickets"])
+        if row["wickets"]:
+            stats["bowl_avg"] = round(row["conceded"] / row["wickets"], 2)
+            stats["bowl_sr"] = round(row["bowled"] / row["wickets"], 2)
+
+    return stats
+
+
+def _form_text(name: str, stats: dict[str, float], window: str) -> str:
+    """One readable sentence of recent form, for the research collection."""
+    parts = []
+    if "total_runs" in stats:
+        parts.append(f"{int(stats['total_runs'])} runs at a strike rate of {stats.get('bat_sr', 0):.1f}"
+                     + (f", average {stats['bat_avg']:.1f}" if "bat_avg" in stats else ""))
+    if "wickets" in stats:
+        parts.append(f"{int(stats['wickets'])} wickets at an economy of {stats.get('economy', 0):.2f}"
+                     + (f", average {stats['bowl_avg']:.1f}" if "bowl_avg" in stats else ""))
+    return f"{name} recent IPL form ({window}): " + "; ".join(parts) + "."
+
+
 def _updates_from_tally(
-    tally: dict[str, dict[str, float]], pool: list[dict[str, Any]], source: SourceRef
+    tally: dict[str, dict[str, float]], pool: list[dict[str, Any]], source: SourceRef,
+    window: str = "recent seasons",
 ) -> tuple[list[PlayerUpdate], list[str]]:
     """Turn raw tallies into validated updates, holding what cannot be resolved."""
     updates: list[PlayerUpdate] = []
@@ -183,31 +221,24 @@ def _updates_from_tally(
             unresolved.append(name)
             continue
 
-        stats: dict[str, float] = {}
-        bowls = roles.get(match.player_id) == BOWLING_ROLE
-
-        if not bowls and row["balls"] >= MIN_BALLS_FACED:
-            stats["bat_sr"] = round(row["runs"] / row["balls"] * 100, 2)
-            if row["outs"]:
-                stats["bat_avg"] = round(row["runs"] / row["outs"], 2)
-            stats["total_runs"] = int(row["runs"])
-
-        if bowls and row["bowled"] >= MIN_BALLS_BOWLED:
-            stats["economy"] = round(row["conceded"] / (row["bowled"] / 6), 2)
-            stats["runs_conceded"] = int(row["conceded"])
-            stats["wickets"] = int(row["wickets"])
-            if row["wickets"]:
-                stats["bowl_avg"] = round(row["conceded"] / row["wickets"], 2)
-                stats["bowl_sr"] = round(row["bowled"] / row["wickets"], 2)
+        stats = form_stats(row, bowls=roles.get(match.player_id) == BOWLING_ROLE)
 
         if not stats:
             continue
 
+        # Recent form is a FACT, not a column. The pool's columns hold full
+        # careers, kept current by scout/stats_refresh.py; writing a three-season
+        # run tally into `total_runs` would put Kohli back at a fraction of his
+        # career the moment this ran after a refresh. So the figures are
+        # validated as stats -- the bounds still catch arithmetic bugs -- and
+        # then stored as retrievable text for SCOUT to quote as form.
         try:
+            PlayerStatUpdate(**stats)
             update = PlayerUpdate(
                 match=match,
-                stats=PlayerStatUpdate(**stats),
                 valuation=PlayerValuation(),
+                facts=[PlayerFact(kind="form", text=_form_text(match.resolved_name or name, stats, window),
+                                  source=source)],
                 source=source,
             )
         except Exception as exc:  # noqa: BLE001 - a bound rejected it
@@ -276,7 +307,9 @@ async def research(
                 aggregate_cricsheet, outcome.path, seasons_back=seasons_back, deadline=deadline
             )
             notes.extend(f"{outcome.source_id}: {n}" for n in agg_notes)
-            got, missed = _updates_from_tally(tally, pool, source_ref)
+            got, missed = _updates_from_tally(
+                tally, pool, source_ref, window=f"last {seasons_back} seasons"
+            )
             updates.extend(got)
             unresolved.extend(missed)
             notes.append(

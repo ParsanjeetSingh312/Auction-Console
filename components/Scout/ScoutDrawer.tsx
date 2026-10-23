@@ -54,6 +54,7 @@ import RichStatsResponse from "./RichStatsResponse";
 import ScoutEmblem from "./ScoutEmblem";
 import ScoutQuotaMeter from "./ScoutQuotaMeter";
 import ScoutOrb, { type ScoutOrbPhase } from "./ScoutOrb";
+import StatsFreshness from "../UI/StatsFreshness";
 
 gsap.registerPlugin(useGSAP);
 
@@ -265,6 +266,7 @@ export default function ScoutDrawer() {
             <div className="font-tech text-[10px] uppercase tracking-[0.16em] text-auctiq-dim">
               {isRunning ? "Agents working" : "Multi-agent auction intelligence"}
             </div>
+            <StatsFreshness tone="dark" className="mt-1" />
           </div>
           <button
             type="button"

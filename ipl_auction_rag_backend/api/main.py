@@ -34,6 +34,7 @@ from api.routes_aucteam import router as aucteam_router
 from api.routes_accounts import router as accounts_router
 from api.routes_ecosystem import router as ecosystem_router
 from api.routes_schedule import router as schedule_router
+from api.routes_stats import router as stats_router
 from auction.room import room as auction_room
 from auction.ws import router as auction_router
 
@@ -314,6 +315,12 @@ async def lifespan(app: FastAPI):
     # holding an httpx client would keep the process alive after serving stops.
     keep_alive_task = asyncio.create_task(_keep_alive(), name="keep-alive")
 
+    # The quarterly career-stats refresh (scout/stats_refresh.py). Not awaited,
+    # for the same reason as the keep-alive: it is a loop that never returns.
+    from scout.stats_refresh import run_scheduler
+
+    stats_task = asyncio.create_task(run_scheduler(), name="stats-refresh")
+
     logger.info("=" * 60)
 
     yield
@@ -328,6 +335,14 @@ async def lifespan(app: FastAPI):
         pass
     except Exception as exc:  # noqa: BLE001 - shutdown must not raise
         logger.warning("Keep-alive did not stop cleanly: %s", exc)
+
+    stats_task.cancel()
+    try:
+        await stats_task
+    except asyncio.CancelledError:
+        pass
+    except Exception as exc:  # noqa: BLE001 - shutdown must not raise
+        logger.warning("Stats scheduler did not stop cleanly: %s", exc)
 
     # Release the Postgres pool. A no-op on SQLite, which holds nothing between
     # calls. Left open, pooled connections keep non-daemon threads alive and the
@@ -454,6 +469,8 @@ app.include_router(accounts_router)
 app.include_router(ecosystem_router)
 # The auctioneer schedule, its Google Calendar link and the auctioneer overview.
 app.include_router(schedule_router)
+# Player-statistics freshness and the quarterly career refresh.
+app.include_router(stats_router)
 
 
 # ---------------------------------------------------------------------------

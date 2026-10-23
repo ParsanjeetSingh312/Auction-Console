@@ -26,6 +26,7 @@ from scout.agents.data_researcher import (
     MIN_BALLS_FACED,
     _updates_from_tally,
     aggregate_cricsheet,
+    form_stats,
 )
 from scout.schemas.player import SourceRef
 from scout.tools.rag_pipeline import resolve_player
@@ -55,8 +56,29 @@ def tally(**kwargs) -> dict[str, float]:
 
 
 def stats_for(name: str, row: dict[str, float], pool=POOL) -> dict:
-    updates, _ = _updates_from_tally({name: row}, pool, SOURCE)
-    return updates[0].stats.model_dump(exclude_none=True) if updates else {}
+    """The recent-form figures the researcher computes for one tally row."""
+    match = resolve_player(name, pool)
+    if match.player_id is None:
+        return {}
+    roles = {p["id"]: p["role"] for p in pool}
+    return form_stats(row, bowls=roles[match.player_id] == BOWLING_ROLE)
+
+
+class TestRecentFormNeverOverwritesTheCareer:
+    """
+    The pool's columns hold full IPL careers, kept current by the quarterly
+    refresh. A three-season tally written into `total_runs` is how the site
+    once showed a fraction of a player's career -- so form travels as a fact.
+    """
+
+    def test_form_is_a_fact_and_writes_no_columns(self):
+        updates, _ = _updates_from_tally(
+            {"RG Sharma": tally(runs=900, balls=600, outs=20)}, POOL, SOURCE
+        )
+        assert updates, "a resolvable player with enough balls should produce an update"
+        assert updates[0].stats.populated() == {}, "recent form must not touch the career columns"
+        assert updates[0].facts and updates[0].facts[0].kind == "form"
+        assert "900 runs" in updates[0].facts[0].text
 
 
 class TestRoleDecidesTheShapeOfTheRow:

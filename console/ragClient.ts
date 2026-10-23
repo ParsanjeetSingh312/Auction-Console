@@ -76,6 +76,9 @@ export interface PlayerListResponse {
   players: ApiPlayer[];
   limit: number;
   offset: number;
+  /** When the career figures were last recomputed (ISO), and through which IPL season. */
+  stats_as_of?: string | null;
+  season_through?: number | null;
 }
 
 /** GET /api/v1/health. Mirrors HealthResponse. */

@@ -423,6 +423,7 @@ def record(updates: list[PlayerUpdate], *, apply_to_players: bool = True) -> Ing
     now = datetime.now(timezone.utc).isoformat()
     facts_to_embed: list[tuple[PlayerFact, PlayerMatch]] = []
     touched: set[int] = set()
+    pending: list[tuple[int, dict[str, Any], dict[str, Any]]] = []
 
     with _connect() as conn:
         for update in updates:
@@ -461,12 +462,20 @@ def record(updates: list[PlayerUpdate], *, apply_to_players: bool = True) -> Ing
                     report.ledger_rows += 1
 
             if apply_to_players and (stats or valuation):
-                written = _apply_columns(match.player_id, stats, valuation)
-                if written:
-                    report.columns_written += written
-                    touched.add(match.player_id)
+                pending.append((match.player_id, stats, valuation))
 
             facts_to_embed.extend((f, match) for f in update.facts)
+
+    # Applied only after the ledger connection has committed. Writing the
+    # players table while that transaction is still open deadlocks when both
+    # live in the same SQLite file -- the manager's own connection waits on the
+    # ledger's write lock and fails with "database is locked". The ledger is
+    # the durable record either way; replay_research() re-applies it.
+    for player_id, stats, valuation in pending:
+        written = _apply_columns(player_id, stats, valuation)
+        if written:
+            report.columns_written += written
+            touched.add(player_id)
 
     report.players_touched = len(touched)
     report.facts_embedded = embed_facts(facts_to_embed)

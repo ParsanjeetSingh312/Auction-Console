@@ -81,6 +81,7 @@ ENV PYTHONUNBUFFERED=1 \
 # and ~200 MB is not material against an image this size.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 # --- torch, CPU-only, installed BEFORE requirements.txt ----------------------

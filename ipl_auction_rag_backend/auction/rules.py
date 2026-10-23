@@ -44,9 +44,11 @@ from typing import Any
 # --------------------------------------------------------------------- #
 
 MAX_TEAMS = 10
-# A mini auction seats twelve franchises. Only a room opened as one does; the
-# default room, and every mega auction, stays at MAX_TEAMS.
-MINI_TEAMS = 12
+# Every room, mini or mega, opens with the ten IPL franchises. A mini auction
+# used to add Kochi and Pune as seats eleven and twelve; the host now adds as
+# many fictional franchises as they want instead (`AuctionRoom.add_franchise`),
+# and `max_teams` follows the room's team list rather than this constant.
+MINI_TEAMS = MAX_TEAMS
 TEAMS_BY_KIND = {"mega": MAX_TEAMS, "mini": MINI_TEAMS}
 ACTION_SECONDS = 7
 BUFFER_SECONDS = 30

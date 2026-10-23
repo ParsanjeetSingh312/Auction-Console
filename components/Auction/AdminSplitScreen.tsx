@@ -63,6 +63,7 @@ import RoomCodeBadge from "./RoomCodeBadge";
 import DrawIndicator from "./hybrid/DrawIndicator";
 import AiAuctioneerCard from "./ai/AiAuctioneerCard";
 import ModeSwitch from "./hybrid/ModeSwitch";
+import FranchiseManager from "./hybrid/FranchiseManager";
 import OfflineSalePanel from "./hybrid/OfflineSalePanel";
 
 /** Left-pane tools. The right pane never changes — that is the point. */
@@ -454,6 +455,9 @@ export default function AdminSplitScreen({
 
         {/* Online or offline, manual or AI: set before the start, a badge after. */}
         {socket && <ModeSwitch socket={socket} />}
+
+        {/* The ten IPL sides plus any fictional ones the host adds before the start. */}
+        {socket && <FranchiseManager socket={socket} />}
 
         <div className="min-w-[240px] flex-1">
           <CommandSearch

@@ -116,6 +116,10 @@ class PlayerListResponse(BaseModel):
     players: list[PlayerResponse]
     limit: int
     offset: int
+    # When the career figures were last recomputed and the last IPL season they
+    # include (scout/stats_refresh.py). None until the first refresh has run.
+    stats_as_of: str | None = None
+    season_through: int | None = None
 
 
 class HealthResponse(BaseModel):

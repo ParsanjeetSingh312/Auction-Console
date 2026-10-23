@@ -241,6 +241,46 @@ def run_ingestion(
     return result
 
 
+def reembed_pool(season_through: int | None = None) -> int:
+    """
+    Rebuild the pool's vector summaries from the live `players` table.
+
+    `run_ingestion` embeds the spreadsheet as it parsed it, so after the career
+    refresh has rewritten the table, the summaries SCOUT's semantic search reads
+    would still say "Scored 7697 runs". This re-reads the table and re-embeds
+    every row, so the vector side and the SQL side agree again.
+
+    Ids and the `sqlite_id` metadata are the table's own ids, which is what
+    `run_ingestion` produces on a fresh table and what the retriever joins on.
+    """
+    rows = get_player_db().get_all_players(limit=10_000, offset=0)
+    if not rows:
+        return 0
+
+    suffix = (
+        f" Career figures are complete through the IPL {season_through} season."
+        if season_through
+        else ""
+    )
+    texts, metadatas, ids = [], [], []
+    for row in rows:
+        texts.append(generate_player_summary(row) + suffix)
+        metadatas.append({
+            "player_name": str(row.get("player_name") or "Unknown"),
+            "role": str(row.get("role") or "Unknown"),
+            "cap_status": str(row.get("cap_status") or "CAPPED"),
+            "overseas": int(row.get("overseas") or 0),
+            "sqlite_id": int(row["id"]),
+        })
+        ids.append(f"player_{row['id']}")
+
+    chroma_mgr = ChromaManager()
+    chroma_mgr.reset_collection()
+    created = chroma_mgr.add_documents(texts, metadatas, ids)
+    logger.info("Re-embedded %d player summaries from the live table", created)
+    return created
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     result = run_ingestion()

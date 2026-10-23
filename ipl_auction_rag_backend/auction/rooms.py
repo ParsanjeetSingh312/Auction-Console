@@ -21,10 +21,10 @@ franchises, and it is the `room` every older import of `auction.room` still
 gets. A client that sends no room code lands in it, exactly as before.
 
 **Other rooms are opened on purpose.** A connection that names a new code and
-asks to open it does: `open=1` is the app's "create a room", which seats twelve
-franchises -- a ten- or eleven-team auction simply leaves the last seats empty
--- and an explicit kind (mega for ten, mini for twelve) is kept for tools such
-as the load test. A connection that names a code nobody has opened, with
+asks to open it does: `open=1` is the app's "create a room", and an explicit
+kind (mega or mini) is kept for tools such as the load test. Every room opens
+with the ten IPL franchises, and its auctioneer may add any number of fictional
+ones before the auction starts (`AuctionRoom.add_franchise`). A connection that names a code nobody has opened, with
 no kind, is told there is no such room, so a franchise who mistypes a code is
 told so instead of being seated alone in an empty auction.
 

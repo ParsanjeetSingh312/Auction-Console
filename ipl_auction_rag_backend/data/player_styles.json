@@ -1,0 +1,1390 @@
+{
+ "description": "Bowling type and batting hand per Cricsheet identity, read from ESPNcricinfo / Cricbuzz profiles. Used for the pace/spin and LHB/RHB splits. Written by scout/tools/player_styles.py.",
+ "people": {
+  "00ea847a": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Mayank Agarwal",
+   "name": "MA Agarwal",
+   "source": "Mayank Agarwal Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "03806cf8": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Josh Hazlewood",
+   "name": "JR Hazlewood",
+   "source": "Josh Hazlewood Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "0994d0ae": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "V Shankar",
+   "source": "Vijay Shankar Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "0a3d54b9": {
+   "bat": "right",
+   "bowl": "unknown",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "VR Aaron",
+   "source": "Varun Aaron Profile - Cricket Player India | Stats, Records, ..."
+  },
+  "0a509d6b": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Rinku Singh",
+   "name": "RK Singh",
+   "source": "Rinku Singh Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "0a8fce53": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Mustafizur Rahman",
+   "name": "Mustafizur Rahman",
+   "source": "Mustafizur Rahman Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "0ebfb1ad": {
+   "bat": "left",
+   "bowl": "unknown",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "E Lewis",
+   "source": "Evin Lewis Profile - Cricket Player West Indies"
+  },
+  "119678fd": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Karn Sharma",
+   "name": "KV Sharma",
+   "source": "Karn Sharma Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "12314277": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "Arshad Khan",
+   "source": "Arshad Khan Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "13c35c9e": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "TG Southee",
+   "source": "Tim Southee Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "13fc5c6d": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Digvesh Rathi",
+   "name": "DS Rathi",
+   "source": "Digvesh Singh Rathi Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "14f96089": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Adam Zampa",
+   "name": "A Zampa",
+   "source": "Adam Zampa Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "1abb78f8": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Shardul Thakur",
+   "name": "SN Thakur",
+   "source": "Shardul Thakur Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "1c17e270": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "RV Uthappa",
+   "source": "Robin Uthappa Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "1c914163": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "Yuvraj Singh",
+   "source": "Yuvraj Singh Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "1dc12ab9": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "SK Raina",
+   "source": "Suresh Raina Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "21d4e29b": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Navdeep Saini",
+   "name": "Navdeep Saini",
+   "source": "Navdeep Saini Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "235c2bb6": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Heinrich Klaasen",
+   "name": "H Klaasen",
+   "source": "Heinrich Klaasen Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "23eeb873": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Deepak Chahar",
+   "name": "DL Chahar",
+   "source": "Deepak Chahar Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "26e5cabf": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "MK Tiwary",
+   "source": "Manoj Tiwary Profile - Cricket Player India | Stats, Records, Video"
+  },
+  "271f83cd": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Suryakumar Yadav",
+   "name": "SA Yadav",
+   "source": "Suryakumar Yadav Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "29e95537": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Ajinkya Rahane",
+   "name": "AM Rahane",
+   "source": "Ajinkya Rahane Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "2a2e6343": {
+   "bat": "right",
+   "bowl": "unknown",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "DT Christian",
+   "source": "Dan Christian Profile - Cricket Player Australia | Stats, ..."
+  },
+  "2c25d4f5": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Devdutt Padikkal",
+   "name": "D Padikkal",
+   "source": "Devdutt Padikkal Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "2cdce1be": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "C Sakariya",
+   "source": "Chetan Sakariya Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "2cffab74": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Mukesh Kumar",
+   "name": "Mukesh Kumar",
+   "source": "Mukesh Kumar Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "2e8994e7": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "JP Duminy",
+   "source": "Jean-Paul Duminy Profile - Cricket Player South Africa - Cricinfo"
+  },
+  "2ed569a0": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Rahul Chahar",
+   "name": "RD Chahar",
+   "source": "Rahul Chahar Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "2f9d0389": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Lockie Ferguson",
+   "name": "LH Ferguson",
+   "source": "Lockie Ferguson Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "3204c99f": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Gerald Coetzee",
+   "name": "G Coetzee",
+   "source": "Gerald Coetzee Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "3241e3fd": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Nicholas Pooran",
+   "name": "N Pooran",
+   "source": "Nicholas Pooran Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "327b58d3": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Dushmantha Chameera",
+   "name": "PVD Chameera",
+   "source": "Dushmantha Chameera Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "3355b542": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "F du Plessis",
+   "source": "Faf du Plessis Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "33a364a6": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "R Bhatia",
+   "source": "Rajat Bhatia Profile - Cricket Player India | Stats, Records ..."
+  },
+  "35205dfc": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "DR Smith",
+   "source": "Dwayne Smith Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "3b53243a": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "XC Bartlett",
+   "source": "Xavier Bartlett Profile - Cricket Player Australia"
+  },
+  "3c6ffae8": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "YK Pathan",
+   "source": "Yusuf Pathan Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "3d284ca3": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Phil Salt",
+   "name": "PD Salt",
+   "source": "Philip Salt Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "3d8feaf8": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Mitchell Marsh",
+   "name": "MR Marsh",
+   "source": "Mitchell Marsh Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "4125d931": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Jagadeesha Suchith",
+   "name": "J Suchith",
+   "source": "Jagadeesha Suchith Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "4329fbb5": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "SR Watson",
+   "source": "Shane Watson Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "45eda7c8": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "CA Lynn",
+   "source": "Chris Lynn - Cricket Player Australia"
+  },
+  "465aa633": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Nandre Burger",
+   "name": "N Burger",
+   "source": "Nandre Burger Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "48a1d7b7": {
+   "bat": "left",
+   "bowl": "unknown",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Shimron Hetmyer",
+   "name": "SO Hetmyer",
+   "source": "Shimron Hetmyer Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "4933f499": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "JP Behrendorff",
+   "source": "Jason Behrendorff Profile - Cricket Player Australia"
+  },
+  "495d42a5": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "R Ashwin",
+   "source": "Ravichandran Ashwin Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "4b31f3a3": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "Yash Thakur",
+   "source": "Yash Thakur Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "4b57e452": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "M Vijay",
+   "source": "Murali Vijay Profile - Cricket Player India | Stats, Records, ..."
+  },
+  "4c5d73db": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "CR Woakes",
+   "source": "Chris Woakes Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "50c6bc2b": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Liam Livingstone",
+   "name": "LS Livingstone",
+   "source": "Liam Livingstone Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "51a3c5ef": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "MJ McClenaghan",
+   "source": "Mitchell McClenaghan Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "54e52590": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Vijaykumar Vyshak",
+   "name": "Vijaykumar Vyshak",
+   "source": "Vijaykumar Vyshak Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "5574750c": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Jofra Archer",
+   "name": "JC Archer",
+   "source": "Jofra Archer Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "56ab442f": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "NM Coulter-Nile",
+   "source": "Nathan Coulter-Nile Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "59559bc2": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "J Overton",
+   "source": "Jamie Overton Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "5b7ab5a9": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Varun Chakravarthy",
+   "name": "CV Varun",
+   "source": "Varun Chakaravarthy Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "5bb1a1c4": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Ishant Sharma",
+   "name": "I Sharma",
+   "source": "Ishant Sharma Profile - Cricket Player India | Stats, Records ..."
+  },
+  "5bb5a915": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "M Morkel",
+   "source": "Albie Morkel Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "5d2eea49": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Kartik Tyagi",
+   "name": "Kartik Tyagi",
+   "source": "Kartik Tyagi Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "5fa06777": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "IK Pathan",
+   "source": "Irfan Pathan Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "62af8546": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Mohammad Nabi",
+   "name": "Mohammad Nabi",
+   "source": "Mohammad Nabi Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "64775749": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "RP Meredith",
+   "source": "Riley Meredith Profile - Cricket Player Australia | Stats, ..."
+  },
+  "650d5e49": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Rovman Powell",
+   "name": "R Powell",
+   "source": "Rovman Powell Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "66b30f71": {
+   "bat": "right",
+   "bowl": "unknown",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "AB Dinda",
+   "source": "Ashok Dinda Profile - Cricket Player India | Stats, Records ..."
+  },
+  "68c56d09": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "KA Jamieson",
+   "source": "Kyle Jamieson Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "6a26221c": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Aiden Markram",
+   "name": "AK Markram",
+   "source": "Aiden Markram Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "6c19c6e5": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Yashasvi Jaiswal",
+   "name": "YBK Jaiswal",
+   "source": "Yashasvi Jaiswal Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "6c6591ab": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "PP Ojha",
+   "source": "Pragyan Ojha Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "73ad96ed": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Deepak Hooda",
+   "name": "DJ Hooda",
+   "source": "Deepak Hooda Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "73c18486": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Kyle Mayers",
+   "name": "KR Mayers",
+   "source": "Kyle Mayers Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "752f7486": {
+   "bat": "left",
+   "bowl": "unknown",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Ishan Kishan",
+   "name": "Ishan Kishan",
+   "source": "Ishan Kishan Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "759ac88f": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Mohit Sharma",
+   "name": "MM Sharma",
+   "source": "Mohit Sharma Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "77255a9e": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Rahul Tripathi",
+   "name": "RA Tripathi",
+   "source": "Rahul Tripathi Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "77b1aa15": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Harshit Rana",
+   "name": "Harshit Rana",
+   "source": "Harshit Rana Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "7a8bd078": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Shreyas Gopal",
+   "name": "S Gopal",
+   "source": "Shreyas Gopal Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "7c3b3b78": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "VG Arora",
+   "source": "Vaibhav Arora Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "7c7d63a2": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "AJ Tye",
+   "source": "Andrew Tye Profile - Cricket Player Australia"
+  },
+  "7d92277a": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Mujeeb Ur Rahman",
+   "name": "Mujeeb Ur Rahman",
+   "source": "Mujeeb Ur Rahman Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "7dc35884": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "Shakib Al Hasan",
+   "source": "Shakib Al Hasan Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "808f425a": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "JP Faulkner",
+   "source": "James Faulkner Profile - Cricket Player Australia | Stats, ..."
+  },
+  "81c08fa3": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Umran Malik",
+   "name": "Umran Malik",
+   "source": "Umran Malik Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "81c36ee9": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Marco Jansen",
+   "name": "M Jansen",
+   "source": "Marco Jansen Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "84d9c311": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Ashutosh Sharma",
+   "name": "Ashutosh Sharma",
+   "source": "Ashutosh Sharma Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "85b3fab2": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Tristan Stubbs",
+   "name": "T Stubbs",
+   "source": "Tristan Stubbs Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "85e0cf10": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Prasidh Krishna",
+   "name": "M Prasidh Krishna",
+   "source": "Prasidh Krishna Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "85ec8e33": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Shreyas Iyer",
+   "name": "SS Iyer",
+   "source": "Shreyas Iyer Profile - Cricket Player India | Stats, Records ..."
+  },
+  "86dc8f2e": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "JH Kallis",
+   "source": "Jacques Kallis Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "871e9faf": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "Basil Thampi",
+   "source": "Basil Thampi Profile - Cricket Player India | Stats, Records, ..."
+  },
+  "89f64c19": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "LMP Simmons",
+   "source": "Lendl Simmons Profile - Cricket Player West Indies"
+  },
+  "8abdf100": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "CJ Anderson",
+   "source": "Corey Anderson Profile - Cricket Player U.S.A."
+  },
+  "8b5b6769": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "Harbhajan Singh",
+   "source": "Harbhajan Singh Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "8ba8195d": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "V Sehwag",
+   "source": "Virender Sehwag Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "8cf9814c": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Mohammed Shami",
+   "name": "Mohammed Shami",
+   "source": "Mohammed Shami Profile - Cricket Player India"
+  },
+  "8f6dd463": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Azmatullah Omarzai",
+   "name": "Azmatullah Omarzai",
+   "source": "Azmatullah Omarzai Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "8fd1a8f5": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "DW Steyn",
+   "source": "Dale Steyn Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "90de905a": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Krishnappa Gowtham",
+   "name": "K Gowtham",
+   "source": "Krishnappa Gowtham Profile - Cricket Player India"
+  },
+  "91a4a398": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "Z Khan",
+   "source": "Zaheer Khan Profile - Cricket Player India | Stats, Records ..."
+  },
+  "93b4fc78": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Manish Pandey",
+   "name": "MK Pandey",
+   "source": "Manish Pandey Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "944533a5": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "KK Nair",
+   "source": "Karun Nair Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "94d7f855": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "C de Grandhomme",
+   "source": "Colin de Grandhomme Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "989889ff": {
+   "bat": "right",
+   "bowl": "unknown",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Josh Inglis",
+   "name": "JP Inglis",
+   "source": "Josh Inglis Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "98ae73b1": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "PP Chawla",
+   "source": "Piyush Chawla Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "99b75528": {
+   "bat": "right",
+   "bowl": "unknown",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Jos Buttler",
+   "name": "JC Buttler",
+   "source": "Jos Buttler Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "99d63244": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "KM Jadhav",
+   "source": "Kedar Jadhav Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "9caf69a1": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Will Jacks",
+   "name": "WG Jacks",
+   "source": "Will Jacks Profile - Cricket Player England | Stats, Records, ..."
+  },
+  "9eb1455b": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "NT Ellis",
+   "source": "Nathan Ellis Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "a24be938": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Venkatesh Iyer",
+   "name": "VR Iyer",
+   "source": "Venkatesh Iyer Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "a2f46292": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Syed Khaleel Ahmed",
+   "name": "KK Ahmed",
+   "source": "Khaleel Ahmed Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "a4cc73aa": {
+   "bat": "right",
+   "bowl": "unknown",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Sanju Samson",
+   "name": "SV Samson",
+   "source": "Sanju Samson Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "a4e37e47": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Shivam Dube",
+   "name": "S Dube",
+   "source": "Shivam Dube Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "aad0c365": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Nitish Kumar Reddy",
+   "name": "Nithish Kumar Reddy",
+   "source": "Nitish Kumar Reddy Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "abb83e27": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "JM Bairstow",
+   "source": "Jonny Bairstow Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "acdc62f5": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Anrich Nortje",
+   "name": "A Nortje",
+   "source": "Anrich Nortje Profile - Cricket Player South Africa"
+  },
+  "acee4cc4": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "Imran Tahir",
+   "source": "Imran Tahir Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "b0482a1d": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Tilak Varma",
+   "name": "Tilak Varma",
+   "source": "Tilak Varma Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "b0946605": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "AS Joseph",
+   "source": "Alzarri Joseph Profile - Cricket Player West Indies"
+  },
+  "b17e2f24": {
+   "bat": "right",
+   "bowl": "unknown",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "KL Rahul",
+   "name": "KL Rahul",
+   "source": "KL Rahul Profile - Cricket Player India | Stats, Records, Video"
+  },
+  "b483905d": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Akash Singh",
+   "name": "Akash Singh",
+   "source": "Akash Maharaj Singh Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "b4b99816": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Shubman Gill",
+   "name": "Shubman Gill",
+   "source": "Shubman Gill Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "b5797845": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Priyansh Arya",
+   "name": "Priyansh Arya",
+   "source": "Priyansh Arya Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "b5da6c24": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "PA Patel",
+   "source": "Axar Patel Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "ba5e1069": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Rachin Ravindra",
+   "name": "R Ravindra",
+   "source": "Rachin Ravindra Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "bb345e0b": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "G Gambhir",
+   "source": "Gautam Gambhir Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "bb351c23": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Moeen Ali",
+   "name": "MM Ali",
+   "source": "Moeen Ali Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "bcf325d2": {
+   "bat": "right",
+   "bowl": "unknown",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Dhruv Jurel",
+   "name": "Dhruv Jurel",
+   "source": "Dhruv Jurel Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "bd17b45f": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "STR Binny",
+   "source": "Stuart Binny Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "c03f1114": {
+   "bat": "right",
+   "bowl": "unknown",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "KD Karthik",
+   "source": "Dinesh Karthik Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "c05edf8e": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Harpreet Brar",
+   "name": "Harpreet Brar",
+   "source": "Harpreet Brar Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "c0c411cb": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Naveen-ul-Haq",
+   "name": "Naveen-ul-Haq",
+   "source": "Naveen-ul-Haq Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "c16d4035": {
+   "bat": "right",
+   "bowl": "unknown",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Sam Billings",
+   "name": "SW Billings",
+   "source": "Sam Billings Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "c3a96caf": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Mandeep Singh",
+   "name": "Mandeep Singh",
+   "source": "Mandeep Singh Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "c4487b84": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "AB de Villiers",
+   "source": "AB de Villiers Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "c740ea83": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Rajat Patidar",
+   "name": "RM Patidar",
+   "source": "Rajat Patidar Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "c8f5f961": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Anuj Rawat",
+   "name": "Anuj Rawat",
+   "source": "Anuj Rawat Profile - ICC Ranking, Age, Career Info & Stats"
+  },
+  "cad00a4d": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Rilee Rossouw",
+   "name": "RR Rossouw",
+   "source": "Rilee Rossouw Profile - Cricket Player South Africa | Stats, Records ..."
+  },
+  "cc1e8c68": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Umesh Yadav",
+   "name": "UT Yadav",
+   "source": "Umesh Yadav Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "ce794613": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "T. Natarajan",
+   "name": "T Natarajan",
+   "source": "T Natarajan Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "ce820073": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Sandeep Sharma",
+   "name": "Sandeep Sharma",
+   "source": "Mohit Sharma Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "d014d5ac": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Sherfane Rutherford",
+   "name": "SE Rutherford",
+   "source": "Sherfane Rutherford Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "d027ba9f": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Kane Williamson",
+   "name": "KS Williamson",
+   "source": "Kane Williamson Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "d1a60072": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Nehal Wadhera",
+   "name": "N Wadhera",
+   "source": "Nehal Wadhera Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "d2a6c0e6": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "EJG Morgan",
+   "source": "Eoin Morgan Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "d5130a30": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Sai Sudharsan",
+   "name": "B Sai Sudharsan",
+   "source": "Sai Sudharsan Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "d67d5f00": {
+   "bat": "left",
+   "bowl": "unknown",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "David Miller",
+   "name": "DA Miller",
+   "source": "David Miller Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "d7017798": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Angkrish Raghuvanshi",
+   "name": "A Raghuvanshi",
+   "source": "Angkrish Raghuvanshi Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "d9273ee7": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Marcus Stoinis",
+   "name": "MP Stoinis",
+   "source": "Marcus Stoinis Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "db31895a": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "AS Rajpoot",
+   "source": "Ankit Rajpoot Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "db584dad": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "CH Gayle",
+   "source": "Chris Gayle Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "df064e1a": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Ravi Bishnoi",
+   "name": "Ravi Bishnoi",
+   "source": "Ravi Bishnoi Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "df5a6881": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Devon Conway",
+   "name": "DP Conway",
+   "source": "Devon Conway Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "e087956b": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "BA Stokes",
+   "source": "Ben Stokes Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "e4a0deae": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Mitchell Santner",
+   "name": "MJ Santner",
+   "source": "Mitchell Santner Profile - ICC Ranking, Age, Career Info & Stats"
+  },
+  "e4cdf230": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "AS Roy",
+   "source": "Anukul Roy Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "e62dd25d": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Kagiso Rabada",
+   "name": "K Rabada",
+   "source": "Kagiso Rabada Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "e66732f8": {
+   "bat": "left",
+   "bowl": "unknown",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Ryan Rickelton",
+   "name": "RD Rickelton",
+   "source": "Ryan Rickelton Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "e86754b2": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Tom Curran",
+   "name": "TK Curran",
+   "source": "Tom Curran Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "e938e1bc": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "P Kumar",
+   "source": "Praveen Kumar Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "e94915e6": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Sam Curran",
+   "name": "SM Curran",
+   "source": "Sam Curran Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "eaa76d3c": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Cameron Green",
+   "name": "C Green",
+   "source": "Cameron Green Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "eade4650": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Daryl Mitchell",
+   "name": "DJ Mitchell",
+   "source": "Daryl Mitchell Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "eef2536f": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Avesh Khan",
+   "name": "Avesh Khan",
+   "source": "Avesh Khan Profile - Cricket Player India | Stats, Records, ..."
+  },
+  "efc04be7": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Noor Ahmad",
+   "name": "Noor Ahmad",
+   "source": "Noor Ahmad Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "f088b960": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Sarfaraz Khan",
+   "name": "SN Khan",
+   "source": "Sarfaraz Khan Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "f19ccfad": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Washington Sundar",
+   "name": "Washington Sundar",
+   "source": "Washington Sundar Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "f1f99156": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Tim David",
+   "name": "TH David",
+   "source": "Tim David Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "f24c6701": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Maheesh Theekshana",
+   "name": "M Theekshana",
+   "source": "Maheesh Theekshana Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "f5180fe6": {
+   "bat": "left",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "MG Johnson",
+   "source": "Mitchell Johnson Profile - ICC Ranking, Age, Career Info & ..."
+  },
+  "f834dcfc": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "L Ngidi",
+   "source": "Lungi Ngidi Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "f89d3b11": {
+   "bat": "right",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Sameer Rizvi",
+   "name": "Sameer Rizvi",
+   "source": "Sameer Rizvi Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "f9e6e7ef": {
+   "bat": "left",
+   "bowl": "spin",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": "Shahbaz Ahmed",
+   "name": "Shahbaz Ahmed",
+   "source": "Shahbaz Ahmed Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "fb66ce1f": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "CH Morris",
+   "source": "Chris Morris Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  },
+  "fe11caa6": {
+   "bat": "right",
+   "bowl": "unknown",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "WP Saha",
+   "source": "Wriddhiman Saha Profile - Cricket Player India"
+  },
+  "ffe699c0": {
+   "bat": "right",
+   "bowl": "pace",
+   "checked_at": "2026-10-23T09:05:10.430223+00:00",
+   "full_name": null,
+   "name": "CJ Jordan",
+   "source": "Chris Jordan Profile - ICC Ranking, Age, Career Info & Stats | Cricbuzz.com"
+  }
+ },
+ "updated_at": "2026-10-23T09:12:30.645265+00:00"
+}

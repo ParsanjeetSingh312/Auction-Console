@@ -85,6 +85,21 @@ class Settings(BaseSettings):
     # request to fail without the gap growing past it.
     KEEP_ALIVE_INTERVAL: float = 300.0
 
+    # --- Career-stats refresh (scout/stats_refresh.py) ---
+    # Every pool player's IPL career figures are recomputed from Cricsheet's
+    # ball-by-ball archive on this cadence. Ninety days because the IPL is one
+    # season a year: quarterly catches the new season within weeks of its end
+    # without hammering a volunteer-run archive. Checked every few hours rather
+    # than slept for ninety days, so a restart never resets the clock.
+    STATS_REFRESH_ENABLED: bool = True
+    STATS_REFRESH_DAYS: float = 90.0
+    STATS_REFRESH_CHECK_HOURS: float = 6.0
+    # Profile lookups (ESPNcricinfo / Cricbuzz, via the search API) spent per
+    # run on opponents whose bowling type or batting hand is not yet known.
+    # Heaviest-volume opponents first: 450 covers about 98% of the deliveries
+    # behind the pool's matchup splits, and each lookup is one search credit.
+    STATS_STYLE_LOOKUPS_PER_RUN: int = 450
+
     # --- Embedding Model (runs locally on CPU) ---
     EMBEDDING_MODEL_NAME: str = "BAAI/bge-small-en-v1.5"
     
@@ -446,7 +461,11 @@ class Settings(BaseSettings):
     # that answer is respected -- nothing here fetches the site directly. The
     # search API has licensed access we do not, which is precisely the reason
     # that file gives for search being the primary path for prose.
-    SCOUT_PRIORITY_DOMAINS: str = "espncricinfo.com"
+    #
+    # Cricbuzz joined it on 2026-10-23 at the product owner's direction: the
+    # two are the references people check a figure against, so a live answer
+    # should be reading them before anything else.
+    SCOUT_PRIORITY_DOMAINS: str = "espncricinfo.com,cricbuzz.com"
 
     # The allowlist for EVERY search angle, priority or not. Comma-separated;
     # blank searches the open web.
@@ -460,10 +479,13 @@ class Settings(BaseSettings):
     # any model saw it: auction-software advertising, reddit threads and a
     # coaching institute's contact page, all of which ranked for cricket
     # phrasing on the open web and none of which can rank here.
+    #
+    # Narrowed on 2026-10-23 to sources known for accurate statistics -- the
+    # two references, the league's and the ICC's own sites, and Wisden.
+    # Aggregators and SEO cricket sites were dropped: they rank well for stat
+    # phrasing and are where outdated career totals get copied from.
     SCOUT_CRICKET_DOMAINS: str = (
-        "espncricinfo.com,cricbuzz.com,icc-cricket.com,wisden.com,"
-        "crictracker.com,sportskeeda.com,cricket.com,cricketworld.com,"
-        "thecricketer.com,cricketaddictor.com"
+        "espncricinfo.com,cricbuzz.com,iplt20.com,icc-cricket.com,wisden.com"
     )
 
     @property

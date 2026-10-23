@@ -74,3 +74,8 @@ id_ed25519
 *.p12
 *.pfx
 *.key
+
+# Per-deployment record of the last career-stats refresh (scout/stats_refresh.py).
+# Each environment writes its own; committing one would tell a fresh deploy it
+# had already refreshed.
+ipl_auction_rag_backend/data/stats_status.json
