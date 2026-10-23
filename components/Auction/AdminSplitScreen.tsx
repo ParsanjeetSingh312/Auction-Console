@@ -58,6 +58,7 @@ import TeamBudgetGrid from "../Console/TeamBudgetGrid";
 import TeamsView from "../Console/TeamsView";
 import RoomCodeBadge from "./RoomCodeBadge";
 import DrawIndicator from "./hybrid/DrawIndicator";
+import AiAuctioneerCard from "./ai/AiAuctioneerCard";
 import ModeSwitch from "./hybrid/ModeSwitch";
 import OfflineSalePanel from "./hybrid/OfflineSalePanel";
 
@@ -712,6 +713,8 @@ export default function AdminSplitScreen({
               <OfflineSalePanel socket={socket} />
             ) : (
               <>
+                {/* The AI auctioneer's podium, when it holds this room's chair. */}
+                {socket && <AiAuctioneerCard socket={socket} />}
                 {socket && <DrawIndicator socket={socket} />}
                 <BlockPanel
                   engine={engine}

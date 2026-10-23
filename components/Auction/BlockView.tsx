@@ -133,6 +133,11 @@ export interface BlockViewProps {
   offline?: boolean;
   /** What the empty block says while it waits, e.g. the next random draw. */
   waitingLabel?: string;
+  /**
+   * A line above the lot, stacked with it so it never covers the block: the
+   * AI auctioneer's latest call.
+   */
+  banner?: React.ReactNode;
 }
 
 export default function BlockView({
@@ -162,6 +167,7 @@ export default function BlockView({
   folded,
   offline = false,
   waitingLabel,
+  banner,
 }: BlockViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const bidValueRef = useRef<HTMLSpanElement>(null);
@@ -421,15 +427,19 @@ export default function BlockView({
         leadingTeam={leadingTeam}
       />
 
-      <div className="relative z-10 flex items-center justify-between px-6 pt-5">
-        <div>{corner}</div>
-        <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-neutral-600">
-          bidding as <span className="text-neutral-300">{myTeam}</span>
+      <div className="relative z-10 px-6 pt-5">
+        <div className="flex items-center justify-between">
+          <div>{corner}</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-neutral-600">
+            bidding as <span className="text-neutral-300">{myTeam}</span>
+          </div>
         </div>
       </div>
 
       {/* ---- Focus tunnel: the lot, the price, the decision ---- */}
       <main className="relative flex flex-col items-center justify-center px-6">
+        {/* Stacked with the lot, so it can push but never cover it. */}
+        {banner && <div className="mb-5 w-full">{banner}</div>}
         {lot ? (
           <>
             <div className="lot-card flex flex-col items-center">

@@ -18,8 +18,8 @@ import { Bot, Hand, Radio, UserRound } from "lucide-react";
 
 import type { AuctionSocket, AuctioneerKind, RoomMode } from "../../../hooks/useAuctionSocket";
 
-/** Until the AI auctioneer is built, its option is shown but not offered. */
-export const AI_AUCTIONEER_READY = false;
+/** The AI auctioneer is offered for online rooms. */
+export const AI_AUCTIONEER_READY = true;
 
 export default function ModeSwitch({ socket, compact = false }: { socket: AuctionSocket; compact?: boolean }) {
   const state = socket.state;

@@ -28,6 +28,7 @@ import { countryLabel, headlineFor } from "../../console/format";
 import type { AuctionEngine } from "../../console/useAuctionEngine";
 import type { AuctionSocket } from "../../hooks/useAuctionSocket";
 import BlockView from "./BlockView";
+import AiCallStrip from "./ai/AiCallStrip";
 import type { Lot, TickerEntry } from "./blockTypes";
 
 export interface SocketBlockProps {
@@ -164,6 +165,8 @@ export default function SocketBlock({ socket, engine, onLeave }: SocketBlockProp
       folded={room?.lot?.folded_codes ?? []}
       // Offline: placards in the room, so no bid controls here at all.
       offline={socket.offline}
+      // The AI auctioneer's latest call, under the header and over nothing.
+      banner={<AiCallStrip socket={socket} />}
       // Online rooms draw every player at random between lots.
       waitingLabel={
         room?.draw === "random" && room.phase === "live"

@@ -352,6 +352,13 @@ class Settings(BaseSettings):
     # And before the first lot, once the auction starts.
     FIRST_DRAW_SECONDS: float = 2.5
 
+    # --- The AI auctioneer (auction/ai_auctioneer.py) ---
+    # Seconds any one source (a model, SCOUT's research, a web search) may take
+    # before the auctioneer goes without it. Its calls never hold up the room.
+    AI_AUCTIONEER_TIMEOUT: float = 8.0
+    # Whether it reads recent news through SCOUT's web search (TAVILY_API_KEY).
+    AI_AUCTIONEER_WEB_SEARCH: bool = True
+
     # --- Features by tier ---
     # AUCTEAM's SCOUT team report is for Delegate accounts (and admins):
     # Auctioneer and Free accounts are refused it. False opens it to everyone,

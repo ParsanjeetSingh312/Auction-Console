@@ -48,6 +48,8 @@ from auction.report_pdf import render_team_pdf
 from auction.room import AuctionRoom, RoomError
 from auction.rooms import MAIN, RoomEntry, RoomsFull, normalise_code, normalise_kind, registry
 from auction.schemas import ClientMessage
+# The AI auctioneer listens to every room through a room event hook.
+from auction import ai_auctioneer  # noqa: F401
 from db import get_player_db
 
 logger = logging.getLogger("auction.ws")
@@ -514,6 +516,9 @@ async def _dispatch(
 
     elif kind == "record_sale":
         await room.record_sale(client_id, message.team_id, message.price)
+
+    elif kind == "ai_control":
+        await room.ai_control(client_id, message.action)
 
     elif kind == "acknowledge_rules":
         await room.acknowledge_rules(client_id, message.rules_version)

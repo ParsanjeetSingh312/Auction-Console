@@ -148,6 +148,24 @@ export interface LotClock {
 export type RoomMode = "online" | "offline";
 export type AuctioneerKind = "manual" | "ai";
 
+/** One call from the auctioneer's podium (room.auctioneer_feed). */
+export interface AuctioneerCall {
+  id: number;
+  kind: "announce" | "sold" | "unsold" | "summary";
+  text: string;
+  at: number;
+  /** "ai" when the model said it, "template" when the room fell back. */
+  source?: "ai" | "template";
+  player?: string;
+  player_id?: number;
+  team_code?: string;
+  price?: number;
+  /** The room's ruling on a sale, on the AUCTONIQ report's scale. */
+  verdict?: "steal" | "good bid" | "fair price" | "paid over" | null;
+  /** What it drew on: player data, the AUCTONIQ value, SCOUT. */
+  sources?: string[];
+}
+
 /** A sale, as the SOLD banner announces it (room.last_sale). */
 export interface LastSale {
   seq: number;
@@ -245,6 +263,10 @@ export interface RoomState {
   draw?: "random" | "manual";
   /** Unix time the next random draw is due, between lots. */
   next_draw_at?: number | null;
+  /** The auctioneer's calls (the AI auctioneer's), newest last. */
+  auctioneer_feed?: AuctioneerCall[];
+  /** The AI auctioneer: whether it holds this room's chair, and what it is doing. */
+  ai?: { active: boolean; status: "presiding" | "thinking" | "idle"; paused: boolean };
   connected: number;
   /**
    * Whether the auctioneer's chair is occupied. Optional so an older frame that
@@ -366,6 +388,8 @@ export interface AuctionSocket {
   recordSale: (teamId: number, price: number) => void;
   /** The room is offline: no bid controls, no clock. */
   offline: boolean;
+  /** The chair of an AI room: pause or resume the AI auctioneer, or take over. */
+  aiControl: (action: "pause" | "resume" | "take_over") => void;
 
   /** Convenience readings derived from `state` and `seat`. */
   myTeam: TeamState | null;
@@ -656,6 +680,7 @@ export function useAuctionSocket(): AuctionSocket {
         send({ type: "set_mode", mode, auctioneer }),
       recordSale: (teamId: number, price: number) =>
         send({ type: "record_sale", team_id: teamId, price }),
+      aiControl: (action: "pause" | "resume" | "take_over") => send({ type: "ai_control", action }),
     }),
     [send],
   );

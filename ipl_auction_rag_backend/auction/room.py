@@ -71,6 +71,16 @@ from auction.schemas import supported_message_types
 logger = logging.getLogger("auction.room")
 
 
+#: Called as hook(room, kind, data) on every room event: "lot_open", "sold",
+#: "unsold", "finished". Synchronous and lock-held, so a hook only schedules
+#: work (auction/ai_auctioneer.py registers one). A failing hook is logged and
+#: never stops the room.
+EVENT_HOOKS: list[Callable[["AuctionRoom", str, dict[str, Any]], None]] = []
+
+#: How many auctioneer calls the room keeps for late joiners.
+FEED_LIMIT = 40
+
+
 def _current_task() -> "asyncio.Task[Any] | None":
     """`asyncio.current_task()` outside a running loop, without the exception."""
     try:
@@ -318,6 +328,13 @@ class AuctionRoom:
     last_sale: dict[str, Any] | None = None
     # Online: when the next random draw happens (Unix time), between lots.
     next_draw_at: float | None = None
+    # What the auctioneer has said: the AI auctioneer's calls, newest last.
+    auctioneer_feed: list[dict[str, Any]] = field(default_factory=list)
+    _feed_seq: int = 0
+    # The AI auctioneer: "presiding", "thinking" over a call, or "idle"; and
+    # whether the human in the chair has paused it.
+    ai_status: str = "idle"
+    ai_paused: bool = False
 
     seats: dict[str, Seat] = field(default_factory=dict)
     undo_stack: list[Snapshot] = field(default_factory=list)
@@ -963,6 +980,7 @@ class AuctionRoom:
             "price": lot.bid,
             "base": player.base,
         }
+        self._emit("sold", dict(self.last_sale))
         self._disarm()
         self.lot = None
         self.version += 1
@@ -981,6 +999,7 @@ class AuctionRoom:
             self._checkpoint()
         self.records[player.id] = Record(status="unsold")
         self._append("unsold", f"{player.name} unsold" + (f" — {why}" if why else ""))
+        self._emit("unsold", {"player_id": player.id, "player": player.name, "base": player.base, "why": why})
         self._disarm()
         self.lot = None
         self.version += 1
@@ -1097,6 +1116,7 @@ class AuctionRoom:
         self.lot = Lot(player_id=player.id, bid=player.base, bidder_id=None, version=0)
         record.status = "available"
         self._append("note", f"{player.name} on the block{how}", player.base)
+        self._emit("lot_open", {"player_id": player.id, "player": player.name, "base": player.base})
         # The clock starts the instant the player appears, not when the
         # auctioneer gets round to asking for bids. That is the point of
         # the rule: an unwanted lot costs the room seven seconds, not
@@ -1183,6 +1203,7 @@ class AuctionRoom:
             self.lot = None
             self._note("Auction closed")
             self.version += 1
+            self._emit("finished", {})
 
     async def reset(self, client_id: str) -> None:
         """
@@ -1216,6 +1237,9 @@ class AuctionRoom:
             self._refill_timeouts()
             self._cancel_draw()
             self.last_sale = None
+            self.auctioneer_feed = []
+            self.ai_paused = False
+            self.ai_status = "idle"
             self.phase = "lobby"
             self.countdown_ends_at = None
             self._note("Room reset — pool, purses and lifelines restored")
@@ -1361,10 +1385,61 @@ class AuctionRoom:
                 self.phase = "finished"
                 self._note("Auction closed: every player has been drawn")
                 self.version += 1
+                self._emit("finished", {})
             else:
                 self._checkpoint()
                 self._open_lot(random.choice(pool), " (drawn at random)")
         await self._announce()
+
+    # ---------------------------------------------------------------- #
+    # Events, the auctioneer's feed, and the AI auctioneer's controls
+    # ---------------------------------------------------------------- #
+
+    def _emit(self, kind: str, data: dict[str, Any]) -> None:
+        for hook in EVENT_HOOKS:
+            try:
+                hook(self, kind, data)
+            except Exception:  # noqa: BLE001 - a hook must never stop the room
+                logger.exception("room event hook failed on %s", kind)
+
+    @property
+    def ai_active(self) -> bool:
+        """An online room whose chair is the AI auctioneer's."""
+        return not self.offline and self.rules.get("auctioneer") == "ai"
+
+    def post_feed(self, kind: str, text: str, **extra: Any) -> dict[str, Any]:
+        """Add one auctioneer call to the feed. Broadcast by the caller."""
+        self._feed_seq += 1
+        entry = {"id": self._feed_seq, "kind": kind, "text": text, "at": time.time(), **extra}
+        self.auctioneer_feed.append(entry)
+        del self.auctioneer_feed[:-FEED_LIMIT]
+        self.version += 1
+        return entry
+
+    async def ai_control(self, client_id: str, action: str) -> None:
+        """
+        The human in the chair steering the AI auctioneer: pause its calls,
+        resume them, or take the room over for good (the room becomes a
+        manual one; the AI does not come back mid-auction).
+        """
+        self._require_auctioneer(client_id, "steer the AI auctioneer")
+        async with self._lock:
+            if not self.ai_active:
+                raise RoomError("This room is not run by the AI auctioneer.", about="ai")
+            if action == "pause":
+                self.ai_paused = True
+                self._note("AI auctioneer paused")
+            elif action == "resume":
+                self.ai_paused = False
+                self._note("AI auctioneer resumed")
+            elif action == "take_over":
+                self.rules["auctioneer"] = "manual"
+                self.ai_paused = False
+                self.ai_status = "idle"
+                self._note("The auctioneer took over from the AI")
+            else:
+                raise RoomError("Pause, resume or take over.", about="ai")
+            self.version += 1
 
     def _require_online(self, action: str) -> None:
         if self.offline:
@@ -1841,6 +1916,14 @@ class AuctionRoom:
             # the auctioneer picks (offline). And when the next draw is due.
             "draw": "random" if self.auto_draw else "manual",
             "next_draw_at": self.next_draw_at,
+            # The auctioneer's calls (the AI auctioneer's, online), newest last,
+            # and what the AI is doing.
+            "auctioneer_feed": self.auctioneer_feed[-12:],
+            "ai": {
+                "active": self.ai_active,
+                "status": self.ai_status if self.ai_active else "idle",
+                "paused": self.ai_paused,
+            },
             "connected": len(self.seats),
             # Whether the chair is occupied, so a seat picker can show it as taken
             # -- the same way a franchise tile greys out -- instead of offering a

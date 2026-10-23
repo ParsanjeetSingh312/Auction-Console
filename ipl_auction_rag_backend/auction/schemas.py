@@ -154,6 +154,17 @@ class RecordSale(BaseModel):
     price: int = Field(ge=1, le=1_000_000)
 
 
+class AiControl(BaseModel):
+    """
+    The human in the chair of an AI-run room: pause the AI auctioneer's
+    calls, resume them, or take the room over (it becomes a manual room).
+    """
+
+    model_config = Strict
+    type: Literal["ai_control"]
+    action: Literal["pause", "resume", "take_over"]
+
+
 class Withdraw(BaseModel):
     """
     Franchise: step out of the contest for the lot on the block.
@@ -295,6 +306,7 @@ ClientMessage = Annotated[
     | SetRules
     | SetMode
     | RecordSale
+    | AiControl
     | AcknowledgeRules
     | Ping,
     Field(discriminator="type"),
