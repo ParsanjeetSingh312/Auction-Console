@@ -166,6 +166,11 @@ def constraints_to_sql(c: Constraints) -> tuple[str, list[Any]]:
 
         params.append(value)
 
+    if c.player_ids:
+        placeholders = ",".join("?" * len(c.player_ids))
+        where.append(f"id IN ({placeholders})")
+        params.extend(c.player_ids)
+
     if c.exclude_player_ids:
         placeholders = ",".join("?" * len(c.exclude_player_ids))
         where.append(f"id NOT IN ({placeholders})")

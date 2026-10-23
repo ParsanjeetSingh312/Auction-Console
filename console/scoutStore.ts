@@ -53,9 +53,15 @@ export interface ScoutUiState {
    * change.
    */
   draft: string;
+  /**
+   * A question to send as soon as the drawer can, set by `askScout`. The
+   * nonce makes asking the same question twice a second request rather than
+   * a no-op; the drawer remembers the last nonce it sent.
+   */
+  ask: { text: string; nonce: number } | null;
 }
 
-const INITIAL: ScoutUiState = { open: false, origin: null, draft: "" };
+const INITIAL: ScoutUiState = { open: false, origin: null, draft: "", ask: null };
 
 let state: ScoutUiState = INITIAL;
 const listeners = new Set<() => void>();
@@ -77,7 +83,8 @@ function set(patch: Partial<ScoutUiState>): void {
   if (
     next.open === state.open &&
     next.origin === state.origin &&
-    next.draft === state.draft
+    next.draft === state.draft &&
+    next.ask === state.ask
   ) {
     return;
   }
@@ -99,6 +106,19 @@ function subscribe(listener: () => void): () => void {
 
 export function openScout(origin: ScoutOrigin = "launcher"): void {
   set({ open: true, origin });
+}
+
+let askNonce = 0;
+
+/**
+ * Open the drawer and send `question` straight away, as though it had been
+ * typed and submitted. Used by surfaces that know exactly what to ask -- a
+ * player card's "Ask Scout" -- so the user lands on an answer being worked
+ * out rather than on an empty composer.
+ */
+export function askScout(question: string, origin: ScoutOrigin = "pool"): void {
+  askNonce += 1;
+  set({ open: true, origin, draft: question, ask: { text: question, nonce: askNonce } });
 }
 
 export function closeScout(): void {
@@ -136,6 +156,11 @@ export function useScoutUi(): ScoutUiState {
 
 export function useScoutOpen(): boolean {
   return useSyncExternalStore(subscribe, () => state.open, () => state.open);
+}
+
+/** The queued question from `askScout`, or null. */
+export function useScoutAsk(): ScoutUiState["ask"] {
+  return useSyncExternalStore(subscribe, () => state.ask, () => state.ask);
 }
 
 export function useScoutDraft(): string {

@@ -85,6 +85,12 @@ export interface ScoutOrbProps {
   autoReturnMs?: number;
   /** Escape abandoned the turn (mid-thought, or from the answer card). */
   onCancel?: () => void;
+  /**
+   * A question to send without the user typing it (scoutStore.askScout).
+   * Sent once per nonce, as soon as the surface is active and at rest: a
+   * previous answer is cleared first, and a run in progress is waited out.
+   */
+  autoSubmit?: { text: string; nonce: number } | null;
 }
 
 /* ─────────────────────────── geometry ─────────────────────────── */
@@ -1132,6 +1138,32 @@ export default function ScoutOrb(props: ScoutOrbProps) {
     }, props.autoReturnMs);
     return () => window.clearTimeout(id);
   }, [phase, props.autoReturnMs]);
+
+  /* A question asked from elsewhere: send it once the surface is open and idle. */
+  const sentAsk = useRef(0);
+  useEffect(() => {
+    const ask = props.autoSubmit;
+    const rt = rtRef.current;
+    if (!ask || ask.nonce === sentAsk.current || !props.active || !rt) return;
+    if (phase === "answered") {
+      // Clear the last answer first; this effect runs again once it is idle.
+      propsRef.current.onReset?.();
+      rt.reset();
+      return;
+    }
+    if (phase !== "idle" || rt.busy()) return;
+    // A beat for the drawer to finish sliding in, so the launch is seen.
+    const id = window.setTimeout(() => {
+      const live = rtRef.current;
+      if (!live || live.busy() || phaseRef.current !== "idle") return;
+      sentAsk.current = ask.nonce;
+      lastTextRef.current = ask.text;
+      setValue(ask.text);
+      live.start(ask.text, makeCfg());
+    }, 450);
+    return () => window.clearTimeout(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.autoSubmit, props.active, phase]);
 
   /* Opening the surface puts the cursor in the pill, as the old composer did. */
   useEffect(() => {

@@ -43,6 +43,7 @@ import {
   clearScoutDraft,
   closeScout,
   setScoutDraft,
+  useScoutAsk,
   useScoutDraft,
   useScoutOpen,
 } from "../../console/scoutStore";
@@ -92,6 +93,8 @@ export default function ScoutDrawer() {
 
   const open = useScoutOpen();
   const draft = useScoutDraft();
+  // A question asked from another surface (a player card's "Ask Scout").
+  const queuedAsk = useScoutAsk();
 
   const orchestrator = useScoutOrchestrator();
   const { question, steps, notes, result, error, isRunning, advise, reset } = orchestrator;
@@ -351,6 +354,7 @@ export default function ScoutDrawer() {
               onReset={onReset}
               onCancel={onCancel}
               onPhaseChange={onPhaseChange}
+              autoSubmit={queuedAsk}
             />
           </div>
         </div>

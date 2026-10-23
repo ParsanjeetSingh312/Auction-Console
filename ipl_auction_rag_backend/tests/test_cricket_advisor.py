@@ -390,3 +390,43 @@ class TestLiveResearchAndTheLedger:
         rec = self.run(self.LEDGER_EMPTY, None)
         assert self.LEDGER_EMPTY in rec.notes
         assert route_from_advisor({"recommendation": rec, "refresh_cycles": 0}) == "refresh"
+
+
+class TestProfileQuestions:
+    """
+    "Give me the statistics of <player>" is about that player, not a search.
+
+    The Data Interface's "Ask Scout" describes the player in the question --
+    role, nationality, cap status, base price -- and read as filters that
+    returned five similar batters with the asked-about player third.
+    """
+
+    POOL = [(4, "Virat Kohli"), (2, "Shubman Gill"), (27, "Jasprit Bumrah"),
+            (30, "Rohit Sharma"), (31, "Ishant Sharma")]
+
+    def _parse(self, monkeypatch, question):
+        from scout.agents import cricket_advisor
+
+        monkeypatch.setattr(cricket_advisor, "_pool_names", lambda: self.POOL)
+        return cricket_advisor.parse_constraints(question)
+
+    def test_the_named_player_is_the_only_filter(self, monkeypatch):
+        c, found = self._parse(
+            monkeypatch,
+            "Give me the statistics of Virat Kohli (batter, Indian, capped). Include his "
+            "strike rate against pace and against spin, and his value against a base price of 2 Cr.",
+        )
+        assert c.player_ids == [4] and c.limit == 1
+        assert c.role is None and c.cap_status is None and c.overseas is None
+        assert c.min_sr_vs_fast is None and c.max_price_lakh is None
+        assert found == ["profile of Virat Kohli"]
+
+    def test_a_unique_surname_is_enough_and_a_shared_one_is_not(self, monkeypatch):
+        c, _ = self._parse(monkeypatch, "stats for Bumrah")
+        assert c.player_ids == [27]
+        c, _ = self._parse(monkeypatch, "stats for Sharma")
+        assert c.player_ids is None, "two Sharmas: not a profile, parsed as a search"
+
+    def test_a_search_is_still_a_search(self, monkeypatch):
+        c, _ = self._parse(monkeypatch, "Batter with strike rate above 180 against fast bowlers")
+        assert c.player_ids is None and c.role == "Batter" and c.min_sr_vs_fast == 180

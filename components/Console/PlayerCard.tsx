@@ -24,6 +24,7 @@ import { drawerVariants, scrimVariants } from "../../console/motion";
 import type { AuctionEngine } from "../../console/useAuctionEngine";
 import type { ConsolePlayer, Rules } from "../../console/types";
 import PlayerHero from "./PlayerHero";
+import { playerStatsPrompt } from "../../console/scoutPrompts";
 
 /* ------------------------------------------------------------------ *
  * Shell
@@ -216,7 +217,7 @@ export function PlayerCard({
           type="button"
           className="pbtn"
           onClick={() => {
-            onAskScout(`How does ${player.name} compare with similar players in the pool?`, player);
+            onAskScout(playerStatsPrompt(player), player);
             onClose();
           }}
         >

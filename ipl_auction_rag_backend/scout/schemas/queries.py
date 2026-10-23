@@ -143,6 +143,12 @@ class Constraints(BaseModel):
     #: the fastest way for an advisor to lose a user's trust.
     exclude_player_ids: list[int] = Field(default_factory=list, max_length=300)
 
+    #: A profile question -- "give me the statistics of Virat Kohli" -- names
+    #: the players it is about, and those players are the whole answer. Set,
+    #: every other filter is left unset: describing Kohli as "a capped Indian
+    #: batter at a 2 Cr base" is context, not a search for others like him.
+    player_ids: list[int] | None = Field(default=None, max_length=20)
+
     #: How many names to come back with. Small on purpose -- a shortlist a
     #: bidder can read between two bids, not a search result page.
     limit: int = Field(default=5, ge=1, le=20)

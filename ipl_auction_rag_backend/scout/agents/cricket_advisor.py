@@ -88,6 +88,63 @@ _OPPOSITION = re.compile(
 _UNSUPPORTED_PHASES = re.compile(r"\b(death overs?|at the death|powerplay|middle overs|slog overs)\b")
 
 
+#: "statistics of", "stats for", "profile of", "career record of", "tell me
+#: about": a question about particular players rather than a search.
+_PROFILE = re.compile(
+    r"\b(statistics|stats|profile|career record|record|numbers|figures)\s+(of|for|on)\b"
+    r"|\btell me (all )?about\b"
+)
+
+
+def _pool_names() -> list[tuple[int, str]]:
+    from db import get_player_db
+
+    rows = get_player_db().execute_query("SELECT id, player_name FROM players")
+    return [(int(r["id"]), str(r["player_name"])) for r in rows]
+
+
+def profile_constraints(question: str) -> tuple[Constraints, list[str]] | None:
+    """
+    The players a profile question names, as the only filter -- or None.
+
+    A player card's "Ask Scout" asks "Give me the statistics of Virat Kohli
+    (batter, Indian, capped) ... against a base price of 2 Cr". Read as a
+    search, that became role=Batter, capped, Indian, base price 2 Cr and came
+    back with five similar batters, Kohli third. A profile question is about
+    the named player, so the name is the filter and the description is not.
+
+    Full names first; a surname alone counts only when one pool player has it.
+    """
+    text = question.lower()
+    if not _PROFILE.search(text):
+        return None
+    try:
+        pool = _pool_names()
+    except Exception:  # noqa: BLE001 - no pool, no profile; parse as a search
+        return None
+
+    found: list[tuple[int, str]] = []
+    for pid, name in sorted(pool, key=lambda p: -len(p[1])):
+        if re.search(rf"\b{re.escape(name.lower())}\b", text) and pid not in {f[0] for f in found}:
+            found.append((pid, name))
+    if not found:
+        surnames: dict[str, list[tuple[int, str]]] = {}
+        for pid, name in pool:
+            parts = name.split()
+            if len(parts) > 1 and len(parts[-1]) >= 4:
+                surnames.setdefault(parts[-1].lower(), []).append((pid, name))
+        for surname, owners in surnames.items():
+            if len(owners) == 1 and re.search(rf"\b{re.escape(surname)}\b", text):
+                found.append(owners[0])
+    if not found:
+        return None
+    found = found[:5]
+    return (
+        Constraints(player_ids=[pid for pid, _ in found], limit=len(found)),
+        [f"profile of {name}" for _, name in found],
+    )
+
+
 def parse_constraints(question: str) -> tuple[Constraints, list[str]]:
     """
     A question turned into filters, by rule.
@@ -110,6 +167,10 @@ def parse_constraints(question: str) -> tuple[Constraints, list[str]]:
     question -- the graph's supervisor clears the stored copy every turn, and
     this function holds no state of its own.
     """
+    profile = profile_constraints(question)
+    if profile is not None:
+        return profile
+
     text = question.lower()
     found: list[str] = []
     fields: dict[str, Any] = {}
@@ -371,7 +432,11 @@ def _deterministic(
     for ref in retrieval.refs:
         if ref.player_id is None or len(candidates) >= query.constraints.limit:
             continue
-        facts = [f.strip() for f in ref.text.split(",") if re.search(r"\d", f)][:4]
+        # A profile shows the whole record (up to the schema's eight); a
+        # shortlist keeps four figures a player so the cards stay comparable.
+        facts = [f.strip() for f in ref.text.split(",") if re.search(r"\d", f)][
+            : 8 if query.constraints.player_ids else 4
+        ]
         role_match = re.search(r"(All-Rounder|Wicket Keeper|Batter|Bowler)", ref.text)
         try:
             candidates.append(Candidate(
@@ -388,12 +453,20 @@ def _deterministic(
         except Exception as exc:  # noqa: BLE001 - a bound rejected it
             logger.debug("skipped deterministic candidate %s: %s", ref.player_name, exc)
 
-    return AdvisorRecommendation(
-        answer=(
+    if query.constraints.player_ids and candidates:
+        answer = (
+            f"{', '.join(c.player_name for c in candidates)}: the IPL career record from "
+            "the pool, below. No language model was available, so there is no written "
+            "assessment, form summary or bid guidance this time."
+        )
+    else:
+        answer = (
             f"{len(candidates)} player(s) match your question. No language model was "
             "available, so these are ranked by the filters and by similarity, with no "
             "written assessment and no bid guidance."
-        ),
+        )
+    return AdvisorRecommendation(
+        answer=answer,
         candidates=candidates,
         engine_used="local_analyst",
         notes=notes[:12],
@@ -605,7 +678,19 @@ async def advise(
         "as you would without it. NEVER return an empty shortlist because the "
         "research did not match.\n\n"
         if research_context
-        else ""
+        # Without live research, say so to the model in as many words. Asked
+        # for "his form in the latest season and any injury news" with nothing
+        # but pool rows in front of it, the model wrote that Kohli "finished
+        # among the top five scorers" with "no injury reports" -- invented, and
+        # in the voice of a fact. The pool holds career records, nothing more.
+        else (
+            "NO LIVE RESEARCH is available for this question (web search did not "
+            "return). You know ONLY the career figures in CANDIDATES. Do NOT "
+            "describe recent or current-season form, individual innings, rankings "
+            "on a season's leaderboard, injuries, fitness or availability -- not "
+            "even to say there are no injury reports. Where the question asks for "
+            "those, say plainly that live research was unavailable for this answer.\n\n"
+        )
     )
 
     prompt = (

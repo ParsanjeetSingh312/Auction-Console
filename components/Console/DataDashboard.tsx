@@ -49,6 +49,7 @@ import TeamsView from "./TeamsView";
 import { PlayerCard } from "./PlayerCard";
 
 import "../../console/console.css";
+import { askScout as askScoutNow } from "../../console/scoutStore";
 
 /** No "block" — that is the whole point of this route. */
 type View = "pool" | "teams" | "results" | "scout";
@@ -185,13 +186,15 @@ export default function DataDashboard() {
     setQuery("");
   }, []);
 
-  const askScout = useCallback(
-    (question: string, context: ConsolePlayer | null = null) => {
-      setView("scout");
-      scout.ask(question, context);
-    },
-    [scout],
-  );
+  /**
+   * A player card's "Ask Scout": the SCOUT drawer -- the multi-agent pipeline
+   * with live research -- rather than this page's older built-in Scout tab.
+   * The card closes itself; the drawer opens over the page and sends the
+   * question straight away.
+   */
+  const askScoutDrawer = useCallback((question: string) => {
+    askScoutNow(question, "pool");
+  }, []);
 
   const searchScout = useCallback(
     (text: string) => {
@@ -365,7 +368,7 @@ export default function DataDashboard() {
             engine={engine}
             onClose={() => setCardPlayer(null)}
             onNotice={notify}
-            onAskScout={askScout}
+            onAskScout={askScoutDrawer}
           />
         )}
       </AnimatePresence>
