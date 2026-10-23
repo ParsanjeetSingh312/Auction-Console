@@ -42,6 +42,8 @@ import { useViewerRole } from "../../hooks/useViewerRole";
 import type { ViewerRole } from "../../hooks/useViewerRole";
 
 import ReloadPoolButton from "../ReloadPoolButton";
+import NumberRoll from "../UI/NumberRoll";
+import StaggerIn from "../UI/StaggerIn";
 import TimerDisplay from "./TimerDisplay";
 import BlockPanel from "../Console/BlockPanel";
 import CommandSearch from "../Console/CommandSearch";
@@ -50,6 +52,7 @@ import CommandSearch from "../Console/CommandSearch";
 import AuctionIntelligence from "../Console/AuctionIntelligence";
 import BiddingHistoryGrid from "../Console/BiddingHistoryGrid";
 import TeamLeaderboard from "../Console/TeamLeaderboard";
+import LiveLeaderboard from "../Console/LiveLeaderboard";
 import PoolTable from "../Console/PoolTable";
 import { SetupDialog } from "../Console/PlayerCard";
 import ResultsView from "../Console/ResultsView";
@@ -513,7 +516,8 @@ export default function AdminSplitScreen({
             </motion.button>
           )}
           <span className="hidden font-ui text-[10px] uppercase tracking-[0.1em] text-slate-faint sm:inline">
-            {engine.counts.sold} sold · {money(engine.counts.spent)} spent
+            <NumberRoll value={engine.counts.sold} /> sold ·{" "}
+            <NumberRoll value={engine.counts.spent} format={(n) => money(Math.round(n))} /> spent
           </span>
 
           {socket && (
@@ -580,12 +584,20 @@ export default function AdminSplitScreen({
                 role="tab"
                 aria-selected={tool === key}
                 onClick={() => setTool(key)}
-                className={`rounded-md px-3 py-1.5 font-ui text-[10.5px] font-semibold uppercase tracking-[0.12em] transition-colors ${
+                className={`relative z-0 rounded-md px-3 py-1.5 font-ui text-[10.5px] font-semibold uppercase tracking-[0.12em] transition-colors ${
                   tool === key
-                    ? "bg-surface-sunken text-slate-ink"
+                    ? "text-slate-ink"
                     : "text-slate-muted hover:text-slate-body"
                 }`}
               >
+                {/* The selection slides between tabs rather than jumping. */}
+                {tool === key && (
+                  <motion.span
+                    layoutId="tool-tab-pill"
+                    className="absolute inset-0 -z-10 rounded-md bg-surface-sunken"
+                    transition={{ type: "spring", stiffness: 500, damping: 38 }}
+                  />
+                )}
                 {TOOL_LABEL[key]}
               </motion.button>
             ))}
@@ -615,9 +627,19 @@ export default function AdminSplitScreen({
                     half beside the pool and the scout — not squeezed under the
                     thing it is analysing.
                   */
-                  <div className="space-y-3 p-3">
+                  <StaggerIn className="space-y-3 p-3">
                     <div className="overflow-hidden rounded-xl border border-line bg-surface-card shadow-soft">
-                      <TeamLeaderboard teams={engine.summaries} rules={engine.rules} />
+                      {/* The room's own live standings; the client-side board
+                          for a server that predates them. */}
+                      {socket?.state?.standings ? (
+                        <LiveLeaderboard
+                          standings={socket.state.standings}
+                          maxSquad={socket.state.rules.max_squad}
+                          maxOverseas={socket.state.rules.max_overseas}
+                        />
+                      ) : (
+                        <TeamLeaderboard teams={engine.summaries} rules={engine.rules} />
+                      )}
                     </div>
                     <div className="overflow-hidden rounded-xl border border-line bg-surface-card shadow-soft">
                       <AuctionIntelligence teams={engine.summaries} rules={engine.rules} />
@@ -625,7 +647,7 @@ export default function AdminSplitScreen({
                     <div className="overflow-hidden rounded-xl border border-line bg-surface-card shadow-soft">
                       <BiddingHistoryGrid log={engine.log} />
                     </div>
-                  </div>
+                  </StaggerIn>
                 )}
                 {tool === "pool" && (
                   <PoolTable

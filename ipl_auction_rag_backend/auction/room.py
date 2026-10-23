@@ -67,6 +67,7 @@ from auction.rules import (
     validate_setup,
 )
 from auction.schemas import supported_message_types
+from auction import leaderboard
 
 logger = logging.getLogger("auction.room")
 
@@ -202,6 +203,9 @@ class Record:
     status: Literal["available", "sold", "unsold"] = "available"
     team_id: int | None = None
     price: int | None = None
+    # The log sequence of the sale, so standings can replay the order of
+    # buys (auction/leaderboard.py). Restored by undo with the record.
+    seq: int | None = None
 
 
 # What a running countdown means, and the switch `_fire` turns on.
@@ -970,6 +974,7 @@ class AuctionRoom:
             f"{player.name} → {team['code']}" + (f" {how}" if how else ""),
             lot.bid,
         )
+        self.records[player.id].seq = self.seq
         self.last_sale = {
             "seq": self.seq,
             "player_id": player.id,
@@ -1912,6 +1917,9 @@ class AuctionRoom:
             "countdown_ends_at": self.countdown_ends_at,
             # The latest sale, for the SOLD banner; `seq` changes per sale.
             "last_sale": self.last_sale,
+            # Live standings for the leaderboard: every franchise's spend, squad,
+            # role mix and AUCTONIQ value, and the room's totals.
+            "standings": leaderboard.standings(self),
             # Online rooms draw players at random: "random", or "manual" when
             # the auctioneer picks (offline). And when the next draw is due.
             "draw": "random" if self.auto_draw else "manual",

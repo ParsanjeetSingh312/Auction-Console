@@ -148,6 +148,53 @@ export interface LotClock {
 export type RoomMode = "online" | "offline";
 export type AuctioneerKind = "manual" | "ai";
 
+/** One franchise's place in the auction (auction/leaderboard.py). Money in lakh. */
+export interface Standing {
+  id: number;
+  code: string;
+  name: string;
+  color?: string | null;
+  spent: number;
+  left: number;
+  size: number;
+  overseas: number;
+  uncapped: number;
+  roles: Record<"WK" | "BAT" | "AR" | "BOWL", number>;
+  avg_price: number;
+  /** Mean pool percentile of its buys' ratings, 0-100. */
+  strength: number;
+  /** AUCTONIQ value of its buys minus what it paid: positive is money saved. */
+  value: number;
+  steals: number;
+  top_buy: { player: string; price: number; seq: number | null } | null;
+  last_buy: { player: string; price: number; seq: number | null } | null;
+  /** Cumulative spend after each buy, in order. */
+  curve: number[];
+}
+
+export interface StandingSale {
+  player: string;
+  team_code: string;
+  team: string;
+  price: number;
+  verdict: "steal" | "good bid" | "fair price" | "paid over" | null;
+  seq: number | null;
+}
+
+export interface Standings {
+  teams: Standing[];
+  room: {
+    sold: number;
+    unsold: number;
+    spent: number;
+    avg_price: number;
+    median_price: number;
+    record: StandingSale | null;
+  };
+  /** The last few sales, newest first. */
+  recent: StandingSale[];
+}
+
 /** One call from the auctioneer's podium (room.auctioneer_feed). */
 export interface AuctioneerCall {
   id: number;
@@ -265,6 +312,8 @@ export interface RoomState {
   next_draw_at?: number | null;
   /** The auctioneer's calls (the AI auctioneer's), newest last. */
   auctioneer_feed?: AuctioneerCall[];
+  /** Live standings, computed by the room (auction/leaderboard.py). */
+  standings?: Standings;
   /** The AI auctioneer: whether it holds this room's chair, and what it is doing. */
   ai?: { active: boolean; status: "presiding" | "thinking" | "idle"; paused: boolean };
   connected: number;
