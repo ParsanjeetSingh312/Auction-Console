@@ -145,6 +145,23 @@ export interface LotClock {
   key: string;
 }
 
+export type RoomMode = "online" | "offline";
+export type AuctioneerKind = "manual" | "ai";
+
+/** A sale, as the SOLD banner announces it (room.last_sale). */
+export interface LastSale {
+  seq: number;
+  player_id: number;
+  player: string;
+  team_id: number;
+  team: string;
+  team_code: string;
+  /** Lakh. */
+  price: number;
+  /** The player's base price, lakh. */
+  base?: number;
+}
+
 export interface LogItem {
   seq: number;
   kind: "note" | "bid" | "sold" | "unsold" | "timeout" | "withdraw";
@@ -197,6 +214,14 @@ export interface RoomState {
     close_seconds: number;
     timeout_seconds: number;
     timeouts_per_team: number;
+    /**
+     * How the room runs. Online: bids on screen, on the clock. Offline:
+     * placards in the room, no clock, the auctioneer logs each sale. Absent
+     * from a server older than hybrid mode, which is online.
+     */
+    mode?: RoomMode;
+    /** Who holds the chair in an online room. */
+    auctioneer?: AuctioneerKind;
   };
   /**
    * Bumped on every setup change. A franchise must acknowledge exactly this
@@ -211,6 +236,15 @@ export interface RoomState {
   counts: { available: number; sold: number; unsold: number; spent: number };
   unsold?: number[];
   countdown_ends_at: number | null;
+  /** The latest sale, for the SOLD banner. A new `seq` is a new sale. */
+  last_sale?: LastSale | null;
+  /**
+   * How players reach the block: "random" (online -- the room draws each one
+   * itself) or "manual" (offline -- the auctioneer puts them up).
+   */
+  draw?: "random" | "manual";
+  /** Unix time the next random draw is due, between lots. */
+  next_draw_at?: number | null;
   connected: number;
   /**
    * Whether the auctioneer's chair is occupied. Optional so an older frame that
@@ -326,6 +360,12 @@ export interface AuctionSocket {
   withdraw: () => void;
   /** Franchise: call the 30-second decision buffer (pauses the 7s timer). */
   callTimeout: () => void;
+  /** Auctioneer, before the start: online or offline, manual or AI. */
+  setMode: (mode: RoomMode, auctioneer?: AuctioneerKind) => void;
+  /** Auctioneer, offline: the room sold the lot by placard to `teamId` for `price` lakh. */
+  recordSale: (teamId: number, price: number) => void;
+  /** The room is offline: no bid controls, no clock. */
+  offline: boolean;
 
   /** Convenience readings derived from `state` and `seat`. */
   myTeam: TeamState | null;
@@ -612,6 +652,10 @@ export function useAuctionSocket(): AuctionSocket {
         }),
       withdraw: () => send({ type: "withdraw" }),
       callTimeout: () => send({ type: "timeout" }),
+      setMode: (mode: RoomMode, auctioneer: AuctioneerKind = "manual") =>
+        send({ type: "set_mode", mode, auctioneer }),
+      recordSale: (teamId: number, price: number) =>
+        send({ type: "record_sale", team_id: teamId, price }),
     }),
     [send],
   );
@@ -732,6 +776,7 @@ export function useAuctionSocket(): AuctionSocket {
     briefed,
     hasFolded,
     myBlockedReason,
+    offline: state?.rules.mode === "offline",
     rulesChanged:
       ackedVersion !== null && !briefed && ackedVersion !== (state?.rules_version ?? ackedVersion),
   };

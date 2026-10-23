@@ -29,11 +29,14 @@ export default function BlockPanel({
   engine,
   onNotice,
   onAskScout,
+  emptyHint,
 }: {
   engine: AuctionEngine;
   onNotice: (message: string, kind?: "err") => void;
   /** Hand the on-block player to the Scout tab with a starter question. */
   onAskScout: (question: string) => void;
+  /** What the empty block says instead of "put a player up" (an online room draws its own). */
+  emptyHint?: string;
 }) {
   const { block, activePlayer } = engine;
 
@@ -46,7 +49,7 @@ export default function BlockPanel({
         <div className="blockempty">
           <b>No one up</b>
           {engine.counts.available > 0
-            ? "Search a player and press Enter, or hit Put up in the pool."
+            ? (emptyHint ?? "Search a player and press Enter, or hit Put up in the pool.")
             : "Every player has been through the auction."}
         </div>
       </div>

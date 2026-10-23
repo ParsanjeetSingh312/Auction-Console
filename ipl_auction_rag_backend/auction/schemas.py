@@ -127,6 +127,33 @@ class MarkUnsold(BaseModel):
     type: Literal["unsold"]
 
 
+class SetMode(BaseModel):
+    """
+    Auctioneer, before the auction starts: online (bids on screen, on the
+    clock) or offline (placards in the room, sales logged by the auctioneer),
+    and in an online room a manual or AI auctioneer.
+    """
+
+    model_config = Strict
+    type: Literal["set_mode"]
+    mode: Literal["online", "offline"]
+    auctioneer: Literal["manual", "ai"] = "manual"
+
+
+class RecordSale(BaseModel):
+    """
+    Auctioneer, offline: the room has sold the player on the block by placard;
+    log who bought him and for how much. Checked like any bid (purse, squad,
+    overseas), then knocked down by the same hammer.
+    """
+
+    model_config = Strict
+    type: Literal["record_sale"]
+    team_id: int = Field(ge=1, le=100)
+    # Up to the largest purse a room can set (rules.SETUP_FIELDS["purse"]).
+    price: int = Field(ge=1, le=1_000_000)
+
+
 class Withdraw(BaseModel):
     """
     Franchise: step out of the contest for the lot on the block.
@@ -266,6 +293,8 @@ ClientMessage = Annotated[
     | FinishAuction
     | ResetRoom
     | SetRules
+    | SetMode
+    | RecordSale
     | AcknowledgeRules
     | Ping,
     Field(discriminator="type"),
@@ -481,6 +510,9 @@ class RoomState(BaseModel):
     counts: dict
     # Unix timestamp the waiting-room countdown expires. None outside `waiting`.
     countdown_ends_at: float | None = None
+    # The latest sale -- seq, player, team, team_code, price -- for the
+    # "SOLD TO" banner. A new seq is a new sale; undo clears it.
+    last_sale: dict | None = None
     connected: int = 0
     # Whether the auctioneer's chair is currently occupied. Lets the seat picker
     # show it as taken rather than offering a login the room would refuse.

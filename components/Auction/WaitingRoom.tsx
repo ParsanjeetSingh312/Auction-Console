@@ -22,6 +22,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { EASE, pressable } from "../../console/motion";
 import type { AuctionSocket } from "../../hooks/useAuctionSocket";
 import RoomCodeBadge from "./RoomCodeBadge";
+import ModeSwitch from "./hybrid/ModeSwitch";
 
 export interface WaitingRoomProps {
   socket: AuctionSocket;
@@ -90,6 +91,11 @@ export default function WaitingRoom({
               <RoomCodeBadge />
             </div>
           )}
+          {/* How the room will run: the auctioneer can still change it here;
+              everyone else sees which it is before the first lot. */}
+          <div className="mt-3 flex justify-center">
+            <ModeSwitch socket={socket} />
+          </div>
         </header>
 
         <section className="rounded-xl border border-line bg-surface-card p-4 shadow-soft">

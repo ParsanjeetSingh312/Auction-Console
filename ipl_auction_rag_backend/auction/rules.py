@@ -95,7 +95,31 @@ DEFAULT_RULES: dict[str, Any] = {
     "timeout_seconds": BUFFER_SECONDS,
     "timeouts_per_team": BUFFERS_PER_TEAM,
     "max_teams": MAX_TEAMS,
+    # How the room runs (set_mode, before the auction starts):
+    #   online   franchises bid on their screens, on the clock
+    #   offline  franchises raise placards in the room; no clock and no bids
+    #            here -- the auctioneer logs each sale, and nothing moves on
+    #            until they do
+    "mode": "online",
+    # Who holds the chair in an online room: a person, or the AI auctioneer.
+    "auctioneer": "manual",
 }
+
+MODES = ("online", "offline")
+AUCTIONEERS = ("manual", "ai")
+
+
+def validate_mode(mode: str, auctioneer: str) -> tuple[str, str]:
+    """A mode and an auctioneer the room can run, or RuleViolation."""
+    if mode not in MODES:
+        raise RuleViolation("The mode is online or offline.")
+    if auctioneer not in AUCTIONEERS:
+        raise RuleViolation("The auctioneer is manual or AI.")
+    if mode == "offline" and auctioneer == "ai":
+        raise RuleViolation(
+            "The AI auctioneer runs online rooms. An offline room is run by the auctioneer in it."
+        )
+    return mode, auctioneer
 
 
 def crore(lakh: int) -> str:
@@ -305,6 +329,22 @@ def rules_list(rules: dict[str, Any]) -> list[dict[str, str]]:
     engine is not enforcing.
     """
     jumps = " / ".join(f"+{step // 100} Cr" for step in rules["jump_steps"])
+    if rules.get("mode") == "offline":
+        # Placards in the room: no clock, no on-screen bids, no buffers.
+        return [
+            {"id": "room", "title": "Room limit",
+             "body": f"At most {rules['max_teams']} franchises compete in one auction room."},
+            {"id": "uniform", "title": "Same rules for everyone",
+             "body": "Budget, squad size and overseas limits apply identically to every franchise in the room."},
+            {"id": "offline", "title": "Bidding in the room",
+             "body": "This is an offline auction. Raise your placard to bid; the auctioneer calls the price, and the highest placard when the hammer falls takes the player."},
+            {"id": "pace", "title": "No clock",
+             "body": "There is no timer. Each player stays on the block until the auctioneer logs the sale, or passes him unsold."},
+            {"id": "increment", "title": "Bid increments",
+             "body": f"Bids rise by {crore(rules['increment'])}, or more when the auctioneer accepts a jump."},
+            {"id": "briefing", "title": "Squad requirements",
+             "body": f"Budget {money(rules['purse'])}. Squad of {rules['min_squad']}–{rules['max_squad']} players, with at least {rules['min_overseas']} and at most {rules['max_overseas']} overseas, and at least {rules['min_uncapped']} uncapped player."},
+        ]
     return [
         {"id": "room", "title": "Room limit",
          "body": f"At most {rules['max_teams']} franchises compete in one auction room."},

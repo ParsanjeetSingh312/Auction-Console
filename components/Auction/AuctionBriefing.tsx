@@ -55,7 +55,11 @@ export default function AuctionBriefing({ socket, onLeave }: AuctionBriefingProp
         {
           label: "Squad size",
           value: `${rules.min_squad}–${rules.max_squad}`,
-          note: `${rules.timeouts_per_team} decision buffers each`,
+          // Offline rooms have no clock, so no buffers to spend.
+          note:
+            rules.mode === "offline"
+              ? "placards in the room, no clock"
+              : `${rules.timeouts_per_team} decision buffers each`,
           key: false,
         },
       ]

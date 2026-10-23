@@ -125,6 +125,14 @@ export interface BlockViewProps {
   bufferSeconds?: number;
   /** Codes of the franchises that folded on this lot. */
   folded?: string[];
+  /**
+   * An offline room: bids are placards in the room, so the bid button, jump
+   * bid, buffer and withdraw give way to a placard panel, and Space bids
+   * nothing. The block, the ticker and the vault are unchanged.
+   */
+  offline?: boolean;
+  /** What the empty block says while it waits, e.g. the next random draw. */
+  waitingLabel?: string;
 }
 
 export default function BlockView({
@@ -152,6 +160,8 @@ export default function BlockView({
   maxBid,
   bufferSeconds = 30,
   folded,
+  offline = false,
+  waitingLabel,
 }: BlockViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const bidValueRef = useRef<HTMLSpanElement>(null);
@@ -333,6 +343,7 @@ export default function BlockView({
   });
 
   const placeBid = useCallback(() => {
+    if (offline) return; // placards in the room; nothing is bid from here
     if (isWinning) return;
     if (!canAfford || barred) {
       rejectBid();
@@ -340,7 +351,7 @@ export default function BlockView({
     }
     confirmBid();
     onBid(nextBid);
-  }, [isWinning, canAfford, barred, rejectBid, confirmBid, onBid, nextBid]);
+  }, [offline, isWinning, canAfford, barred, rejectBid, confirmBid, onBid, nextBid]);
 
   /** Space bids, the way a paddle would. */
   useEffect(() => {
@@ -483,6 +494,10 @@ export default function BlockView({
               </div>
             )}
 
+            {offline ? (
+              <PlacardPanel team={myTeam} base={lot.base} purseLeft={purseLeft} />
+            ) : (
+            <>
             <button
               ref={buttonRef}
               type="button"
@@ -582,6 +597,8 @@ export default function BlockView({
                 )}
               </div>
             )}
+            </>
+            )}
           </>
         ) : (
           <div className="text-center">
@@ -589,7 +606,7 @@ export default function BlockView({
               Nobody on the block
             </div>
             <div className="mt-2 font-mono text-xs uppercase tracking-[0.3em] text-neutral-800">
-              waiting for the next lot
+              {waitingLabel ?? "waiting for the next lot"}
             </div>
           </div>
         )}
@@ -637,14 +654,17 @@ export default function BlockView({
             {barred
               ? blockedReason
               : canAfford
-                ? `${crore(purseLeft - nextBid)} left after this bid`
+                ? offline
+                  ? `${crore(purseLeft)} purse left`
+                  : `${crore(purseLeft - nextBid)} left after this bid`
                 : `${crore(nextBid - purseLeft)} over budget`}
           </div>
         </section>
       </footer>
 
       {/* Full-bleed, so it renders last and over everything. */}
-      {hammerFor !== null && sold && (
+      {/* Offline, the room's SOLD banner (fx/SoldBanner) announces the sale. */}
+      {hammerFor !== null && sold && !offline && (
         <HammerDrop
           playerName={lot?.name ?? sold.text}
           teamCode={leadingTeam}
@@ -653,6 +673,44 @@ export default function BlockView({
           onDone={() => setHammerFor(null)}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Offline: the bid is a placard raised in the room. The franchise's own
+ * placard, bobbing gently (GSAP), with what the lot opens at and what the
+ * purse can still reach -- the two numbers a delegate needs before raising it.
+ */
+function PlacardPanel({ team, base, purseLeft }: { team: string; base: number; purseLeft: number }) {
+  const root = useRef<HTMLDivElement>(null);
+  useGSAP(
+    () => {
+      gsap.matchMedia().add("(prefers-reduced-motion: no-preference)", () => {
+        gsap.fromTo(".placard", { y: 18, rotation: -4, autoAlpha: 0 }, { y: 0, rotation: 0, autoAlpha: 1, duration: 0.6, ease: "back.out(1.8)" });
+        gsap.to(".placard", { y: -6, rotation: 1.5, duration: 1.6, ease: "sine.inOut", yoyo: true, repeat: -1, delay: 0.6 });
+      });
+    },
+    { scope: root },
+  );
+  return (
+    <div ref={root} className="mt-8 flex w-full max-w-2xl flex-col items-center" data-testid="placard-panel">
+      <div className="placard flex flex-col items-center" aria-hidden>
+        <div className="grid h-24 w-40 place-items-center rounded-lg border-2 border-amber-300 bg-amber-400 font-display text-5xl font-bold tracking-[0.06em] text-neutral-950 shadow-[0_0_40px_-8px_rgba(251,191,36,0.7)]">
+          {team || "BID"}
+        </div>
+        <div className="h-14 w-2 rounded-b bg-amber-200/70" />
+      </div>
+      <p className="mt-5 font-display text-3xl font-bold uppercase tracking-[0.06em] text-white sm:text-4xl">
+        Raise your placard
+      </p>
+      <p className="mt-2 max-w-md text-center font-mono text-[11px] uppercase leading-relaxed tracking-[0.2em] text-neutral-500">
+        Offline auction · bidding is in the room. The auctioneer calls the price and logs the sale.
+      </p>
+      <div className="mt-4 flex gap-6 font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-400">
+        <span>opens at <b className="text-white">{crore(base)}</b></span>
+        <span>your purse <b className="text-white">{crore(purseLeft)}</b></span>
+      </div>
     </div>
   );
 }

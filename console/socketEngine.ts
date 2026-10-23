@@ -219,6 +219,13 @@ export function useSocketEngine(
       putOnBlock: (playerId) => {
         const blocked = requireLive("put a player up");
         if (blocked) return blocked;
+        // Online rooms draw every player at random; the room would refuse it.
+        if (room?.draw === "random") {
+          return {
+            ok: false,
+            message: "Players come to the block at random in an online auction.",
+          };
+        }
         socket.putUp(playerId);
         return SENT;
       },

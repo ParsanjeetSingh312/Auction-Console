@@ -53,9 +53,13 @@ def _ecosystem_off_by_default():
     from config.settings import get_settings
 
     settings = get_settings()
-    original = settings.PASSES_ENFORCED, settings.SCOUT_FREE_LIMIT, settings.TIER_GATES
+    original = settings.PASSES_ENFORCED, settings.SCOUT_FREE_LIMIT, settings.TIER_GATES, settings.AUTO_DRAW
     settings.PASSES_ENFORCED, settings.SCOUT_FREE_LIMIT, settings.TIER_GATES = False, 0, False
+    # Players put up by hand, as every room did before the random draw, so
+    # tests about a lot are not racing the draw. test_hybrid_mode.py turns it on.
+    settings.AUTO_DRAW = False
     try:
         yield
     finally:
-        settings.PASSES_ENFORCED, settings.SCOUT_FREE_LIMIT, settings.TIER_GATES = original
+        (settings.PASSES_ENFORCED, settings.SCOUT_FREE_LIMIT, settings.TIER_GATES,
+         settings.AUTO_DRAW) = original

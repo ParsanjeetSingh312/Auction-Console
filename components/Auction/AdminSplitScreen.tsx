@@ -57,6 +57,9 @@ import ScoutView from "../Console/ScoutView";
 import TeamBudgetGrid from "../Console/TeamBudgetGrid";
 import TeamsView from "../Console/TeamsView";
 import RoomCodeBadge from "./RoomCodeBadge";
+import DrawIndicator from "./hybrid/DrawIndicator";
+import ModeSwitch from "./hybrid/ModeSwitch";
+import OfflineSalePanel from "./hybrid/OfflineSalePanel";
 
 /** Left-pane tools. The right pane never changes — that is the point. */
 type Tool = "teams" | "pool" | "results" | "scout" | "stats";
@@ -445,6 +448,9 @@ export default function AdminSplitScreen({
         {/* The room's code, to send to the franchise owners. Only here. */}
         <RoomCodeBadge />
 
+        {/* Online or offline, manual or AI: set before the start, a badge after. */}
+        {socket && <ModeSwitch socket={socket} />}
+
         <div className="min-w-[240px] flex-1">
           <CommandSearch
             engine={engine}
@@ -699,9 +705,29 @@ export default function AdminSplitScreen({
           </div>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3">
-            <BlockPanel engine={engine} onNotice={onNotice} onAskScout={askScout} />
+            {/* Offline: the room bids by placard and the auctioneer logs the
+                sale, so the bid ladder and gavel give way to the sale form.
+                Online: the block panel as ever, and the random draw between lots. */}
+            {socket?.offline ? (
+              <OfflineSalePanel socket={socket} />
+            ) : (
+              <>
+                {socket && <DrawIndicator socket={socket} />}
+                <BlockPanel
+                  engine={engine}
+                  onNotice={onNotice}
+                  onAskScout={askScout}
+                  emptyHint={
+                    socket?.state?.draw === "random"
+                      ? "The room draws the next player at random. No one puts players up by hand."
+                      : undefined
+                  }
+                />
+              </>
+            )}
 
-            {socket && <LifelineBoard socket={socket} />}
+            {/* Lifelines are an online thing: offline rooms have no clock to pause. */}
+            {socket && !socket.offline && <LifelineBoard socket={socket} />}
 
             <TeamBudgetGrid summaries={engine.summaries} purse={engine.rules.purse} />
 

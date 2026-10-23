@@ -509,11 +509,18 @@ async def _dispatch(
             message.min_overseas,
         )
 
+    elif kind == "set_mode":
+        await room.set_mode(client_id, message.mode, message.auctioneer)
+
+    elif kind == "record_sale":
+        await room.record_sale(client_id, message.team_id, message.price)
+
     elif kind == "acknowledge_rules":
         await room.acknowledge_rules(client_id, message.rules_version)
         # The last invited delegate acknowledging, with the waiting room open,
         # starts the auction for everyone.
-        if room.phase == "waiting" and await asyncio.to_thread(invites.has_invites, room):
+        # Never in an offline room: it moves only when its auctioneer moves it.
+        if room.phase == "waiting" and not room.offline and await asyncio.to_thread(invites.has_invites, room):
             if not await asyncio.to_thread(invites.blockers, room):
                 try:
                     await room.start_auction(None)

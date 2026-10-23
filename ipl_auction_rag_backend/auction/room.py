@@ -43,6 +43,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
+import random
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -312,6 +313,11 @@ class AuctionRoom:
     seq: int = 0
     version: int = 0
     countdown_ends_at: float | None = None
+    # The most recent sale, for the "SOLD TO" banner every screen shows. Set by
+    # the hammer, cleared by undo so a reversed sale is never announced again.
+    last_sale: dict[str, Any] | None = None
+    # Online: when the next random draw happens (Unix time), between lots.
+    next_draw_at: float | None = None
 
     seats: dict[str, Seat] = field(default_factory=dict)
     undo_stack: list[Snapshot] = field(default_factory=list)
@@ -326,6 +332,10 @@ class AuctionRoom:
     _clock_task: asyncio.Task[None] | None = field(default=None, repr=False)
     _clock_token: int = field(default=0, repr=False)
     _broadcast: Callable[[], Awaitable[None]] | None = field(default=None, repr=False)
+
+    # The random draw: one pending task at a time, superseded by token.
+    _draw_task: asyncio.Task[None] | None = field(default=None, repr=False)
+    _draw_token: int = field(default=0, repr=False)
 
     def __post_init__(self) -> None:
         self._refill_timeouts()
@@ -943,9 +953,20 @@ class AuctionRoom:
             f"{player.name} → {team['code']}" + (f" {how}" if how else ""),
             lot.bid,
         )
+        self.last_sale = {
+            "seq": self.seq,
+            "player_id": player.id,
+            "player": player.name,
+            "team_id": team["id"],
+            "team": team["name"],
+            "team_code": team["code"],
+            "price": lot.bid,
+            "base": player.base,
+        }
         self._disarm()
         self.lot = None
         self.version += 1
+        self._schedule_draw(get_settings().DRAW_GAP_SECONDS)
 
     def _pass_over(self, why: str | None = None, *, checkpoint: bool = True) -> None:
         """
@@ -963,6 +984,7 @@ class AuctionRoom:
         self._disarm()
         self.lot = None
         self.version += 1
+        self._schedule_draw(get_settings().DRAW_GAP_SECONDS)
 
     async def _announce(self) -> None:
         """Tell every client what the clock just did."""
@@ -1005,6 +1027,9 @@ class AuctionRoom:
         """
         if client_id is not None:
             self._require_auctioneer(client_id, "start the auction")
+        elif self.offline:
+            # An offline room moves only when its auctioneer moves it.
+            raise RoomError("An offline auction is started by its auctioneer.", about="start_auction")
         if blockers:
             more = f" (and {len(blockers) - 1} more)" if len(blockers) > 1 else ""
             raise RoomError(
@@ -1026,9 +1051,16 @@ class AuctionRoom:
             self.countdown_ends_at = None
             self._note("Auction started")
             self.version += 1
+            if self.lot is None:
+                self._schedule_draw(get_settings().FIRST_DRAW_SECONDS)
 
     async def put_up(self, client_id: str, player_id: int) -> None:
         self._require_auctioneer(client_id, "put a player up")
+        if self.auto_draw:
+            raise RoomError(
+                "Players come to the block at random in an online auction; nobody puts them up by hand.",
+                about="put_up",
+            )
         async with self._lock:
             if self.phase != "live":
                 raise RoomError("The auction is not running.", about="put_up")
@@ -1055,24 +1087,33 @@ class AuctionRoom:
                 )
 
             self._checkpoint()
-            # Opening ask is the base itself: the first bidder pays base, and
-            # only the second onwards climbs the ladder.
-            self.lot = Lot(player_id=player_id, bid=player.base, bidder_id=None, version=0)
-            record.status = "available"
-            self._append("note", f"{player.name} on the block", player.base)
-            # The clock starts the instant the player appears, not when the
-            # auctioneer gets round to asking for bids. That is the point of
-            # the rule: an unwanted lot costs the room seven seconds, not
-            # however long it takes somebody to decide nobody wants him.
-            #
-            # A marquee player is the one exception: the room is watching his
-            # reveal, so the lot is held for it first and the seven seconds
-            # start when it ends (see _fire). Nobody loses bidding time to it.
-            if player.name in MARQUEE_PLAYERS:
-                self._arm("presenting", MARQUEE_REVEAL_SECONDS)
-            else:
-                self._arm("opening", self.rules["open_seconds"])
-            self.version += 1
+            self._open_lot(player)
+
+    def _open_lot(self, player: Player, how: str = "") -> None:
+        """Put `player` on the block and start his clock. Lock held, no lot."""
+        record = self.records[player.id]
+        # Opening ask is the base itself: the first bidder pays base, and
+        # only the second onwards climbs the ladder.
+        self.lot = Lot(player_id=player.id, bid=player.base, bidder_id=None, version=0)
+        record.status = "available"
+        self._append("note", f"{player.name} on the block{how}", player.base)
+        # The clock starts the instant the player appears, not when the
+        # auctioneer gets round to asking for bids. That is the point of
+        # the rule: an unwanted lot costs the room seven seconds, not
+        # however long it takes somebody to decide nobody wants him.
+        #
+        # A marquee player is the one exception: the room is watching his
+        # reveal, so the lot is held for it first and the seven seconds
+        # start when it ends (see _fire). Nobody loses bidding time to it.
+        # Offline there is no clock at all: the lot stays on the block until
+        # the auctioneer logs the sale or passes the player over.
+        if self.offline:
+            pass
+        elif player.name in MARQUEE_PLAYERS:
+            self._arm("presenting", MARQUEE_REVEAL_SECONDS)
+        else:
+            self._arm("opening", self.rules["open_seconds"])
+        self.version += 1
 
     async def sell(self, client_id: str) -> None:
         """
@@ -1117,7 +1158,9 @@ class AuctionRoom:
             # The buffer it gets is a fresh full one, matched to whether a bid
             # stands on it.
             self._disarm()
-            if self.lot is not None and self.phase == "live":
+            self._cancel_draw()
+            self.last_sale = None
+            if self.lot is not None and self.phase == "live" and not self.offline:
                 if self.lot.bidder_id is not None:
                     self._arm("closing", self.rules["close_seconds"])
                 else:
@@ -1125,6 +1168,8 @@ class AuctionRoom:
 
             self._note("Undone")
             self.version += 1
+            if self.lot is None and self.phase == "live":
+                self._schedule_draw(get_settings().DRAW_GAP_SECONDS)
 
     async def finish(self, client_id: str) -> None:
         self._require_auctioneer(client_id, "finish the auction")
@@ -1133,6 +1178,7 @@ class AuctionRoom:
                 raise RoomError("Already finished.", about="finish")
             self._checkpoint()
             self._disarm()
+            self._cancel_draw()
             self.phase = "finished"
             self.lot = None
             self._note("Auction closed")
@@ -1168,6 +1214,8 @@ class AuctionRoom:
             self.seq = 0
             self.undo_stack = []
             self._refill_timeouts()
+            self._cancel_draw()
+            self.last_sale = None
             self.phase = "lobby"
             self.countdown_ends_at = None
             self._note("Room reset — pool, purses and lifelines restored")
@@ -1255,6 +1303,140 @@ class AuctionRoom:
             self.version += 1
 
     # ---------------------------------------------------------------- #
+    # Mode: online or offline, and who holds the chair
+    # ---------------------------------------------------------------- #
+
+    @property
+    def offline(self) -> bool:
+        """Placards in the room: no clock, no bids here, the auctioneer logs sales."""
+        return self.rules.get("mode") == "offline"
+
+    @property
+    def auto_draw(self) -> bool:
+        """Online rooms bring players to the block at random, by themselves."""
+        return not self.offline and get_settings().AUTO_DRAW
+
+    def _drawable(self) -> list[Player]:
+        """Players still to come up, or none once the lot limit is reached."""
+        settled = sum(1 for r in self.records.values() if r.status != "available")
+        limit = self.rules.get("max_players") or len(self.players)
+        if settled >= limit:
+            return []
+        return [p for p in self.players.values() if self.records[p.id].status == "available"]
+
+    def _schedule_draw(self, seconds: float) -> None:
+        """Draw the next player after `seconds`. Lock held. A no-op unless due."""
+        if not self.auto_draw or self.phase != "live" or self.lot is not None:
+            return
+        self._cancel_draw()
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return  # no loop: a synchronous caller, as with the clock
+        self.next_draw_at = time.time() + seconds
+        self._draw_task = loop.create_task(self._run_draw(self._draw_token, seconds))
+
+    def _cancel_draw(self) -> None:
+        self._draw_token += 1
+        self.next_draw_at = None
+        task, self._draw_task = self._draw_task, None
+        if task is not None and task is not _current_task():
+            task.cancel()
+
+    async def _run_draw(self, token: int, seconds: float) -> None:
+        try:
+            await asyncio.sleep(seconds)
+        except asyncio.CancelledError:
+            return
+        async with self._lock:
+            if token != self._draw_token or self.phase != "live" or self.lot is not None:
+                return  # superseded: an undo, a finish, or a lot already up
+            self.next_draw_at = None
+            pool = self._drawable()
+            if not pool:
+                # Every player has been under the hammer, or the lot limit is
+                # reached: the auction is over, and it closes itself.
+                self._checkpoint()
+                self._disarm()
+                self.phase = "finished"
+                self._note("Auction closed: every player has been drawn")
+                self.version += 1
+            else:
+                self._checkpoint()
+                self._open_lot(random.choice(pool), " (drawn at random)")
+        await self._announce()
+
+    def _require_online(self, action: str) -> None:
+        if self.offline:
+            raise RoomError(
+                f"This is an offline auction: bids are made by placard in the room, so you cannot {action} here.",
+                about="offline",
+            )
+
+    async def set_mode(self, client_id: str, mode: str, auctioneer: str) -> None:
+        """
+        Choose how the room runs: online (bids on screen, on the clock) or
+        offline (placards in the room), and in an online room whether a person
+        or the AI auctioneer holds the chair. Fixed once the auction starts:
+        switching mid-auction would change what a lot is halfway through it.
+        """
+        self._require_auctioneer(client_id, "change how the room runs")
+        try:
+            mode, auctioneer = rulebook.validate_mode(mode, auctioneer)
+        except RuleViolation as exc:
+            raise RoomError(str(exc), about="mode") from exc
+        async with self._lock:
+            if self.phase not in ("lobby", "waiting"):
+                raise RoomError("The mode is set before the auction starts.", about="mode")
+            if mode == self.rules.get("mode") and auctioneer == self.rules.get("auctioneer"):
+                return
+            self.rules["mode"] = mode
+            self.rules["auctioneer"] = auctioneer
+            # The briefing changes with the mode, so every franchise reads it again.
+            self.rules_version += 1
+            self._note(
+                "Offline auction: placards in the room, sales logged by the auctioneer"
+                if mode == "offline"
+                else f"Online auction, run by the {'AI' if auctioneer == 'ai' else 'manual'} auctioneer"
+            )
+            self.version += 1
+
+    async def record_sale(self, client_id: str, team_id: int, price: int) -> None:
+        """
+        Offline: log the sale the room just made by placard -- who bought the
+        player on the block, and for how much. Checked exactly as an online bid
+        would be (purse, squad, overseas, places kept for minimums), then
+        knocked down by the same hammer, so History, Results and the stats
+        cannot tell an offline sale from an online one. One undo reverses it.
+        """
+        self._require_auctioneer(client_id, "log a sale")
+        async with self._lock:
+            if not self.offline:
+                raise RoomError("Online lots are sold by bidding. Use the gavel instead.", about="record_sale")
+            if self.phase != "live":
+                raise RoomError("The auction is not running.", about="record_sale")
+            if self.lot is None:
+                raise RoomError("Nothing is on the block.", about="record_sale")
+            team = self.team_by_id(team_id)
+            if team is None:
+                raise RoomError("Choose a franchise in this room.", about="record_sale")
+            player = self.players[self.lot.player_id]
+            if price < player.base:
+                raise RoomError(
+                    f"{player.name}'s base price is {money(player.base)}; the sale cannot be lower.",
+                    about="record_sale",
+                )
+            if price > self.rules["purse"]:
+                raise RoomError("That is more than a whole purse.", about="record_sale")
+            blocked = self.blocked_reason(team_id, player, price)
+            if blocked:
+                raise RoomError(f"{team['name']} cannot buy {player.name}: {blocked}.", about="record_sale")
+            self._checkpoint()
+            self.lot.bid = price
+            self.lot.bidder_id = team_id
+            self._hammer_down(how="in the room", checkpoint=False)
+
+    # ---------------------------------------------------------------- #
     # Bidding
     # ---------------------------------------------------------------- #
 
@@ -1279,6 +1461,7 @@ class AuctionRoom:
         must be a whole number of lakh, and must be inside the bidder's purse.
         """
         seat = self._require_franchise(client_id, "bid")
+        self._require_online("bid")
         team_id = seat.team_id
         assert team_id is not None  # guaranteed by _require_franchise
 
@@ -1381,6 +1564,7 @@ class AuctionRoom:
         Returns how many franchises can still act on this lot.
         """
         seat = self._require_franchise(client_id, "withdraw")
+        self._require_online("withdraw")
         team_id = seat.team_id
         assert team_id is not None  # guaranteed by _require_franchise
 
@@ -1470,6 +1654,7 @@ class AuctionRoom:
         same lock. Neither team is charged for an action the room did not take.
         """
         seat = self._require_franchise(client_id, "call a timeout")
+        self._require_online("call a timeout")
         team_id = seat.team_id
         assert team_id is not None  # guaranteed by _require_franchise
 
@@ -1650,6 +1835,12 @@ class AuctionRoom:
             "unsold": unsold,
             "counts": self.counts(),
             "countdown_ends_at": self.countdown_ends_at,
+            # The latest sale, for the SOLD banner; `seq` changes per sale.
+            "last_sale": self.last_sale,
+            # Online rooms draw players at random: "random", or "manual" when
+            # the auctioneer picks (offline). And when the next draw is due.
+            "draw": "random" if self.auto_draw else "manual",
+            "next_draw_at": self.next_draw_at,
             "connected": len(self.seats),
             # Whether the chair is occupied, so a seat picker can show it as taken
             # -- the same way a franchise tile greys out -- instead of offering a

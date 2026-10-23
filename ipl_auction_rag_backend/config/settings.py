@@ -341,6 +341,17 @@ class Settings(BaseSettings):
     # their kind of pass at startup, so the flows can be tried at once.
     DEMO_PASS_BALANCE: int = 5
 
+    # --- The random draw (auction/room.py) ---
+    # Online rooms bring each player to the block at random, by themselves:
+    # nobody puts players up by hand. False keeps the manual "put up", as before
+    # the draw existed (the test suite's default). Offline rooms always pick by hand.
+    AUTO_DRAW: bool = True
+    # The pause after a lot settles before the next is drawn: long enough for
+    # the SOLD moment to play on every screen.
+    DRAW_GAP_SECONDS: float = 4.5
+    # And before the first lot, once the auction starts.
+    FIRST_DRAW_SECONDS: float = 2.5
+
     # --- Features by tier ---
     # AUCTEAM's SCOUT team report is for Delegate accounts (and admins):
     # Auctioneer and Free accounts are refused it. False opens it to everyone,

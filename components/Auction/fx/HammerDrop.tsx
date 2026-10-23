@@ -49,6 +49,11 @@ export interface HammerDropProps {
   amount: number | null;
   /** Base price, ₹ lakh, for the premium line. Omit to hide it. */
   basePrice?: number | null;
+  /**
+   * The sale in one sentence -- "VIRAT KOHLI SOLD TO MUMBAI FOR ₹15.50 Cr" --
+   * in place of the team and player line. The offline room's SOLD banner.
+   */
+  headline?: string;
   /** Called when the cinematic has finished and should be unmounted. */
   onDone: () => void;
 }
@@ -58,6 +63,7 @@ export default function HammerDrop({
   teamCode,
   amount,
   basePrice,
+  headline,
   onDone,
 }: HammerDropProps) {
   const root = useRef<HTMLDivElement>(null);
@@ -203,10 +209,16 @@ export default function HammerDrop({
           </p>
         )}
 
-        <p className="hd__detail text-sm uppercase tracking-[0.18em] text-white/80">
-          {teamCode ? `${teamCode} · ` : ""}
-          {playerName}
-        </p>
+        {headline ? (
+          <p className="hd__detail max-w-[min(90vw,780px)] px-4 font-stadium text-[clamp(1.25rem,3.4vw,2.1rem)] font-bold uppercase leading-tight tracking-[0.04em] text-white">
+            {headline}
+          </p>
+        ) : (
+          <p className="hd__detail text-sm uppercase tracking-[0.18em] text-white/80">
+            {teamCode ? `${teamCode} · ` : ""}
+            {playerName}
+          </p>
+        )}
 
         {premium !== null && (
           <p className="hd__detail text-[11px] uppercase tracking-[0.16em] text-white/45">

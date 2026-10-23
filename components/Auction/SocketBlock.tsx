@@ -162,6 +162,14 @@ export default function SocketBlock({ socket, engine, onLeave }: SocketBlockProp
       maxBid={myTeam?.max_bid}
       bufferSeconds={room?.rules.timeout_seconds}
       folded={room?.lot?.folded_codes ?? []}
+      // Offline: placards in the room, so no bid controls here at all.
+      offline={socket.offline}
+      // Online rooms draw every player at random between lots.
+      waitingLabel={
+        room?.draw === "random" && room.phase === "live"
+          ? "drawing the next player at random…"
+          : undefined
+      }
       corner={
         <div className="flex items-center gap-3">
           {/*
