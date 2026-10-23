@@ -256,6 +256,13 @@ async def lifespan(app: FastAPI):
     # failure here is logged and survived: the API and the console still work,
     # and the room refuses to start an auction rather than running one on an
     # empty pool.
+    # Squad numbers from data/jersey_numbers.json. Every deployment has its own
+    # players table, so the committed file is applied wherever the backend runs
+    # (ingestion/jersey_numbers.py). Before the room loads, so it reads them.
+    from ingestion.jersey_numbers import sync_jersey_numbers
+
+    await asyncio.to_thread(sync_jersey_numbers)
+
     try:
         from db import get_player_db
 

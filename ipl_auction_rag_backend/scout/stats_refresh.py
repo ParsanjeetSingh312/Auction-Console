@@ -182,6 +182,14 @@ async def _refresh(
         logger.warning("Could not re-embed the pool: %s", exc)
         notes.append(f"Vector summaries not rebuilt ({type(exc).__name__}); SQL figures are current.")
 
+    # Squad numbers ride along: a refresh is the moment every environment's
+    # table is being brought up to date anyway (ingestion/jersey_numbers.py).
+    from ingestion.jersey_numbers import sync_jersey_numbers
+
+    numbered = await asyncio.to_thread(sync_jersey_numbers)
+    if numbered:
+        notes.append(f"Applied {numbered} squad number(s) from jersey_numbers.json.")
+
     # --- 5. auction rooms ------------------------------------------------------------
     try:
         from auction.rooms import registry as auction_rooms

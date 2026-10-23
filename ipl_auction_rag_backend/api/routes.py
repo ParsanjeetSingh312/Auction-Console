@@ -209,6 +209,12 @@ async def ingest(request: IngestRequest | None = None) -> IngestResponse:
         except Exception as exc:  # noqa: BLE001 - ingestion itself succeeded
             logger.warning("Could not replay SCOUT research: %s", exc)
 
+        # A rebuilt table has only the spreadsheet's squad numbers; put the
+        # committed ones back (ingestion/jersey_numbers.py).
+        from ingestion.jersey_numbers import sync_jersey_numbers
+
+        await asyncio.to_thread(sync_jersey_numbers)
+
         # Refresh the auction room's copy of the pool.
         #
         # The room reads the player table once, at startup, because it needs
