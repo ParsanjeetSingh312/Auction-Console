@@ -32,7 +32,7 @@
  * auction engine, GSAP, and eleven view components; the landing is the first
  * paint every user gets and has no business waiting on that bundle.
  */
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import {
   BrowserRouter,
   Link,
@@ -49,7 +49,7 @@ import ScoutLauncher from "./components/Scout/ScoutLauncher";
 import CricketCursor from "./components/UI/CricketCursor";
 import NotificationToasts from "./components/Global/NotificationToasts";
 import SendPassesDialog from "./components/Ecosystem/SendPassesDialog";
-import { useScoutHotkey } from "./console/scoutStore";
+import { closeScout, useScoutHotkey } from "./console/scoutStore";
 
 // The AUCTIQ landing — now the front door.
 const Auctiq = lazy(() => import("./pages/Auctiq"));
@@ -193,8 +193,22 @@ export default function App() {
  * alone would not survive either of them gaining a stacking context.
  */
 function GlobalScout() {
-  useScoutHotkey();
   const { pathname } = useLocation();
+
+  /*
+    No SCOUT in Live Bidding (/auction, /auction/live, /auction/demo).
+
+    An assistant one keystroke away from every franchise mid-lot turns the
+    auction into whoever asks it fastest. Live Bidding is the room, and the
+    room is for bidding on what each franchise already knows -- so the
+    launcher, the drawer and the shortcut are all left out there, and an
+    open drawer closes on the way in. Every other page keeps SCOUT.
+  */
+  const liveBidding = /^\/auction(\/|$)/.test(pathname);
+  useScoutHotkey(!liveBidding);
+  useEffect(() => {
+    if (liveBidding) closeScout();
+  }, [liveBidding]);
 
   // The opening is a full-screen film; the assistant has nothing to do there
   // and its drawer would sit on top of the Enter button.
@@ -202,8 +216,12 @@ function GlobalScout() {
 
   return (
     <>
-      <ScoutDrawer />
-      <ScoutLauncher />
+      {!liveBidding && (
+        <>
+          <ScoutDrawer />
+          <ScoutLauncher />
+        </>
+      )}
       {/* Notification popups, on every route, for the same reason as SCOUT:
           a pass or an announcement has to be seen wherever its owner is. */}
       <NotificationToasts />

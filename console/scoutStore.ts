@@ -183,8 +183,11 @@ export function useScoutOrigin(): ScoutOrigin {
  * once the user is typing is the one moment they are most likely to want it —
  * including inside SCOUT's own composer, where Cmd+K closes the panel again.
  */
-export function useScoutHotkey(): void {
+export function useScoutHotkey(enabled = true): void {
   useEffect(() => {
+    // Off where SCOUT is not offered at all (the Live Bidding routes): the
+    // shortcut must not open an assistant the page deliberately leaves out.
+    if (!enabled) return;
     const onKeyDown = (event: KeyboardEvent) => {
       const combo = event.metaKey || event.ctrlKey;
 
@@ -204,7 +207,7 @@ export function useScoutHotkey(): void {
 
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [enabled]);
 }
 
 /**

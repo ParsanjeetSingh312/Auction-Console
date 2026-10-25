@@ -83,7 +83,11 @@ export interface PostAuctionReportProps {
    * below is labelled for what it does rather than where it goes.
    */
   onLeave?: () => void;
-  /** Auctioneer only: clear the auction and send everyone back to the lobby. */
+  /**
+   * Auctioneer only: start the next auction under a fresh room code. The
+   * finished room closes and everyone in it is handed the new code
+   * (`AuctionSocket.startNewAuction`).
+   */
   onReset?: () => void;
   /**
    * Auctioneer only: go back to the split-screen console with the seat intact.
@@ -267,7 +271,8 @@ function Shell({
               <button
                 type="button"
                 onClick={onReset}
-                title="Clear the auction and return every client to the lobby"
+                data-testid="report-new-auction"
+                title="Close this room and open the next auction under a fresh room code"
                 className="rounded-lg border border-slate-ink bg-slate-ink px-3.5 py-2 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-white transition-colors hover:bg-slate-ink/90"
               >
                 New auction
@@ -300,10 +305,10 @@ function Shell({
                 type="button"
                 data-testid="report-leave-seat"
                 onClick={onLeave}
-                title="Give up your seat. The report stays on screen until the auctioneer starts a new auction."
+                title="Leave this finished room and go back to create or join an auction"
                 className="rounded-lg border border-line bg-surface-card px-3.5 py-2 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-body transition-colors hover:border-slate-faint/60 hover:text-slate-ink"
               >
-                Leave seat
+                Leave room
               </button>
             )}
             <Link

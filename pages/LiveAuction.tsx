@@ -32,7 +32,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import gsap from "gsap";
 import { Gavel } from "lucide-react";
 
-import { currentRoom, enterRoom, leaveRoom, markRoomClaimed, normaliseRoomCode, useRoom } from "../console/auctionRoom";
+import { createRoom, currentRoom, enterRoom, leaveRoom, markRoomClaimed, normaliseRoomCode, useRoom } from "../console/auctionRoom";
 import { money } from "../console/format";
 import { franchiseByCode } from "../console/franchises";
 import { cardVariants, gridVariants } from "../console/motion";
@@ -253,6 +253,44 @@ function LiveAuctionInner() {
   }, [room.chosen]);
 
   /*
+    The auctioneer closed this room to start the next auction under a fresh
+    code (auction/ws.py `new_auction`). The auctioneer follows it straight
+    in: the new code opens as a new room through the same create path as the
+    entry's "Create room", chair and all. Everyone else is taken back to the
+    entry, told what happened, with the new code already in "Join a room" --
+    joining stays their decision.
+  */
+  const [nextRoom, setNextRoom] = useState<string | null>(null);
+  const { roomClosed } = socket;
+  const roomType = socket.state?.room_type;
+  useEffect(() => {
+    if (!roomClosed) return;
+    if (role === "auctioneer" && roomClosed.nextRoom) {
+      setNextRoom(null);
+      queueSeat({ role: "auctioneer" });
+      createRoom(roomType === "delegate" ? "delegate" : "auctioneer", roomClosed.nextRoom);
+      return;
+    }
+    setNextRoom(roomClosed.nextRoom || null);
+    // The message names the new code; "Join a room" has it filled in too,
+    // for an account that can join.
+    setGateNotice(roomClosed.message);
+    queueSeat(null);
+    leaveRoom();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomClosed]);
+
+  /*
+    Leaving a finished room goes back to the entry, not to the room's seats.
+    The auction is over: its seat picker could only offer a chair in a room
+    that will not bid again ("The chair is taken").
+  */
+  const leaveFinishedRoom = useCallback(() => {
+    queueSeat(null);
+    leaveRoom();
+  }, [queueSeat]);
+
+  /*
     Someone who just clicked "Leave seat" is asking for the seat picker, not for
     whatever screen the room's phase would otherwise dictate.
 
@@ -271,7 +309,7 @@ function LiveAuctionInner() {
     return (
       <>
         {toastLayer}
-        <RoomGate socket={socket} notice={gateNotice} />
+        <RoomGate socket={socket} notice={gateNotice} nextRoom={nextRoom} />
       </>
     );
   }
@@ -285,11 +323,12 @@ function LiveAuctionInner() {
     return (
       <>
         <PostAuctionReport
-          onLeave={leaveSeat}
-          // Only the auctioneer is offered the reset, and the room enforces
-          // that regardless — this just avoids showing a franchise a button
-          // that would be refused.
-          onReset={role === "auctioneer" ? socket.resetRoom : undefined}
+          onLeave={leaveFinishedRoom}
+          // Only the auctioneer is offered the next auction, and the room
+          // enforces that regardless -- this just avoids showing a franchise a
+          // button that would be refused. It closes this room and opens the
+          // next one under a fresh code (see the roomClosed effect above).
+          onReset={role === "auctioneer" ? socket.startNewAuction : undefined}
           // Same door as the waiting room's, for the same reason. An auctioneer
           // reviewing the report still wants the pool and the ledger, and
           // "finished" is a phase of the room, not a reason to strand the

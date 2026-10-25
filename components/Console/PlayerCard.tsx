@@ -89,12 +89,19 @@ export function PlayerCard({
   onClose,
   onNotice,
   onAskScout,
+  canPutOnBlock = true,
 }: {
   player: ConsolePlayer;
   engine: AuctionEngine;
   onClose: () => void;
   onNotice: (message: string, kind?: "err") => void;
   onAskScout: (question: string, player: ConsolePlayer) => void;
+  /**
+   * Whether this card may send the player to the block. The auctioneer's
+   * console says yes; the Data Interface, which is read-only analytics with
+   * no auction behind it, says no and the button is not rendered at all.
+   */
+  canPutOnBlock?: boolean;
 }) {
   const meta = setMeta(player.set);
   const record = engine.recordFor(player.id);
@@ -226,7 +233,7 @@ export function PlayerCard({
         <button type="button" className="pbtn" onClick={onClose}>
           Close
         </button>
-        {record.status !== "sold" && (
+        {canPutOnBlock && record.status !== "sold" && (
           <button
             type="button"
             className="pbtn primary"

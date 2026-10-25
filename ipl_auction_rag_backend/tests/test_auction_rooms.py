@@ -298,3 +298,76 @@ class TestFictionalFranchises:
             asyncio.run(room.remove_franchise("host", 1))  # Mumbai stays
         asyncio.run(room.remove_franchise("host", team["id"]))
         assert len(room.teams) == 10 and room.rules["max_teams"] == 10
+
+
+class TestNewAuction:
+    """
+    After the hammer the auctioneer starts the next auction under a fresh code:
+    the finished room closes, and everyone in it is told the new code.
+    """
+
+    def test_finish_then_new_auction(self):
+        from api.main import app
+
+        with TestClient(app) as client:
+            owner, delegate = account(client, "auctioneer"), account(client, "delegate")
+            with client.websocket_connect("/api/v1/auction/ws?room=DONE1&open=1", headers=owner) as host, \
+                 client.websocket_connect("/api/v1/auction/ws?room=DONE1", headers=delegate) as mum:
+                drain(host, is_state)
+                drain(mum, is_state)
+                host.send_json({"type": "join", "role": "auctioneer"})
+                assert drain(host, lambda m: m.get("type") in ("joined", "error"))["type"] == "joined"
+                mum.send_json({"type": "join", "role": "franchise", "team_id": 1})
+                assert drain(mum, lambda m: m.get("type") in ("joined", "error"))["type"] == "joined"
+
+                # Not yet: the auction has not finished.
+                host.send_json({"type": "new_auction", "next_room": "NEXT1"})
+                refused = drain(host, lambda m: m.get("type") == "error")
+                assert refused["about"] == "new_auction"
+
+                host.send_json({"type": "finish"})
+                drain(host, lambda m: is_state(m) and m["phase"] == "finished")
+
+                # A franchise may not close the room.
+                mum.send_json({"type": "new_auction", "next_room": "NEXT1"})
+                assert "auction" in drain(mum, lambda m: m.get("type") == "error")["message"].lower()
+                assert registry.get("DONE1") is not None, "a franchise's request closes nothing"
+
+                host.send_json({"type": "new_auction", "next_room": "NEXT1"})
+                closed = drain(mum, lambda m: m.get("type") == "room_closed")
+                assert closed["room"] == "DONE1" and closed["next_room"] == "NEXT1"
+                assert drain(host, lambda m: m.get("type") == "room_closed")["next_room"] == "NEXT1"
+
+            assert registry.get("DONE1") is None, "the finished room is closed"
+            assert client.get("/api/v1/auction/state?room=DONE1").status_code == 404
+
+            # The next code opens as a fresh room through the ordinary create path.
+            with client.websocket_connect("/api/v1/auction/ws?room=NEXT1&open=1", headers=owner) as host:
+                fresh = drain(host, is_state)
+                assert fresh["room"] == "NEXT1" and fresh["phase"] == "lobby"
+
+    def test_main_is_reset_not_closed(self):
+        reg = RoomRegistry(AuctionRoom())
+        assert reg.close(MAIN) is None and reg.get(MAIN) is not None
+
+
+def test_new_auction_without_a_pass_keeps_the_room(monkeypatch):
+    """No pass for the next room: refuse, and close nothing."""
+    from accounts import passes
+    from api.main import app
+
+    with TestClient(app) as client:
+        owner = account(client, "auctioneer")
+        with client.websocket_connect("/api/v1/auction/ws?room=KEEP1&open=1", headers=owner) as host:
+            drain(host, is_state)
+            host.send_json({"type": "join", "role": "auctioneer"})
+            assert drain(host, lambda m: m.get("type") in ("joined", "error"))["type"] == "joined"
+            host.send_json({"type": "finish"})
+            drain(host, lambda m: is_state(m) and m["phase"] == "finished")
+
+            monkeypatch.setattr(passes, "enforced", lambda: True)
+            monkeypatch.setattr(passes, "balances", lambda account_id: {"A": 0, "D": 0})
+            host.send_json({"type": "new_auction", "next_room": "KEEP2"})
+            refused = drain(host, lambda m: m.get("type") in ("error", "room_closed"))
+            assert refused["type"] == "error" and "pass" in refused["message"].lower()
+            assert registry.get("KEEP1") is not None, "the finished room stays open"

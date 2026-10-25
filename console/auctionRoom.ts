@@ -175,8 +175,7 @@ export function useRoom(): ReturnType<typeof currentRoom> & { key: string } {
 }
 
 /** Create a room of `type` under a fresh code and move this tab into it. */
-export function createRoom(type: RoomType = "auctioneer"): string {
-  const code = newRoomCode();
+export function createRoom(type: RoomType = "auctioneer", code: string = newRoomCode()): string {
   write({ code, creating: true, type });
   changed();
   return code;

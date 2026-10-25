@@ -305,6 +305,19 @@ class RemoveFranchise(BaseModel):
     team_id: int = Field(ge=1, le=100_000)
 
 
+class NewAuction(BaseModel):
+    """
+    Auctioneer, once the auction has finished: close this room and start the
+    next auction under a fresh code. `next_room` is the code the client has
+    just generated (console/auctionRoom.ts `newRoomCode`); everyone still in
+    this room is told it, and the auctioneer opens it as a new room.
+    """
+
+    model_config = Strict
+    type: Literal["new_auction"]
+    next_room: str = Field(min_length=1, max_length=24, pattern=r"^[A-Z0-9][A-Z0-9-]{0,23}$")
+
+
 class Ping(BaseModel):
     """Keepalive. Answered with a pong; touches no state."""
 
@@ -332,6 +345,7 @@ ClientMessage = Annotated[
     | AcknowledgeRules
     | AddFranchise
     | RemoveFranchise
+    | NewAuction
     | Ping,
     Field(discriminator="type"),
 ]

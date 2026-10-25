@@ -34,7 +34,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { wsUrl } from "../console/apiBase";
 import { useAccount } from "../console/accountStore";
-import { useRoom, withRoom } from "../console/auctionRoom";
+import { newRoomCode, useRoom, withRoom } from "../console/auctionRoom";
 
 /* ------------------------------------------------------------------ *
  * The wire format, mirroring auction/schemas.py
@@ -367,8 +367,11 @@ function socketUrl(): string {
 
 /** Backoff schedule, in ms. Caps rather than growing without bound. */
 const BACKOFF = [400, 900, 1800, 3000, 5000, 8000];
-/** Close codes for a room code the server will not serve: no retry. */
-const ROOM_REFUSALS = new Set([4400, 4403, 4404, 4429]);
+/**
+ * Close codes for a room code the server will not serve: no retry. 4410 is a
+ * room its auctioneer closed to start the next auction (`room_closed`).
+ */
+const ROOM_REFUSALS = new Set([4400, 4403, 4404, 4410, 4429]);
 const PING_INTERVAL = 25_000;
 
 export interface AuctionSocket {
@@ -383,6 +386,18 @@ export interface AuctionSocket {
    * code, every room in use). Set once and kept: the socket does not retry.
    */
   roomError: string | null;
+  /**
+   * The room was closed by its auctioneer to start the next auction, and the
+   * code that auction is in. Live Bidding moves the auctioneer into it and
+   * sends everyone else to the entry with the code filled in.
+   */
+  roomClosed: { room: string; nextRoom: string; message: string } | null;
+  /**
+   * Auctioneer, once the auction has finished: close this room and start the
+   * next auction under a fresh code. In MAIN, which never closes, the room is
+   * reset instead.
+   */
+  startNewAuction: () => void;
 
   /** Seconds left on the waiting-room countdown, or null outside `waiting`. */
   secondsLeft: number | null;
@@ -497,6 +512,7 @@ export function useAuctionSocket(): AuctionSocket {
   const [seat, setSeat] = useState<Seat | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [roomError, setRoomError] = useState<string | null>(null);
+  const [roomClosed, setRoomClosed] = useState<AuctionSocket["roomClosed"]>(null);
   const [now, setNow] = useState(() => Date.now());
 
   const socketRef = useRef<WebSocket | null>(null);
@@ -528,6 +544,7 @@ export function useAuctionSocket(): AuctionSocket {
     setState(null);
     setSeat(null);
     setRoomError(null);
+    setRoomClosed(null);
     attempt.current = 0;
     lotVersion.current = null;
 
@@ -601,6 +618,13 @@ export function useAuctionSocket(): AuctionSocket {
           case "error":
             if (payload.about === "room") setRoomError(String(payload.message ?? "That room is not available."));
             else setError(String(payload.message ?? "The room refused that."));
+            break;
+          case "room_closed":
+            setRoomClosed({
+              room: String(payload.room ?? ""),
+              nextRoom: String(payload.next_room ?? ""),
+              message: String(payload.message ?? "This auction has ended."),
+            });
             break;
           case "pong":
           default:
@@ -743,6 +767,7 @@ export function useAuctionSocket(): AuctionSocket {
       addFranchise: (name: string, code: string, color?: string) =>
         send({ type: "add_franchise", name, code: code.toUpperCase(), color: color ?? null }),
       removeFranchise: (teamId: number) => send({ type: "remove_franchise", team_id: teamId }),
+      startNewAuction: () => send({ type: "new_auction", next_room: newRoomCode() }),
       aiControl: (action: "pause" | "resume" | "take_over") => send({ type: "ai_control", action }),
     }),
     [send],
@@ -845,6 +870,7 @@ export function useAuctionSocket(): AuctionSocket {
     error,
     dismissError: useCallback(() => setError(null), []),
     roomError,
+    roomClosed,
     secondsLeft,
     claimSeat,
     queueSeat: useCallback((request: SeatRequest | null) => {

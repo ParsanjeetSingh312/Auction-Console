@@ -369,6 +369,8 @@ export default function DataDashboard() {
             onClose={() => setCardPlayer(null)}
             onNotice={notify}
             onAskScout={askScoutDrawer}
+            // Read-only analytics: there is no block here to put anyone on.
+            canPutOnBlock={false}
           />
         )}
       </AnimatePresence>

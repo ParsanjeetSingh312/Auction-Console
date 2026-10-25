@@ -3,7 +3,7 @@
  * The About page, built from the AUCTONIQ about prototype.
  *
  * The prototype's body is here as designed: the floodlit hero, the two
- * interfaces, how it works, what it fixes, and the disclaimer. Its standalone
+ * interfaces, how it works and what it fixes, with the disclaimer first. Its standalone
  * header and footer are not -- inside the site they would sit under the site's
  * own fixed nav and above its footer, so AuctiqNav and AuctiqFooter take their
  * place.
@@ -81,6 +81,17 @@ export default function About() {
         </section>
 
         <div className="page-width">
+          {/* First, directly under the hero, so nobody reaches the rest of the
+              page without seeing it. Same markup and classes as before: only
+              its place on the page changed. */}
+          <aside className="disclaimer" aria-labelledby="disclaimer-title">
+            <ShieldCheck className="disclaimer-icon" aria-hidden="true" />
+            <div>
+              <h2 id="disclaimer-title">For the love of the game. Not for gambling.</h2>
+              <p data-testid="about-disclaimer">{LEGAL_DISCLAIMER}</p>
+            </div>
+          </aside>
+
           <section className="content-section" aria-labelledby="interfaces-title">
             <div className="section-heading">
               <h2 id="interfaces-title">Two interfaces. One platform.</h2>
@@ -156,13 +167,6 @@ export default function About() {
             </ul>
           </section>
 
-          <aside className="disclaimer" aria-labelledby="disclaimer-title">
-            <ShieldCheck className="disclaimer-icon" aria-hidden="true" />
-            <div>
-              <h2 id="disclaimer-title">For the love of the game. Not for gambling.</h2>
-              <p data-testid="about-disclaimer">{LEGAL_DISCLAIMER}</p>
-            </div>
-          </aside>
         </div>
       </main>
 

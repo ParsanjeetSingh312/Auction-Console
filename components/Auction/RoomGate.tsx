@@ -52,10 +52,17 @@ const SECONDARY =
 export default function RoomGate({
   socket,
   notice,
+  nextRoom = null,
 }: {
   socket: AuctionSocket;
   /** Why the tab is back here: a code refused, a login turned away. */
   notice: string | null;
+  /**
+   * The code of the next auction, when the auctioneer closed the last room to
+   * open it. Filled into "Join a room", and the notice reads as news rather
+   * than as an error.
+   */
+  nextRoom?: string | null;
 }) {
   return (
     <div className="min-h-screen bg-surface bg-dots px-5 py-10">
@@ -85,8 +92,12 @@ export default function RoomGate({
         {notice && (
           <motion.p
             variants={cardVariants}
-            role="alert"
-            className="mb-5 rounded-lg border border-[#C0453A]/40 bg-[#C0453A]/10 px-3.5 py-2.5 font-ui text-[12px] leading-relaxed text-[#C0453A]"
+            role={nextRoom ? "status" : "alert"}
+            className={
+              nextRoom
+                ? "mb-5 rounded-lg border border-[var(--teal-ink)] bg-[var(--teal-tint)] px-3.5 py-2.5 font-ui text-[12px] leading-relaxed text-[var(--teal-ink)]"
+                : "mb-5 rounded-lg border border-[#C0453A]/40 bg-[#C0453A]/10 px-3.5 py-2.5 font-ui text-[12px] leading-relaxed text-[#C0453A]"
+            }
           >
             {notice}
           </motion.p>
@@ -94,7 +105,7 @@ export default function RoomGate({
 
         <div className="grid gap-4 md:grid-cols-2">
           <CreateRoom socket={socket} />
-          <JoinRoom socket={socket} />
+          <JoinRoom socket={socket} initialCode={nextRoom ?? ""} />
         </div>
 
         <motion.p variants={cardVariants} className="mt-6 text-center font-ui text-[11.5px] text-slate-faint">
@@ -208,9 +219,9 @@ function CreateRoom({ socket }: { socket: AuctionSocket }) {
 }
 
 /** A franchise: the code they were sent, and in. */
-function JoinRoom({ socket }: { socket: AuctionSocket }) {
+function JoinRoom({ socket, initialCode = "" }: { socket: AuctionSocket; initialCode?: string }) {
   const { status, account } = useAccount();
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(initialCode);
   const [formError, setFormError] = useState<string | null>(null);
 
   const submit = (event: FormEvent) => {

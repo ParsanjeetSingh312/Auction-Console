@@ -187,6 +187,29 @@ class RoomRegistry:
                     logger.exception("on_close hook failed for room %s", code)
         return closed
 
+    def close(self, code: str) -> RoomEntry | None:
+        """
+        Close one room now, whoever is still in it. Never MAIN.
+
+        The sweep closes rooms nobody is in; this closes a room on purpose --
+        its auctioneer starting the next auction under a fresh code
+        (auction/ws.py, `new_auction`). The caller tells the room's sockets
+        first; the same close hooks run as for a swept room.
+        """
+        if code == MAIN:
+            return None
+        entry = self._rooms.pop(code, None)
+        if entry is None:
+            return None
+        entry.room._disarm()
+        logger.info("Closed auction room %s", code)
+        for hook in self.on_close:
+            try:
+                hook(entry)
+            except Exception:  # noqa: BLE001 - one hook must not stop the close
+                logger.exception("on_close hook failed for room %s", code)
+        return entry
+
     def entries(self) -> list[RoomEntry]:
         return list(self._rooms.values())
 

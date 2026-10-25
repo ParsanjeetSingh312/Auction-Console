@@ -150,6 +150,14 @@ class ConnectionManager:
             except Exception:
                 logger.debug("broadcast drop for %s", client_id, exc_info=True)
 
+    async def close_all(self, code: int) -> None:
+        """Close every socket in this room, e.g. once the room itself has closed."""
+        for client_id, socket in list(self._sockets.items()):
+            try:
+                await socket.close(code=code)
+            except Exception:
+                logger.debug("close failed for %s", client_id, exc_info=True)
+
     @property
     def count(self) -> int:
         return len(self._sockets)
@@ -412,6 +420,10 @@ async def _dispatch(
         await manager.send(client_id, {"type": "pong"})
         return
 
+    if kind == "new_auction":
+        await _start_new_auction(room, manager, client_id, message.next_room, account)
+        return
+
     if kind == "join":
         # A franchise seat in an account-run room costs a Delegate or Free
         # account one D-pass, once per room: reconnecting is free, and a
@@ -547,6 +559,65 @@ async def _dispatch(
         await manager.send(client_id, {"type": "report", "report": room.report()})
 
     await manager.broadcast(room.state_payload())
+
+
+#: Close code for the sockets of a room its auctioneer has closed. 4xxx so the
+#: client does not reconnect to a code that no longer exists.
+ROOM_CLOSED = 4410
+
+
+async def _start_new_auction(
+    room: AuctionRoom,
+    manager: ConnectionManager,
+    client_id: str,
+    next_room: str,
+    account: Account | None = None,
+) -> None:
+    """
+    The auctioneer, after the hammer: close this room, open the next under a new code.
+
+    The finished room's report has been read and its PDFs downloaded; keeping
+    it open only leaves its seats behind -- the seat picker a departing user
+    landed on said "the chair is taken" about a chair nobody would sit in
+    again. So the room closes, everyone in it is told the code of the next
+    auction, and the auctioneer's client opens that code as a fresh room
+    through the ordinary create path (passes, ownership and all).
+
+    MAIN is never closed (auction/rooms.py), so there a new auction is a reset.
+    """
+    room._require_auctioneer(client_id, "start a new auction")
+    if room.phase != "finished":
+        raise RoomError("Finish this auction before starting the next one.", about="new_auction")
+
+    if room.code == MAIN:
+        await room.reset(client_id)
+        await manager.broadcast(room.state_payload())
+        return
+
+    next_code = normalise_code(next_room)
+    if next_code is None or next_code == room.code or registry.get(next_code) is not None:
+        raise RoomError("That room code is already in use. Try again.", about="new_auction")
+
+    # Checked before anything closes. Opening the next room costs the
+    # auctioneer a pass like any other room; closing this one first and only
+    # then finding the wallet empty would leave the auctioneer with no room at
+    # all and every franchise holding a code that will never open.
+    pass_kind = passes.room_pass(account, "create", room.room_type) if account else None
+    if pass_kind is not None and passes.enforced():
+        held = (await asyncio.to_thread(passes.balances, account.id)).get(pass_kind, 0)
+        if held < 1:
+            raise RoomError(passes.no_pass_message(account, pass_kind), about="new_auction")
+
+    await manager.broadcast(
+        {
+            "type": "room_closed",
+            "room": room.code,
+            "next_room": next_code,
+            "message": f"This auction has ended. The next auction is in room {next_code}.",
+        }
+    )
+    registry.close(room.code)
+    await manager.close_all(ROOM_CLOSED)
 
 
 def _first_error(exc: ValidationError) -> str:
