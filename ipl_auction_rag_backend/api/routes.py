@@ -215,6 +215,11 @@ async def ingest(request: IngestRequest | None = None) -> IngestResponse:
 
         await asyncio.to_thread(sync_jersey_numbers)
 
+        # A new pool means a new Trending Players list (ingestion/trending.py).
+        from ingestion.trending import refresh_trending
+
+        await asyncio.to_thread(refresh_trending)
+
         # The replay restored the career figures in the table, but the vector
         # summaries were just rebuilt from the spreadsheet. Re-embed them -- or,
         # if the ledger had no careers to replay, start a full stats refresh
@@ -267,6 +272,22 @@ async def ingest(request: IngestRequest | None = None) -> IngestResponse:
         raise HTTPException(
             status_code=500, detail="Ingestion failed. See the server logs for details."
         )
+
+
+@router.get("/trending")
+async def trending() -> dict:
+    """
+    The landing's Trending Players: players in the news first, then a fresh mix
+    from the pool, rebuilt after every ingestion and stats refresh
+    (ingestion/trending.py). Built on first request if no list exists yet.
+    """
+    from ingestion.trending import load_trending
+
+    try:
+        return await asyncio.to_thread(load_trending)
+    except Exception as exc:  # noqa: BLE001 - the frontend falls back to its own six
+        logger.warning("Trending Players unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail="Trending Players unavailable.")
 
 
 @router.get("/ping", include_in_schema=True)

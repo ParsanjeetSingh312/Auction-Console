@@ -79,3 +79,8 @@ id_ed25519
 # Each environment writes its own; committing one would tell a fresh deploy it
 # had already refreshed.
 ipl_auction_rag_backend/data/stats_status.json
+
+# Per-deployment Trending Players list, rebuilt from the pool after every
+# ingestion and stats refresh (ingestion/trending.py). The curated "in the news"
+# names live in trending_players.json, which is committed.
+ipl_auction_rag_backend/data/trending_snapshot.json

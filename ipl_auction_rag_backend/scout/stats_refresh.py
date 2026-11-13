@@ -190,6 +190,14 @@ async def _refresh(
     if numbered:
         notes.append(f"Applied {numbered} squad number(s) from jersey_numbers.json.")
 
+    # Trending Players are rebuilt from the refreshed pool, after the squad
+    # numbers, because only numbered players can trend (ingestion/trending.py).
+    from ingestion.trending import refresh_trending
+
+    trending = await asyncio.to_thread(refresh_trending)
+    if trending:
+        notes.append(f"Rebuilt Trending Players: {trending} player(s).")
+
     # --- 5. auction rooms ------------------------------------------------------------
     try:
         from auction.rooms import registry as auction_rooms

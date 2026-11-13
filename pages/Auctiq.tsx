@@ -32,8 +32,9 @@ import StadiumBackdrop from "../components/Sections/StadiumBackdrop";
 // The player-select showcase, in place of the scattered deck. `PlayerShowcase`
 // is kept on disk and unmounted: restoring it is this import and one line below.
 import PlayerSelect from "../components/UI/PlayerSelect";
-import { SHOWCASE_PLAYERS } from "../utils/players";
-import { PLAYER_STATS } from "../utils/playerStats";
+// Trending Players come from the backend now, rebuilt after every ingestion
+// (console/trendingApi.ts); the original six remain the offline fallback.
+import { useTrending } from "../console/trendingApi";
 // The landing's refined finish, scoped to `.proto` on the wrapper below.
 import "../components/Prototype/protoLanding.css";
 
@@ -77,11 +78,22 @@ const LandingSections = memo(function LandingSections() {
         header and the footer, both of which reach the auction room.
       */}
       <BroadcastHero />
-      <PlayerSelect players={SHOWCASE_PLAYERS} stats={PLAYER_STATS} />
+      <TrendingPlayers />
       <AuctiqFooter />
     </>
   );
 });
+
+/**
+ * The Trending Players deal, fed by the backend's list.
+ *
+ * Its own component so that when the list arrives only this section
+ * re-renders, not the hero above it (see LandingSections' note on frames).
+ */
+function TrendingPlayers() {
+  const { players, stats, tags } = useTrending();
+  return <PlayerSelect players={players} stats={stats} tags={tags} />;
+}
 
 export interface AuctiqProps {
   /**

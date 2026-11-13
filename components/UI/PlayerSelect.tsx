@@ -88,9 +88,11 @@ const easeInOut = gsap.parseEase("power2.inOut");
 export interface PlayerSelectProps {
   players: ShowcasePlayer[];
   stats: Record<number, PlayerStatSheet>;
+  /** A news tag per card ("Trade news"), by player id; shown beside the facts. */
+  tags?: Record<number, string>;
 }
 
-export default function PlayerSelect({ players: givenPlayers, stats: givenStats }: PlayerSelectProps) {
+export default function PlayerSelect({ players: givenPlayers, stats: givenStats, tags = {} }: PlayerSelectProps) {
   // The figures these cards were written with are spreadsheet values typed in
   // by hand; the live pool's current careers replace them once it loads.
   const lookup = useLivePool();
@@ -357,6 +359,18 @@ export default function PlayerSelect({ players: givenPlayers, stats: givenStats 
             </AnimatePresence>
 
             <div className="ml-auto flex items-end gap-8 sm:gap-12">
+              {/* Why this player is trending, when the backend says. */}
+              {tags[active.id] && (
+                <motion.span
+                  key={`${active.id}-tag`}
+                  className="whitespace-nowrap rounded-full border border-auctiq-gold/50 bg-auctiq-gold/10 px-3 py-1 font-tech text-[10px] font-semibold uppercase tracking-[0.2em] text-auctiq-gold"
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={reduced ? INSTANT : { duration: 0.4, delay: 0.1 }}
+                >
+                  {tags[active.id]}
+                </motion.span>
+              )}
               {[`#${active.number}`, active.roleLabel, `${active.stat} ${active.statLabel}`].map((fact, i) => (
                 <motion.span
                   key={`${active.id}-${i}`}

@@ -1,0 +1,8 @@
+{
+  "description": "Players in the news, always shown first in Trending Players (ingestion/trending.py). Edit this list when trades, retentions or auction news happen; the rest of Trending is picked fresh from the pool on every ingestion. Names must match the pool exactly. A player without a verified jersey number (data/jersey_numbers.json) is skipped, because the Trending cards are built around the shirt number.",
+  "updated": "2026-11-14",
+  "players": [
+    { "name": "Hardik Pandya", "tag": "Trade news" },
+    { "name": "Arshdeep Singh", "tag": "Trade news" }
+  ]
+}
