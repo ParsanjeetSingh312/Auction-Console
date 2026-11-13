@@ -162,7 +162,51 @@ class AiControl(BaseModel):
 
     model_config = Strict
     type: Literal["ai_control"]
-    action: Literal["pause", "resume", "take_over"]
+    action: Literal["pause", "resume", "take_over", "hand_back"]
+
+
+class DrawNext(BaseModel):
+    """
+    Manual auctioneer: bring up the next player -- the next of a generated lot
+    if one is queued, otherwise the next one the auction flow picks.
+    """
+
+    model_config = Strict
+    type: Literal["draw_next"]
+
+
+class GenerateLot(BaseModel):
+    """
+    Auctioneer, manual or AI chair: queue a lot of one role to come up next,
+    chosen and ordered by the auction flow.
+    """
+
+    model_config = Strict
+    type: Literal["generate_lot"]
+    category: Literal["BAT", "BOWL", "AR", "WK"]
+    size: int = Field(default=6, ge=1, le=60)
+
+
+class ClearLot(BaseModel):
+    """Auctioneer: drop the generated lot and return to the auction flow."""
+
+    model_config = Strict
+    type: Literal["clear_lot"]
+
+
+class TakeBreak(BaseModel):
+    """Auctioneer: pause the auction for a break. Every screen is told."""
+
+    model_config = Strict
+    type: Literal["take_break"]
+    note: str | None = Field(default=None, max_length=80)
+
+
+class EndBreak(BaseModel):
+    """Auctioneer: resume the auction after a break."""
+
+    model_config = Strict
+    type: Literal["end_break"]
 
 
 class Withdraw(BaseModel):
@@ -266,6 +310,11 @@ class SetRules(BaseModel):
     # Maximum Players: how many players may go under the hammer in total.
     max_players: int | None = Field(default=None, ge=0, le=10_000)
     min_overseas: int | None = Field(default=None, ge=0, le=100)
+    # The auctioneer's marking scheme: factor keys in priority order, at most
+    # four (auction/setup_options.py). Omitted keeps the room's current one.
+    marking_scheme: list[Annotated[str, Field(max_length=24)]] | None = Field(default=None, max_length=4)
+    # The auction flow: tier keys in priority order.
+    flow: list[Annotated[str, Field(max_length=24)]] | None = Field(default=None, max_length=8)
 
 
 class AcknowledgeRules(BaseModel):
@@ -342,6 +391,11 @@ ClientMessage = Annotated[
     | SetMode
     | RecordSale
     | AiControl
+    | DrawNext
+    | GenerateLot
+    | ClearLot
+    | TakeBreak
+    | EndBreak
     | AcknowledgeRules
     | AddFranchise
     | RemoveFranchise
@@ -488,7 +542,7 @@ class LotState(BaseModel):
     # Seconds left at the moment this frame was written.
     #
     # Sent *alongside* the absolute deadline rather than instead of it, because
-    # seven seconds is short enough for clock skew to matter: a client whose
+    # ten seconds is short enough for clock skew to matter: a client whose
     # system clock runs two seconds fast would show a lot expiring while the
     # room still considers it open, and would show its own bid button going
     # dead a third of the way through the window it actually has. A client that
@@ -543,7 +597,7 @@ class RoomState(BaseModel):
     # purse, max_squad, min_squad, max_overseas, and the four this phase adds:
     # open_seconds, close_seconds, timeout_seconds, timeouts_per_team. Sent
     # rather than hardcoded in the client so the dial, the lifeline counter and
-    # the room can never disagree about how long seven seconds is.
+    # the room can never disagree about how long ten seconds is.
     rules: dict
     # Bumped on every setup change. A franchise must acknowledge this exact
     # number before it may bid, fold or call a buffer.

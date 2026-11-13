@@ -166,6 +166,13 @@ class TeamCard:
     playing_xi: list[dict[str, Any]]
     max_bid: int
     notes: list[str] = field(default_factory=list)
+    # The marks this franchise is graded on (auction/marking.py): the
+    # auctioneer's marking scheme when Auction Setup set one, otherwise the
+    # four components above at their own weights. `overall` is their weighted
+    # sum either way. `custom_scheme` says which, so the report can say whose
+    # scheme it is printing.
+    marks: list[Any] = field(default_factory=list)
+    custom_scheme: bool = False
 
 
 # ------------------------------------------------------------------ #
@@ -645,7 +652,23 @@ def build_team_card(room: Any, team_id: int, rows: dict[int, dict[str, Any]]) ->
         "rating": rating_score,
         "budget": budget,
     }
-    overall = round(sum(components[key].value * WEIGHTS[key] for key in WEIGHTS), 1)
+    # Graded on the auctioneer's marking scheme when one is set. With none,
+    # `build_marks` returns these four components at WEIGHTS, so the overall
+    # mark is exactly what it was before a scheme could be chosen.
+    # Imported here: marking reads this module's scores and helpers.
+    from auction import flow, marking
+
+    scheme = [str(key) for key in rules.get("marking_scheme") or []]
+    marks, overall = marking.build_marks(
+        scheme,
+        components=components,
+        buys=buys,
+        xi_ids=[int(row["id"]) for row in (mine or {}).get("playing_xi", [])],
+        marquee_ids={
+            pid for pid, player in room.players.items() if flow.tier_of(player) == "marquee"
+        },
+        rules=rules,
+    )
 
     # The best bid is the most value taken, not the biggest cheque: the lowest
     # price against expectation, with the player's standing breaking ties.
@@ -682,6 +705,8 @@ def build_team_card(room: Any, team_id: int, rows: dict[int, dict[str, Any]]) ->
         xi_rating=(mine or {}).get("xi_rating"),
         playing_xi=(mine or {}).get("playing_xi", []),
         max_bid=int(summary["max_bid"]),
+        marks=marks,
+        custom_scheme=bool(scheme),
     )
 
 

@@ -396,7 +396,7 @@ export function SetupDialog({
 
         {live && (
           <p className="mt-2 rounded-md border border-rule px-2.5 py-2 text-mini leading-relaxed text-muted">
-            Fixed for every room: 10 franchises · 7-second bid timer · ₹0.25 Cr increments ·
+            Fixed for every room: 10 franchises · 10-second bid timer · ₹0.25 Cr increments ·
             jump bids of +5 / +10 / +15 Cr or more · 30-second decision buffer, 3 per
             franchise · at least 1 uncapped player. Saving sends every franchise back to the
             briefing to acknowledge the new rules.

@@ -35,7 +35,10 @@ def _password(monkeypatch):
 
 @pytest.fixture
 def draw(monkeypatch):
-    """The random draw on, with short gaps so the suite stays fast."""
+    """The room's own draw on, with short gaps so the suite stays fast."""
+    # These tests seat the AI in the chair for its draw, not its voice: without
+    # this its hook would go looking for a model on every lot.
+    monkeypatch.setattr("auction.room.EVENT_HOOKS", [])
     settings = get_settings()
     monkeypatch.setattr(settings, "AUTO_DRAW", True)
     monkeypatch.setattr(settings, "DRAW_GAP_SECONDS", 0.05)
@@ -55,13 +58,15 @@ async def until(predicate, timeout: float = 2.0) -> None:
     raise AssertionError("the room never got there")
 
 
-async def room_in(mode: str, *, start: bool = True, fast: bool = False) -> AuctionRoom:
+async def room_in(
+    mode: str, *, start: bool = True, fast: bool = False, chair: str = "manual"
+) -> AuctionRoom:
     room = AuctionRoom()
     room.load_players([dict(p) for p in POOL])
     if fast:
         room.rules.update(open_seconds=0.1, close_seconds=0.1, timeout_seconds=0.2)
     await room.join("host", "auctioneer", None, "Host", PASSWORD)
-    await room.set_mode("host", mode, "manual")
+    await room.set_mode("host", mode, chair)
     for t in (1, 2):
         await room.join(f"c{t}", "franchise", t, f"T{t}")
         await room.acknowledge_rules(f"c{t}", room.rules_version)
@@ -223,17 +228,27 @@ class TestRandomDraw:
         async def go():
             # Full-length clocks: a fast one could pass the drawn lot over
             # before the assertions look at it.
-            room = await room_in("online")
+            room = await room_in("online", chair="ai")
             assert room.state_payload()["draw"] == "random"
-            with pytest.raises(RoomError, match="at random"):
+            with pytest.raises(RoomError, match="AI auctioneer"):
                 await room.put_up("host", 1)
             await until(lambda: room.lot is not None)  # drawn by the room itself
-            assert "drawn at random" in room.log[0]["what"]
+            assert "auction flow" in room.log[0]["what"]
+        run(go())
+
+    def test_a_manual_online_room_waits_for_its_auctioneer(self, draw):
+        async def go():
+            room = await room_in("online")
+            assert room.state_payload()["draw"] == "manual"
+            await asyncio.sleep(0.15)
+            assert room.lot is None  # nothing comes up by itself
+            await room.put_up("host", 1)
+            assert room.lot.player_id == 1
         run(go())
 
     def test_the_next_player_is_drawn_after_a_lot_settles(self, draw):
         async def go():
-            room = await room_in("online")
+            room = await room_in("online", chair="ai")
             await until(lambda: room.lot is not None)
             first = room.lot.player_id
             await room.bid("c1")
@@ -246,7 +261,7 @@ class TestRandomDraw:
 
     def test_the_auction_closes_itself_when_every_player_is_drawn(self, draw):
         async def go():
-            room = await room_in("online")
+            room = await room_in("online", chair="ai")
             for _ in range(len(POOL)):
                 await until(lambda: room.lot is not None)
                 await room.mark_unsold("host")

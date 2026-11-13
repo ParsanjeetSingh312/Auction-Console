@@ -65,6 +65,9 @@ import AiAuctioneerCard from "./ai/AiAuctioneerCard";
 import ModeSwitch from "./hybrid/ModeSwitch";
 import FranchiseManager from "./hybrid/FranchiseManager";
 import OfflineSalePanel from "./hybrid/OfflineSalePanel";
+import AuctionSetupForm from "./setup/AuctionSetupForm";
+import MarksPanel from "./setup/MarksPanel";
+import RunSheet from "./setup/RunSheet";
 
 /** Left-pane tools. The right pane never changes — that is the point. */
 type Tool = "teams" | "pool" | "results" | "scout" | "stats";
@@ -246,6 +249,25 @@ export default function AdminSplitScreen({
   */
   const [showSetup, setShowSetup] = useState(false);
 
+  /*
+    Auction Setup opens by itself the first time the auctioneer reaches this
+    screen in a room that has not been set up: the marking scheme and the
+    auction flow are decisions to make before the room opens, not a dialog to
+    remember to look for. Once per visit -- closing it with "Later" is honoured
+    -- and never again once the room reports the setup as saved.
+  */
+  const setupOffered = useRef(false);
+  const setupPending =
+    !!socket &&
+    viewerRole === "auctioneer" &&
+    socket.state?.setup_saved === false &&
+    (socket.state.phase === "lobby" || socket.state.phase === "waiting");
+  useEffect(() => {
+    if (!setupPending || setupOffered.current) return;
+    setupOffered.current = true;
+    setShowSetup(true);
+  }, [setupPending]);
+
   /**
    * Rules the auctioneer asked for, until the room confirms them.
    *
@@ -299,13 +321,18 @@ export default function AdminSplitScreen({
       live.minSquad === wanted.minSquad &&
       live.maxOverseas === wanted.maxOverseas &&
       (wanted.maxPlayers === undefined || live.maxPlayers === wanted.maxPlayers) &&
-      (wanted.minOverseas === undefined || live.minOverseas === wanted.minOverseas)
+      (wanted.minOverseas === undefined || live.minOverseas === wanted.minOverseas) &&
+      (wanted.markingScheme === undefined ||
+        JSON.stringify(live.markingScheme ?? []) === JSON.stringify(wanted.markingScheme)) &&
+      (wanted.flow === undefined || JSON.stringify(live.flow ?? []) === JSON.stringify(wanted.flow)) &&
+      // A first save changes no figure, so the room's own flag is the proof.
+      (!socket || socket.state?.setup_saved !== false)
     ) {
       pendingRules.current = null;
       window.clearTimeout(rulesTimer.current);
-      onNotice("Auction rules updated");
+      onNotice(socket ? "Auction setup saved" : "Auction rules updated");
     }
-  }, [engine.rules, onNotice]);
+  }, [engine.rules, onNotice, socket, socket?.state?.setup_saved]);
 
   /**
    * Fires if a rules change is still unconfirmed a few seconds after asking.
@@ -645,6 +672,12 @@ export default function AdminSplitScreen({
                         <TeamLeaderboard teams={engine.summaries} rules={engine.rules} />
                       )}
                     </div>
+                    {/* Every franchise marked on the auctioneer's own scheme. */}
+                    {socket && viewerRole === "auctioneer" && socket.state?.supports?.includes("draw_next") && (
+                      <div className="overflow-hidden rounded-xl border border-line bg-surface-card shadow-soft">
+                        <MarksPanel socket={socket} />
+                      </div>
+                    )}
                     <div className="overflow-hidden rounded-xl border border-line bg-surface-card shadow-soft">
                       <AuctionIntelligence teams={engine.summaries} rules={engine.rules} />
                     </div>
@@ -665,6 +698,14 @@ export default function AdminSplitScreen({
                     onOpenCard={() => {}}
                     onNotice={onNotice}
                     viewerRole={viewerRole}
+                    onRandomiseLot={
+                      socket && socket.state?.phase === "live" && socket.state.supports?.includes("generate_lot")
+                        ? (role) => {
+                            socket.generateLot(role, 6);
+                            onNotice("Lot randomised. It comes to the block next, in the order of the auction flow.");
+                          }
+                        : undefined
+                    }
                   />
                 )}
                 {tool === "results" && <ResultsView engine={engine} onNotice={onNotice} />}
@@ -741,6 +782,8 @@ export default function AdminSplitScreen({
               <>
                 {/* The AI auctioneer's podium, when it holds this room's chair. */}
                 {socket && <AiAuctioneerCard socket={socket} />}
+                {/* Who brings players up, the flow, a generated lot, the break. */}
+                {socket && <RunSheet socket={socket} />}
                 {socket && <DrawIndicator socket={socket} />}
                 <BlockPanel
                   engine={engine}
@@ -748,8 +791,10 @@ export default function AdminSplitScreen({
                   onAskScout={askScout}
                   emptyHint={
                     socket?.state?.draw === "random"
-                      ? "The room draws the next player at random. No one puts players up by hand."
-                      : undefined
+                      ? "The AI auctioneer brings up the next player, following the auction flow. Take over to put one up by hand."
+                      : socket
+                        ? "Press Next player, or put one up from the pool."
+                        : undefined
                   }
                 />
               </>
@@ -779,8 +824,34 @@ export default function AdminSplitScreen({
         the socket-backed `ResetAuction` control is authoritative, and the
         dialog closes onto it rather than competing with it.
       */}
+      {showSetup && socket && (
+        <AuctionSetupForm
+          socket={socket}
+          rules={queuedRules ?? engine.rules}
+          firstRun={socket.state?.setup_saved === false}
+          warning={staleServer}
+          note={
+            engine.block
+              ? "A player is on the block. Saved changes apply as soon as this lot is settled."
+              : null
+          }
+          onSave={(next) => {
+            setShowSetup(false);
+            if (engine.block) {
+              setQueuedRules(next);
+              onNotice("Setup saved — it applies as soon as the player on the block is settled.");
+              return;
+            }
+            setQueuedRules(null);
+            sendRules(next);
+          }}
+          onClose={() => setShowSetup(false)}
+        />
+      )}
+
+      {/* The classic dialog, for this screen on the offline engine (no room). */}
       <AnimatePresence>
-        {showSetup && (
+        {showSetup && !socket && (
           <SetupDialog
             rules={queuedRules ?? engine.rules}
             warning={staleServer}

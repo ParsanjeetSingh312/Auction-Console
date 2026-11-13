@@ -856,9 +856,15 @@ def _awards_page(p: Pen) -> None:
 
 def _verdict(p: Pen) -> None:
     r, card = p.r, p.r.card
-    y = p.header(9, "the auctoniq verdict", "how the auction rates",
-                 "AUCTONIQ's own rating of this franchise's auction: squad balance, value "
-                 "found, squad quality and use of the purse, each with the arithmetic behind it.")
+    custom = bool(card is not None and getattr(card, "custom_scheme", False))
+    y = p.header(
+        9, "the auctoniq verdict", "how the auction rates",
+        ("This franchise's auction, marked on the auctioneer's own scheme: the factors "
+         "below, in the auctioneer's priority order, each with the arithmetic behind it.")
+        if custom else
+        ("AUCTONIQ's own rating of this franchise's auction: squad balance, value "
+         "found, squad quality and use of the purse, each with the arithmetic behind it."),
+    )
     if card is None:
         p.para(M, y, "The rating could not be computed for this room.", W - 2 * M, color=MUTED)
         p.footer("verdict")
@@ -876,14 +882,23 @@ def _verdict(p: Pen) -> None:
                W - 2 * M - 220, size=9, color=BODY)
     y -= h + 12
 
-    labels = {"balance": "Squad balance", "steals": "Value found", "rating": "Squad quality",
-              "budget": "Use of the purse"}
+    # The marks are the auctioneer's marking scheme when Auction Setup set one,
+    # and AUCTONIQ's own four components otherwise (auction/marking.py). At
+    # most four either way, so the page keeps one layout.
+    marks = list(getattr(card, "marks", None) or [])
+    if not marks:
+        from auction.marking import DEFAULT_MARKS, Mark
+
+        marks = [
+            Mark(key, label, WEIGHTS[key], card.components[key].value, card.components[key].detail)
+            for key, label in DEFAULT_MARKS
+        ]
     h = 52
-    for key in ("balance", "steals", "rating", "budget"):
-        score = card.components[key]
+    for index, score in enumerate(marks, start=1):
         top = p.panel(M, y, W - 2 * M, h)
-        p.text(M + 14, top - 2, labels[key], "bold", 10, INK)
-        p.text(M + 150, top - 2, f"weight {WEIGHTS[key]:.0%}", "body", 7, MUTED)
+        label = f"{index}. {score.label}" if custom else score.label
+        p.text(M + 14, top - 2, label, "bold", 10, INK)
+        p.text(M + 150, top - 2, f"weight {score.weight:.0%}", "body", 7, MUTED)
         p.bar(M + 14, top - 18, 180, 7, BG_2)
         p.bar(M + 14, top - 18, 180 * score.value / 10, 7,
               GOOD if score.value >= 7 else WARN if score.value >= 5 else BAD)

@@ -134,7 +134,7 @@ class TestCalls:
     def test_a_manual_room_hears_nothing_from_it(self, model):
         async def go():
             room = await ai_room("manual")
-            await until(lambda: room.lot is not None)
+            await room.draw_next("host")  # a manual auctioneer brings players up
             await asyncio.sleep(0.1)
             assert room.auctioneer_feed == [] and model == []
             assert room.state_payload()["ai"]["active"] is False
@@ -155,7 +155,7 @@ class TestTheHumanInTheChair:
             await room.ai_control("host", "take_over")
             assert room.rules["auctioneer"] == "manual" and not room.ai_active
             count = len(feed(room))
-            await until(lambda: room.lot is not None)
+            await room.draw_next("host")  # taken over: the auctioneer draws by hand
             await room.mark_unsold("host")
             await asyncio.sleep(0.1)
             assert len(feed(room)) == count  # taken over: it speaks no more

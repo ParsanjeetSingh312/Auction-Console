@@ -44,7 +44,6 @@ import asyncio
 import copy
 import re
 import logging
-import random
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -68,7 +67,9 @@ from auction.rules import (
     validate_setup,
 )
 from auction.schemas import supported_message_types
+from auction import flow as flowbook
 from auction import leaderboard
+from auction import setup_options
 
 logger = logging.getLogger("auction.room")
 
@@ -112,7 +113,7 @@ MAX_UNDO = 60
 #
 # They are carried in `rules` and broadcast, not compiled into the client,
 # because the dial, the lifeline counter and the room must not be able to
-# disagree about how long seven seconds is.
+# disagree about how long ten seconds is.
 # --------------------------------------------------------------------- #
 
 # Sourced from the rulebook (auction/rules.py), which holds every
@@ -204,6 +205,9 @@ class Player:
     base: int
     rating: float | None
     uncapped: bool = False
+    # Marquee, prime or emerging: AUCTEAM's tier for this player, worked out
+    # once at load (`AuctionRoom.load_players`). What the auction flow reads.
+    tier: str = "prime"
 
 
 @dataclass
@@ -359,6 +363,20 @@ class AuctionRoom:
     ai_status: str = "idle"
     ai_paused: bool = False
 
+    # Whether the auctioneer has saved Auction Setup for this room. Until they
+    # have, their screen opens the setup form by itself.
+    setup_saved: bool = False
+    # The (tier, role) of recent lots, oldest first: what the flow reads to
+    # keep one tier or one role from running on (auction/flow.py).
+    draw_history: list[tuple[str, str]] = field(default_factory=list)
+    # A generated lot: player ids still to come up, in order, ahead of the
+    # ordinary flow; and what it is a lot of. Empty when none is running.
+    lot_queue: list[int] = field(default_factory=list)
+    lot_plan: dict[str, Any] | None = None
+    # A break called by the auctioneer: when it began, an optional note, and
+    # the clock it stopped so resuming can put it back. None while running.
+    on_break: dict[str, Any] | None = None
+
     seats: dict[str, Seat] = field(default_factory=dict)
     undo_stack: list[Snapshot] = field(default_factory=list)
 
@@ -396,6 +414,19 @@ class AuctionRoom:
         self.players.clear()
         self.records.clear()
 
+        # The tiers are AUCTEAM's (aucteam/tiers.py), curated names included,
+        # so the flow's Marquee is the Marquee on an AUCTEAM card. A store that
+        # cannot be read costs the curated list, not the pool: every player
+        # still gets a derived tier.
+        from aucteam import tiers as aucteam_tiers
+
+        try:
+            from aucteam import store as aucteam_store
+
+            overrides = aucteam_store.load_overrides()
+        except Exception:  # noqa: BLE001 - derive every tier instead
+            overrides = {}
+
         for index, row in enumerate(rows, start=1):
             pid = row.get("id") or index
             role = str(row.get("role") or "Batter")
@@ -409,6 +440,9 @@ class AuctionRoom:
                 base=int(row.get("base_price") or BASE_PRICE_FLOOR),
                 rating=row.get("rating"),
                 uncapped=str(row.get("cap_status") or "").upper() == "UNCAPPED",
+                tier=setup_options.TIER_BY_CODE.get(
+                    aucteam_tiers.resolve_tier(row, overrides)[0], "prime"
+                ),
             )
             self.records[pid] = Record()
 
@@ -998,7 +1032,7 @@ class AuctionRoom:
             return
 
         # "closing" and "timeout" both lapse into a sale, however many
-        # franchises are in the contest. Seven seconds of silence from all of
+        # franchises are in the contest. Ten seconds of silence from all of
         # them is the room agreeing, and the highest bid is what it agreed to.
         try:
             self._hammer_down(how="on the clock")
@@ -1171,12 +1205,13 @@ class AuctionRoom:
         self._require_auctioneer(client_id, "put a player up")
         if self.auto_draw:
             raise RoomError(
-                "Players come to the block at random in an online auction; nobody puts them up by hand.",
+                "The AI auctioneer is bringing players to the block. Take over to put one up by hand.",
                 about="put_up",
             )
         async with self._lock:
             if self.phase != "live":
                 raise RoomError("The auction is not running.", about="put_up")
+            self._require_running("put a player up")
             if self.lot is not None:
                 raise RoomError("Settle the current lot first.", about="put_up")
 
@@ -1200,11 +1235,17 @@ class AuctionRoom:
                 )
 
             self._checkpoint()
+            # A hand-picked player who was waiting in a generated lot has had
+            # his turn; he does not come up a second time from the queue.
+            if player.id in self.lot_queue:
+                self.lot_queue.remove(player.id)
             self._open_lot(player)
 
     def _open_lot(self, player: Player, how: str = "") -> None:
         """Put `player` on the block and start his clock. Lock held, no lot."""
         record = self.records[player.id]
+        self.draw_history.append((self.tier_of(player), player.role_short))
+        del self.draw_history[:-flowbook.HISTORY]
         # Opening ask is the base itself: the first bidder pays base, and
         # only the second onwards climbs the ladder.
         self.lot = Lot(player_id=player.id, bid=player.base, bidder_id=None, version=0)
@@ -1213,11 +1254,11 @@ class AuctionRoom:
         self._emit("lot_open", {"player_id": player.id, "player": player.name, "base": player.base})
         # The clock starts the instant the player appears, not when the
         # auctioneer gets round to asking for bids. That is the point of
-        # the rule: an unwanted lot costs the room seven seconds, not
+        # the rule: an unwanted lot costs the room ten seconds, not
         # however long it takes somebody to decide nobody wants him.
         #
         # A marquee player is the one exception: the room is watching his
-        # reveal, so the lot is held for it first and the seven seconds
+        # reveal, so the lot is held for it first and the ten seconds
         # start when it ends (see _fire). Nobody loses bidding time to it.
         # Offline there is no clock at all: the lot stays on the block until
         # the auctioneer logs the sale or passes the player over.
@@ -1233,7 +1274,7 @@ class AuctionRoom:
         """
         The gavel, brought down early.
 
-        The clock would settle this lot on its own within seven seconds, so
+        The clock would settle this lot on its own within ten seconds, so
         this is now an override rather than the only way a lot closes: an
         auctioneer who can see the room has finished bidding should not have to
         wait out a buffer nobody is going to use.
@@ -1242,6 +1283,7 @@ class AuctionRoom:
         async with self._lock:
             if not self.lot:
                 raise RoomError("Nothing is on the block.", about="sell")
+            self._require_running("sell a lot")
             self._hammer_down()
 
     async def mark_unsold(self, client_id: str) -> None:
@@ -1250,6 +1292,7 @@ class AuctionRoom:
         async with self._lock:
             if not self.lot:
                 raise RoomError("Nothing is on the block.", about="unsold")
+            self._require_running("pass a player over")
             self._pass_over()
 
     async def undo(self, client_id: str) -> None:
@@ -1257,6 +1300,7 @@ class AuctionRoom:
         async with self._lock:
             if not self.undo_stack:
                 raise RoomError("Nothing to undo.", about="undo")
+            self._require_running("undo")
             snap = self.undo_stack.pop()
             self.records = snap.records
             self.lot = snap.lot
@@ -1293,6 +1337,8 @@ class AuctionRoom:
             self._checkpoint()
             self._disarm()
             self._cancel_draw()
+            self.on_break = None
+            self._clear_lot_queue()
             self.phase = "finished"
             self.finished_at = time.time()
             self.lot = None
@@ -1335,6 +1381,9 @@ class AuctionRoom:
             self.auctioneer_feed = []
             self.ai_paused = False
             self.ai_status = "idle"
+            self.on_break = None
+            self.draw_history = []
+            self._clear_lot_queue()
             self.phase = "lobby"
             self.started_at = None
             self.finished_at = None
@@ -1351,9 +1400,17 @@ class AuctionRoom:
         max_overseas: int,
         max_players: int | None = None,
         min_overseas: int | None = None,
+        marking_scheme: list[str] | None = None,
+        flow: list[str] | None = None,
     ) -> None:
         """
         Change the auction's setup from the host's panel.
+
+        **One save, three sections.** The numbers below, the auctioneer's
+        marking scheme (what each franchise's report is graded on) and the
+        auction flow (the order tiers of the pool come up in). The last two are
+        optional so an older client sending only the numbers still works; an
+        omitted one keeps its current value.
 
         **Uniform by construction (rule 2).** There is one `rules` dict and no
         per-team copy, so the merge below changes the budget and caps of every
@@ -1380,6 +1437,14 @@ class AuctionRoom:
             "max_players": self.rules.get("max_players", 0) if max_players is None else max_players,
             "min_overseas": self.rules["min_overseas"] if min_overseas is None else min_overseas,
         }
+
+        try:
+            new_scheme = (
+                None if marking_scheme is None else setup_options.validate_scheme(marking_scheme)
+            )
+            new_flow = None if flow is None else setup_options.validate_flow(flow)
+        except setup_options.SetupError as exc:
+            raise RoomError(str(exc), about="rules") from exc
 
         async with self._lock:
             if self.lot is not None:
@@ -1413,14 +1478,38 @@ class AuctionRoom:
                     about="rules",
                 )
 
+            # What a franchise bids under: the numbers, and what it is marked
+            # on. A change to either sends every franchise back to the briefing.
+            # The flow is the auctioneer's own running order, so changing it
+            # alone does not interrupt anybody.
+            numbers_changed = any(self.rules.get(key) != value for key, value in clean.items())
+            scheme_changed = new_scheme is not None and new_scheme != self.rules.get("marking_scheme")
+            flow_changed = new_flow is not None and new_flow != self.rules.get("flow")
+            first_save = not self.setup_saved
+
             self.rules.update(clean)
-            self.rules_version += 1
-            self._note(
-                f"Rules set — {money(self.rules['purse'])} budget, squad "
-                f"{self.rules['min_squad']}-{self.rules['max_squad']}, overseas "
-                f"{self.rules['min_overseas']}-{self.rules['max_overseas']}, "
-                f"{self.rules['max_players']} players"
-            )
+            if new_scheme is not None:
+                self.rules["marking_scheme"] = new_scheme
+            if new_flow is not None:
+                self.rules["flow"] = new_flow
+            self.setup_saved = True
+            if numbers_changed or scheme_changed or first_save:
+                self.rules_version += 1
+            if numbers_changed or first_save:
+                self._note(
+                    f"Rules set — {money(self.rules['purse'])} budget, squad "
+                    f"{self.rules['min_squad']}-{self.rules['max_squad']}, overseas "
+                    f"{self.rules['min_overseas']}-{self.rules['max_overseas']}, "
+                    f"{self.rules['max_players']} players"
+                )
+            if scheme_changed:
+                labels = setup_options.scheme_labels(self.rules["marking_scheme"])
+                self._note(
+                    "Marking scheme set — " + " > ".join(labels)
+                    if labels else "Marking scheme set — AUCTONIQ's own rating"
+                )
+            if flow_changed:
+                self._note("Auction flow set — " + " > ".join(setup_options.flow_labels(self.rules["flow"])))
             self.version += 1
 
     # ---------------------------------------------------------------- #
@@ -1434,8 +1523,60 @@ class AuctionRoom:
 
     @property
     def auto_draw(self) -> bool:
-        """Online rooms bring players to the block at random, by themselves."""
-        return not self.offline and get_settings().AUTO_DRAW
+        """
+        Whether the room brings players to the block by itself.
+
+        It does while the AI auctioneer holds the chair of an online room. A
+        manual auctioneer brings each player up by hand -- a named player, the
+        next one in the flow, or the next of a generated lot -- and can hand
+        the chair to the AI, or take it back, at any point in the auction.
+        """
+        return (
+            not self.offline
+            and get_settings().AUTO_DRAW
+            and self.rules.get("auctioneer") == "ai"
+        )
+
+    def tier_of(self, player: Player) -> str:
+        return flowbook.tier_of(player)
+
+    def _require_running(self, action: str) -> None:
+        """Refuse an action while the auction is paused for a break. Lock held."""
+        if self.on_break is not None:
+            raise RoomError(
+                f"The auction is paused for a break — resume it before you {action}.",
+                about="break",
+            )
+
+    def _clear_lot_queue(self) -> None:
+        self.lot_queue = []
+        self.lot_plan = None
+
+    def _next_player(self) -> tuple[Player | None, str]:
+        """
+        Who comes to the block next, and how to say so in the ledger. Lock held.
+
+        A generated lot runs first, in its own order; otherwise the auction
+        flow picks from everyone still to come. None once nobody is left or the
+        lot limit is reached.
+        """
+        pool = self._drawable()
+        if not pool:
+            self._clear_lot_queue()
+            return None, ""
+        by_id = {p.id: p for p in pool}
+        while self.lot_queue:
+            player = by_id.get(self.lot_queue.pop(0))
+            if player is not None:
+                label = (self.lot_plan or {}).get("label", "lot")
+                if not self.lot_queue:
+                    self.lot_plan = None
+                return player, f" ({label} lot)"
+        self.lot_plan = None
+        player = flowbook.pick(
+            pool, self.rules.get("flow") or setup_options.DEFAULT_FLOW, self.draw_history,
+        )
+        return player, " (auction flow)"
 
     def _drawable(self) -> list[Player]:
         """Players still to come up, or none once the lot limit is reached."""
@@ -1447,7 +1588,10 @@ class AuctionRoom:
 
     def _schedule_draw(self, seconds: float) -> None:
         """Draw the next player after `seconds`. Lock held. A no-op unless due."""
-        if not self.auto_draw or self.phase != "live" or self.lot is not None:
+        if (
+            not self.auto_draw or self.phase != "live" or self.lot is not None
+            or self.on_break is not None
+        ):
             return
         self._cancel_draw()
         try:
@@ -1470,11 +1614,15 @@ class AuctionRoom:
         except asyncio.CancelledError:
             return
         async with self._lock:
-            if token != self._draw_token or self.phase != "live" or self.lot is not None:
-                return  # superseded: an undo, a finish, or a lot already up
+            if (
+                token != self._draw_token or self.phase != "live" or self.lot is not None
+                or self.on_break is not None or not self.auto_draw
+            ):
+                return  # superseded: an undo, a finish, a break, a takeover
             self.next_draw_at = None
-            pool = self._drawable()
-            if not pool:
+            self._draw_task = None
+            player, how = self._next_player()
+            if player is None:
                 # Every player has been under the hammer, or the lot limit is
                 # reached: the auction is over, and it closes itself.
                 self._checkpoint()
@@ -1485,8 +1633,146 @@ class AuctionRoom:
                 self._emit("finished", {})
             else:
                 self._checkpoint()
-                self._open_lot(random.choice(pool), " (drawn at random)")
+                self._open_lot(player, how)
         await self._announce()
+
+    async def draw_next(self, client_id: str) -> None:
+        """
+        A manual auctioneer's one-click draw: bring up the next player of the
+        generated lot, or the next one in the auction flow.
+        """
+        self._require_auctioneer(client_id, "bring up the next player")
+        if self.auto_draw:
+            raise RoomError(
+                "The AI auctioneer is bringing players to the block. Take over to draw by hand.",
+                about="draw",
+            )
+        async with self._lock:
+            if self.phase != "live":
+                raise RoomError("The auction is not running.", about="draw")
+            self._require_running("bring up the next player")
+            if self.lot is not None:
+                raise RoomError("Settle the current lot first.", about="draw")
+            player, how = self._next_player()
+            if player is None:
+                raise RoomError(
+                    "Nobody is left to bring up: every player has been under the hammer, "
+                    "or the lot limit is reached.",
+                    about="draw",
+                )
+            self._checkpoint()
+            self._open_lot(player, how)
+
+    async def generate_lot(self, client_id: str, category: str, size: int) -> int:
+        """
+        Queue a lot of one role -- batters, bowlers, all-rounders or keepers --
+        to come to the block next, in the manual chair or the AI's.
+
+        The players are chosen and ordered by the auction flow, so a lot of
+        bowlers still leads with the tiers the auctioneer put first. It
+        replaces any lot already queued. Returns how many players it holds.
+        """
+        self._require_auctioneer(client_id, "generate a lot")
+        label = setup_options.LOT_CATEGORIES.get(category)
+        if label is None:
+            raise RoomError("A lot is batters, bowlers, all-rounders or wicket-keepers.", about="lot")
+        async with self._lock:
+            if self.phase != "live":
+                raise RoomError("A lot is generated once the auction is running.", about="lot")
+            pool = [p for p in self._drawable() if p.role_short == category]
+            if not pool:
+                raise RoomError(f"No {label.lower()} are left to come up.", about="lot")
+            lot = flowbook.build_lot(
+                pool, self.rules.get("flow") or setup_options.DEFAULT_FLOW, size,
+            )
+            self.lot_queue = [p.id for p in lot]
+            self.lot_plan = {"category": category, "label": label, "total": len(lot)}
+            self._note(f"{label} lot generated — {len(lot)} players, in the auction flow's order")
+            self.version += 1
+            # Between lots in the AI's chair the next draw is normally already
+            # due, and it will read this queue. If none is pending, start one.
+            if self.lot is None and self.auto_draw and self._draw_task is None:
+                self._schedule_draw(get_settings().FIRST_DRAW_SECONDS)
+            return len(lot)
+
+    async def clear_lot(self, client_id: str) -> None:
+        """Drop the generated lot; the ordinary auction flow resumes."""
+        self._require_auctioneer(client_id, "clear the lot")
+        async with self._lock:
+            if not self.lot_queue:
+                raise RoomError("No lot is queued.", about="lot")
+            label = (self.lot_plan or {}).get("label", "The")
+            self._clear_lot_queue()
+            self._note(f"{label} lot cleared — back to the auction flow")
+            self.version += 1
+
+    # ---------------------------------------------------------------- #
+    # Breaks
+    # ---------------------------------------------------------------- #
+
+    async def take_break(self, client_id: str, note: str | None = None) -> None:
+        """
+        Pause the auction for a break. The human in the chair's call, whoever
+        is bringing players up.
+
+        Everything that moves stops: the lot's clock is stopped where it was,
+        the next draw is cancelled, and no franchise may bid, fold or call a
+        buffer. Every screen is told (`state.break`). Nothing is settled or
+        lost -- a lot on the block is still on the block when play resumes.
+        """
+        self._require_auctioneer(client_id, "pause the auction")
+        async with self._lock:
+            if self.phase != "live":
+                raise RoomError("Only a running auction can be paused.", about="break")
+            if self.on_break is not None:
+                raise RoomError("The auction is already paused.", about="break")
+            held: dict[str, Any] = {}
+            if self.lot is not None and self.lot.clock is not None:
+                held = {
+                    "clock": self.lot.clock,
+                    "timeout_by": self.lot.timeout_by,
+                    "left": max(0.0, (self.lot.deadline or time.time()) - time.time()),
+                }
+            self._disarm()
+            self._cancel_draw()
+            self.on_break = {
+                "since": time.time(),
+                "note": " ".join((note or "").split())[:80] or None,
+                **held,
+            }
+            if self.lot is not None:
+                self.lot.version += 1
+            self._note("Auction paused for a break")
+            self.version += 1
+
+    async def end_break(self, client_id: str) -> None:
+        """
+        Resume after a break.
+
+        A lot that was on the block gets a fresh full window -- the same
+        choice `undo` makes, for the same reason: a clock handed back with
+        half a second on it settles before anyone has looked up. A decision
+        buffer is the exception, because its franchise paid a lifeline for it:
+        it resumes with the time it had left.
+        """
+        self._require_auctioneer(client_id, "resume the auction")
+        async with self._lock:
+            if self.on_break is None:
+                raise RoomError("The auction is not paused.", about="break")
+            held, self.on_break = self.on_break, None
+            self._note("Auction resumed")
+            if self.phase == "live" and self.lot is not None and not self.offline:
+                if held.get("clock") == "timeout" and held.get("left", 0) > 1:
+                    self._arm("timeout", held["left"])
+                    self.lot.timeout_by = held.get("timeout_by")
+                elif self.lot.bidder_id is not None:
+                    self._arm("closing", self.rules["close_seconds"])
+                else:
+                    self._arm("opening", self.rules["open_seconds"])
+                self.lot.version += 1
+            self.version += 1
+            if self.phase == "live" and self.lot is None:
+                self._schedule_draw(get_settings().FIRST_DRAW_SECONDS)
 
     # ---------------------------------------------------------------- #
     # Events, the auctioneer's feed, and the AI auctioneer's controls
@@ -1515,13 +1801,25 @@ class AuctionRoom:
 
     async def ai_control(self, client_id: str, action: str) -> None:
         """
-        The human in the chair steering the AI auctioneer: pause its calls,
-        resume them, or take the room over for good (the room becomes a
-        manual one; the AI does not come back mid-auction).
+        The human in the chair, and the AI auctioneer beside them.
+
+            pause / resume   silence the AI's calls, or let it speak again
+                             (the room runs on either way)
+            take_over        the human runs the room: the AI stops bringing
+                             players up and the auctioneer does it by hand
+            hand_back        the AI runs the room again, from where it stands
+
+        Take over and hand back work at any point in the auction, as often as
+        the auctioneer likes: a run of batters can be broken by hand, and the
+        AI picked up again once the room has seen its bowlers. A lot already on
+        the block is untouched by either -- the change shows in who brings up
+        the next one.
         """
         self._require_auctioneer(client_id, "steer the AI auctioneer")
         async with self._lock:
-            if not self.ai_active:
+            if self.offline:
+                raise RoomError("The AI auctioneer runs online rooms.", about="ai")
+            if action in ("pause", "resume") and not self.ai_active:
                 raise RoomError("This room is not run by the AI auctioneer.", about="ai")
             if action == "pause":
                 self.ai_paused = True
@@ -1530,12 +1828,24 @@ class AuctionRoom:
                 self.ai_paused = False
                 self._note("AI auctioneer resumed")
             elif action == "take_over":
+                if not self.ai_active:
+                    raise RoomError("You are already running the room by hand.", about="ai")
                 self.rules["auctioneer"] = "manual"
                 self.ai_paused = False
                 self.ai_status = "idle"
+                self._cancel_draw()
                 self._note("The auctioneer took over from the AI")
+            elif action == "hand_back":
+                if self.ai_active:
+                    raise RoomError("The AI auctioneer is already running the room.", about="ai")
+                self.rules["auctioneer"] = "ai"
+                self.ai_paused = False
+                self.ai_status = "presiding"
+                self._note("The AI auctioneer is running the room again")
+                if self.phase == "live" and self.lot is None:
+                    self._schedule_draw(get_settings().FIRST_DRAW_SECONDS)
             else:
-                raise RoomError("Pause, resume or take over.", about="ai")
+                raise RoomError("Pause, resume, take over or hand back.", about="ai")
             self.version += 1
 
     def _require_online(self, action: str) -> None:
@@ -1589,6 +1899,7 @@ class AuctionRoom:
                 raise RoomError("The auction is not running.", about="record_sale")
             if self.lot is None:
                 raise RoomError("Nothing is on the block.", about="record_sale")
+            self._require_running("log a sale")
             team = self.team_by_id(team_id)
             if team is None:
                 raise RoomError("Choose a franchise in this room.", about="record_sale")
@@ -1641,6 +1952,8 @@ class AuctionRoom:
             self._require_briefed(seat, "bid")
             if self.phase != "live":
                 raise RoomError("The auction is not running.", about="bid")
+            if self.on_break is not None:
+                raise RoomError("The auction is paused for a break — bidding reopens when it resumes.", about="break")
             if not self.lot:
                 raise RoomError("Nothing is on the block.", about="bid")
             if self.lot.clock == "presenting":
@@ -1696,7 +2009,7 @@ class AuctionRoom:
             if team_id not in self.lot.contenders:
                 self.lot.contenders.append(team_id)
 
-            # Every bid resets the buffer to a full seven seconds, from
+            # Every bid resets the buffer to a full ten seconds, from
             # whichever clock was running -- a timeout somebody just spent a
             # lifeline on. That is the intended trade: a
             # lifeline buys the room thirty seconds to think, and the moment
@@ -1744,6 +2057,8 @@ class AuctionRoom:
             self._require_briefed(seat, "withdraw")
             if self.phase != "live":
                 raise RoomError("The auction is not running.", about="withdraw")
+            if self.on_break is not None:
+                raise RoomError("The auction is paused for a break.", about="break")
             if not self.lot:
                 raise RoomError("Nothing is on the block.", about="withdraw")
             if self.lot.clock == "presenting":
@@ -1834,6 +2149,8 @@ class AuctionRoom:
             self._require_briefed(seat, "call a decision buffer")
             if self.phase != "live":
                 raise RoomError("The auction is not running.", about="timeout")
+            if self.on_break is not None:
+                raise RoomError("The auction is paused for a break.", about="break")
             if not self.lot:
                 raise RoomError("Nothing is on the block.", about="timeout")
             if self.lot.clock == "presenting":
@@ -1934,6 +2251,8 @@ class AuctionRoom:
                 "country": player.country,
                 "overseas": player.overseas,
                 "rating": player.rating,
+                # Which tier of the auction flow he came from.
+                "tier": self.tier_of(player),
                 "base": player.base,
                 "bid": self.lot.bid,
                 "bidder_id": self.lot.bidder_id,
@@ -1948,7 +2267,7 @@ class AuctionRoom:
                 ),
                 "deadline": self.lot.deadline,
                 # Seconds left as this frame is written. Sent beside the
-                # absolute deadline because seven seconds is short enough for
+                # absolute deadline because ten seconds is short enough for
                 # clock skew to matter: a client two seconds fast would show a
                 # lot expiring while the room still holds it open. Anchoring on
                 # this and counting down locally has no skew to accumulate.
@@ -2017,6 +2336,35 @@ class AuctionRoom:
             # the auctioneer picks (offline). And when the next draw is due.
             "draw": "random" if self.auto_draw else "manual",
             "next_draw_at": self.next_draw_at,
+            # Whether Auction Setup has been saved: until it has, the
+            # auctioneer's screen opens the form by itself.
+            "setup_saved": self.setup_saved,
+            # The catalogue the setup form offers, so the client never hard-codes
+            # a factor or a tier the room would refuse.
+            "setup_options": {
+                "max_factors": setup_options.MAX_FACTORS,
+                "factors": [
+                    {"key": key, "label": label, "blurb": blurb}
+                    for key, (label, blurb) in setup_options.FACTORS.items()
+                ],
+                "example_scheme": list(setup_options.EXAMPLE_SCHEME),
+                "lot_categories": [
+                    {"key": key, "label": label}
+                    for key, label in setup_options.LOT_CATEGORIES.items()
+                ],
+            },
+            # The auction flow: the tiers in the auctioneer's order, with how
+            # many players each still has to come.
+            "flow": self._flow_payload(),
+            # A generated lot still running: what it is of and how many are left.
+            "lot_plan": (
+                {**self.lot_plan, "left": len(self.lot_queue)} if self.lot_plan and self.lot_queue else None
+            ),
+            # A break in progress: when it began and the auctioneer's note.
+            "break": (
+                {"since": self.on_break["since"], "note": self.on_break.get("note")}
+                if self.on_break is not None else None
+            ),
             # The auctioneer's calls (the AI auctioneer's, online), newest last,
             # and what the AI is doing.
             "auctioneer_feed": self.auctioneer_feed[-12:],
@@ -2033,6 +2381,16 @@ class AuctionRoom:
                 s.role == "auctioneer" for s in self.seats.values()
             ),
         }
+
+    def _flow_payload(self) -> list[dict[str, Any]]:
+        available = [p for p in self.players.values() if self.records[p.id].status == "available"]
+        counts = {
+            row["key"]: row for row in flowbook.tier_counts(self.players.values(), available)
+        }
+        order = setup_options.validate_flow(
+            [key for key in self.rules.get("flow") or [] if key in setup_options.TIERS]
+        )
+        return [counts[key] for key in order]
 
     # ---------------------------------------------------------------- #
     # Post-auction report

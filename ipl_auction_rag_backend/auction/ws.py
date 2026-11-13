@@ -523,6 +523,8 @@ async def _dispatch(
             message.max_overseas,
             message.max_players,
             message.min_overseas,
+            message.marking_scheme,
+            message.flow,
         )
 
     elif kind == "set_mode":
@@ -539,6 +541,21 @@ async def _dispatch(
 
     elif kind == "ai_control":
         await room.ai_control(client_id, message.action)
+
+    elif kind == "draw_next":
+        await room.draw_next(client_id)
+
+    elif kind == "generate_lot":
+        await room.generate_lot(client_id, message.category, message.size)
+
+    elif kind == "clear_lot":
+        await room.clear_lot(client_id)
+
+    elif kind == "take_break":
+        await room.take_break(client_id, message.note)
+
+    elif kind == "end_break":
+        await room.end_break(client_id)
 
     elif kind == "acknowledge_rules":
         await room.acknowledge_rules(client_id, message.rules_version)
@@ -719,6 +736,56 @@ async def get_report(room: str | None = None) -> dict[str, Any]:
     "who still has no keeper?" without counting by hand.
     """
     return _room_for(room).report()
+
+
+@router.get("/report/marks")
+async def get_report_marks(room: str | None = None, team: int | None = None) -> dict[str, Any]:
+    """
+    How each franchise is marked, on the auctioneer's marking scheme.
+
+    The same marks the franchise's PDF prints (auction/marking.py), as data for
+    the screen. With `team`, that franchise alone -- what a franchise's own
+    screen asks for, because one team's marks are not another team's business.
+    Without it, every franchise: the auctioneer's view.
+    """
+    auction = _room_for(room)
+    if team is not None and auction.team_by_id(team) is None:
+        raise HTTPException(status_code=404, detail=f"No franchise with id {team}.")
+    try:
+        rows = {
+            int(row["id"]): row
+            for row in get_player_db().get_all_players(limit=10_000, offset=0)
+            if row.get("id") is not None
+        }
+    except Exception:
+        logger.warning("Could not read player statistics for the marks", exc_info=True)
+        rows = {}
+
+    from auction import setup_options
+
+    scheme = [key for key in auction.rules.get("marking_scheme") or [] if key in setup_options.FACTORS]
+    out = []
+    for entry in auction.teams:
+        if team is not None and entry["id"] != team:
+            continue
+        card = build_team_card(auction, entry["id"], rows)
+        out.append({
+            "team": card.team,
+            "squad_size": card.squad_size,
+            "overall": card.overall,
+            "verdict": card.verdict_line,
+            "marks": [
+                {"key": mark.key, "label": mark.label, "weight": round(mark.weight, 4),
+                 "value": mark.value, "detail": mark.detail}
+                for mark in card.marks
+            ],
+        })
+    out.sort(key=lambda row: -row["overall"])
+    return {
+        "custom_scheme": bool(scheme),
+        "scheme": [{"key": key, "label": setup_options.FACTORS[key][0]} for key in scheme],
+        "franchises": out,
+    }
 
 
 @router.get("/report/{team_id}/pdf")

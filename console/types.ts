@@ -159,6 +159,9 @@ export interface Rules {
    */
   maxPlayers?: number;
   minOverseas?: number;
+  /** Live room only: the marking scheme and the auction flow, as keys in priority order. */
+  markingScheme?: string[];
+  flow?: string[];
 }
 
 export interface BlockState {

@@ -66,7 +66,8 @@ export default function DrawIndicator({ socket }: { socket: AuctionSocket }) {
       </div>
       <div className="min-w-0">
         <div className="flex items-center gap-1.5 font-ui text-[11px] font-semibold uppercase tracking-[0.14em] text-[#22D3EE]">
-          <Shuffle size={13} /> Drawing at random
+          <Shuffle size={13} />{" "}
+          {state.lot_plan ? `${state.lot_plan.label} lot · ${state.lot_plan.left} left` : "Following the auction flow"}
         </div>
         <div className="mt-0.5 font-ui text-[12.5px] text-slate-body">
           {left === null ? "Next player shortly" : left > 0 ? `Next player in ${left}s` : "Next player now"}

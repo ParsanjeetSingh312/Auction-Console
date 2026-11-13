@@ -89,6 +89,8 @@ export interface LotState {
   country: string | null;
   overseas: boolean;
   rating: number | null;
+  /** The auction-flow tier he came from: marquee, prime, emerging or squad. */
+  tier?: string;
   base: number;
   bid: number;
   bidder_id: number | null;
@@ -146,6 +148,23 @@ export interface LotClock {
   total: number;
   key: string;
 }
+
+export interface SetupOptions {
+  max_factors: number;
+  factors: { key: string; label: string; blurb: string }[];
+  example_scheme: string[];
+  lot_categories: { key: string; label: string }[];
+}
+
+export interface FlowTier {
+  key: string;
+  label: string;
+  blurb: string;
+  total: number;
+  left: number;
+}
+
+export type AiAction = "pause" | "resume" | "take_over" | "hand_back";
 
 export type RoomMode = "online" | "offline";
 export type AuctioneerKind = "manual" | "ai";
@@ -289,7 +308,21 @@ export interface RoomState {
     mode?: RoomMode;
     /** Who holds the chair in an online room. */
     auctioneer?: AuctioneerKind;
+    /** The auctioneer's marking scheme: factor keys in priority order. */
+    marking_scheme?: string[];
+    /** The auction flow: tier keys in priority order. */
+    flow?: string[];
   };
+  /** Whether Auction Setup has been saved for this room. */
+  setup_saved?: boolean;
+  /** What the setup form offers: gradeable factors and lot categories. */
+  setup_options?: SetupOptions;
+  /** The flow's tiers in the auctioneer's order, with players still to come. */
+  flow?: FlowTier[];
+  /** A generated lot still running. */
+  lot_plan?: { category: string; label: string; total: number; left: number } | null;
+  /** A break in progress: Unix time it began, and the auctioneer's note. */
+  break?: { since: number; note: string | null } | null;
   /**
    * Bumped on every setup change. A franchise must acknowledge exactly this
    * number before the room accepts a bid, fold or buffer from it.
@@ -464,7 +497,15 @@ export interface AuctionSocket {
   /** The room is offline: no bid controls, no clock. */
   offline: boolean;
   /** The chair of an AI room: pause or resume the AI auctioneer, or take over. */
-  aiControl: (action: "pause" | "resume" | "take_over") => void;
+  aiControl: (action: AiAction) => void;
+  /** Manual auctioneer: bring up the next player of the lot, or of the flow. */
+  drawNext: () => void;
+  /** Queue a lot of one role (BAT, BOWL, AR, WK), ordered by the flow. */
+  generateLot: (category: string, size: number) => void;
+  clearLot: () => void;
+  /** Pause the auction for a break, and resume it. */
+  takeBreak: (note?: string) => void;
+  endBreak: () => void;
 
   /** Convenience readings derived from `state` and `seat`. */
   myTeam: TeamState | null;
@@ -504,6 +545,8 @@ export interface SetupRules {
   maxOverseas: number;
   maxPlayers?: number;
   minOverseas?: number;
+  markingScheme?: string[];
+  flow?: string[];
 }
 
 export function useAuctionSocket(): AuctionSocket {
@@ -757,6 +800,8 @@ export function useAuctionSocket(): AuctionSocket {
           max_overseas: rules.maxOverseas,
           max_players: rules.maxPlayers ?? null,
           min_overseas: rules.minOverseas ?? null,
+          ...(rules.markingScheme ? { marking_scheme: rules.markingScheme } : {}),
+          ...(rules.flow ? { flow: rules.flow } : {}),
         }),
       withdraw: () => send({ type: "withdraw" }),
       callTimeout: () => send({ type: "timeout" }),
@@ -768,7 +813,12 @@ export function useAuctionSocket(): AuctionSocket {
         send({ type: "add_franchise", name, code: code.toUpperCase(), color: color ?? null }),
       removeFranchise: (teamId: number) => send({ type: "remove_franchise", team_id: teamId }),
       startNewAuction: () => send({ type: "new_auction", next_room: newRoomCode() }),
-      aiControl: (action: "pause" | "resume" | "take_over") => send({ type: "ai_control", action }),
+      aiControl: (action: AiAction) => send({ type: "ai_control", action }),
+      drawNext: () => send({ type: "draw_next" }),
+      generateLot: (category: string, size: number) => send({ type: "generate_lot", category, size }),
+      clearLot: () => send({ type: "clear_lot" }),
+      takeBreak: (note?: string) => send({ type: "take_break", note: note?.trim() || null }),
+      endBreak: () => send({ type: "end_break" }),
     }),
     [send],
   );
@@ -840,6 +890,7 @@ export function useAuctionSocket(): AuctionSocket {
   const canWithdraw = !!(
     connected &&
     live &&
+    !state?.break &&
     state?.lot &&
     state.lot.clock !== "presenting" &&
     briefed &&
@@ -853,6 +904,7 @@ export function useAuctionSocket(): AuctionSocket {
   const canCallTimeout = !!(
     connected &&
     live &&
+    !state?.break &&
     briefed &&
     (state?.lot?.clock === "opening" || state?.lot?.clock === "closing") &&
     !leading &&

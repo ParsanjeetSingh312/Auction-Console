@@ -134,7 +134,8 @@ export default function SocketBlock({ socket, engine, onLeave }: SocketBlockProp
       purse={engine.rules.purse}
       purseLeft={myTeam?.left ?? 0}
       ticker={ticker}
-      blockedReason={blockedReason}
+      // A break outranks every other reason: nobody may bid until it ends.
+      blockedReason={room?.break ? "the auction is paused for a break" : blockedReason}
       // The amount is ignored: the room derives the standard next ask from its
       // own ladder, and letting the client name it would make the price a
       // matter of opinion.

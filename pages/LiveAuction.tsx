@@ -51,6 +51,7 @@ import WaitingRoom from "../components/Auction/WaitingRoom";
 import AuctionBriefing from "../components/Auction/AuctionBriefing";
 import LiveMarquee from "../components/Marquee/LiveMarquee";
 import RoomGate from "../components/Auction/RoomGate";
+import BreakBanner from "../components/Auction/setup/BreakBanner";
 import SoldBanner from "../components/Auction/fx/SoldBanner";
 
 import "../console/console.css";
@@ -187,6 +188,8 @@ function LiveAuctionInner() {
       {role !== null && phase === "live" && <LiveMarquee socket={socket} />}
       {/* An offline sale, announced on every screen in the room. */}
       <SoldBanner socket={socket} />
+      {/* A break called by the auctioneer, announced on every screen in the room. */}
+      <BreakBanner socket={socket} />
       <div className="toasts" aria-live="polite">
         {toasts.map((toast) => (
           <div key={toast.id} className={`toast${toast.kind === "err" ? " err" : ""}`}>

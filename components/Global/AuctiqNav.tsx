@@ -115,7 +115,7 @@ export const HOW_IT_WORKS: { step: string; title: string; body: string }[] = [
   {
     step: "02",
     title: "Bid on the clock",
-    body: "A player goes on the block and a seven-second timer runs. Any bid restarts it. When it expires the lot is sold, and the hammer falls the same way for everyone in the room.",
+    body: "A player goes on the block and a ten-second timer runs. Any bid restarts it. When it expires the lot is sold, and the hammer falls the same way for everyone in the room.",
   },
   {
     step: "03",

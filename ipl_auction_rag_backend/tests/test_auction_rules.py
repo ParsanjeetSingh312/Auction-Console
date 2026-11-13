@@ -101,9 +101,9 @@ class TestUniformity:
 
 
 class TestActionTimer:
-    def test_default_windows_are_seven_seconds(self):
+    def test_default_windows_are_ten_seconds(self):
         room = AuctionRoom()
-        assert room.rules["open_seconds"] == 7 and room.rules["close_seconds"] == 7
+        assert room.rules["open_seconds"] == 10 and room.rules["close_seconds"] == 10
 
     def test_no_bid_in_the_window_goes_unsold(self):
         async def go():

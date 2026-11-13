@@ -109,6 +109,12 @@ export interface PoolTableProps {
    */
   viewerRole?: ViewerRole;
   /**
+   * Auctioneer, live room: queue a randomised lot of the selected role. When
+   * given, a "Randomise lot" control appears beside the role chips once a
+   * role is chosen.
+   */
+  onRandomiseLot?: (role: string) => void;
+  /**
    * Which presentation of the pool to render.
    *
    * `grid` is the role-columned box layout the reference calls for; `sheet` is
@@ -142,6 +148,7 @@ export default function PoolTable({
   onOpenCard,
   onNotice,
   viewerRole = "auctioneer",
+  onRandomiseLot,
 }: PoolTableProps) {
   const { players, recordFor, teams, block, teamById } = engine;
 
@@ -303,6 +310,18 @@ export default function PoolTable({
               {role}
             </button>
           ))}
+          {onRandomiseLot && showActions && filters.role !== "all" && (
+            <button
+              type="button"
+              className="chip"
+              data-testid="pool-randomise-lot"
+              title="Bring only this role to the block next, at random, in the order of the auction flow"
+              style={{ borderColor: "#F6C45A", color: "#F6C45A", fontWeight: 700 }}
+              onClick={() => onRandomiseLot(filters.role)}
+            >
+              Randomise lot
+            </button>
+          )}
         </div>
 
         <div className="fgroup">

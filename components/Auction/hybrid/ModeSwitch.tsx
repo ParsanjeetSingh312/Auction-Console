@@ -37,7 +37,7 @@ export default function ModeSwitch({ socket, compact = false }: { socket: Auctio
     return (
       <span
         className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface-sunken px-2.5 py-1 font-ui text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-body"
-        title={mode === "offline" ? "Placards in the room; the auctioneer logs each sale" : "Bids on screen; players drawn at random"}
+        title={mode === "offline" ? "Placards in the room; the auctioneer logs each sale" : "Bids on screen, on the clock"}
         data-testid="mode-badge"
       >
         {mode === "offline" ? <Hand size={12} /> : <Radio size={12} />}
@@ -75,7 +75,7 @@ export default function ModeSwitch({ socket, compact = false }: { socket: Auctio
               className={option(mode === value)}
               title={
                 value === "online"
-                  ? "Bids on screen, on the clock. Players are drawn at random."
+                  ? "Bids on screen, on the clock. The AI auctioneer or you bring players up."
                   : "Placards in the room. No clock: you log each sale."
               }
             >
@@ -98,7 +98,7 @@ export default function ModeSwitch({ socket, compact = false }: { socket: Auctio
                   disabled={disabled}
                   onClick={() => socket.setMode("online", value)}
                   className={`${option(chair === value)} disabled:cursor-not-allowed disabled:opacity-40`}
-                  title={disabled ? "The AI auctioneer arrives in the next step" : value === "ai" ? "The AI auctioneer judges the room" : "You judge the room"}
+                  title={disabled ? "The AI auctioneer arrives in the next step" : value === "ai" ? "The AI auctioneer brings players up, following the auction flow, and calls each result" : "You bring each player up. You can hand over to the AI, and take back, at any time"}
                 >
                   {chair === value && pill("chair-pill")}
                   {value === "ai" ? <Bot size={12} /> : <UserRound size={12} />}

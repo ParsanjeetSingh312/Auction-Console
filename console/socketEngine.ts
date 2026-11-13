@@ -88,6 +88,8 @@ export function useSocketEngine(
           maxOverseas: room.rules.max_overseas,
           maxPlayers: room.rules.max_players,
           minOverseas: room.rules.min_overseas,
+          markingScheme: room.rules.marking_scheme,
+          flow: room.rules.flow,
         }
       : local.rules;
 
@@ -219,12 +221,15 @@ export function useSocketEngine(
       putOnBlock: (playerId) => {
         const blocked = requireLive("put a player up");
         if (blocked) return blocked;
-        // Online rooms draw every player at random; the room would refuse it.
+        // While the AI auctioneer runs the room it brings players up itself.
         if (room?.draw === "random") {
           return {
             ok: false,
-            message: "Players come to the block at random in an online auction.",
+            message: "The AI auctioneer is bringing players up. Take over to put one up by hand.",
           };
+        }
+        if (room?.break) {
+          return { ok: false, message: "The auction is paused for a break. Resume it first." };
         }
         socket.putUp(playerId);
         return SENT;
@@ -310,6 +315,8 @@ export function useSocketEngine(
           maxOverseas: next.maxOverseas,
           maxPlayers: next.maxPlayers,
           minOverseas: next.minOverseas,
+          markingScheme: next.markingScheme,
+          flow: next.flow,
         });
       },
 

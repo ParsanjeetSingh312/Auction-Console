@@ -173,7 +173,7 @@ async def scout_notes(name: str) -> list[str]:
             notes.extend(ref.text[:280] for ref in refs[:2])
 
         # Tighter than a model call: the announcement should land while the
-        # lot's seven-second opening clock is still running.
+        # lot's ten-second opening clock is still running.
         await asyncio.wait_for(
             asyncio.gather(research(), news(), return_exceptions=True),
             timeout=min(3.5, settings.AI_AUCTIONEER_TIMEOUT),

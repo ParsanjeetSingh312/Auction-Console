@@ -521,7 +521,11 @@ export default function BlockView({
             </button>
 
             <span className="mt-3 font-mono text-[11px] uppercase tracking-[0.25em] text-neutral-600">
-              {stance === "counter" ? "space to bid" : button.hint}
+              {stance === "counter"
+                ? "space to bid"
+                : barred && stance === "blocked" && /break/i.test(blockedReason ?? "")
+                  ? "bidding reopens when the auction resumes"
+                  : button.hint}
             </span>
 
             {/*

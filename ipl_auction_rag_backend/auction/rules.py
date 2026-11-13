@@ -18,7 +18,7 @@ The non-negotiable guidelines, and where each one is enforced
 2. Uniformity       One `rules` dict per room. No team carries its own budget or
                     caps; every limit is read from the room's rules at the moment
                     it is checked, so a host edit lands on all ten at once.
-3. Action timer     ACTION_SECONDS = 7, for both the opening window (no bid yet)
+3. Action timer     ACTION_SECONDS = 10, for both the opening window (no bid yet)
                     and the closing window (a bid stands, reset by every bid).
 4. Increments       BID_INCREMENT = 25 lakh (0.25 Cr). Jump bids of +5, +10 and
                     +15 Cr are offered as shortcuts; any larger custom jump is
@@ -39,6 +39,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from auction.setup_options import DEFAULT_FLOW, FACTORS, TIERS, weights
+
 # --------------------------------------------------------------------- #
 # Non-negotiable constants. Not editable from the setup panel.
 # --------------------------------------------------------------------- #
@@ -50,7 +52,8 @@ MAX_TEAMS = 10
 # and `max_teams` follows the room's team list rather than this constant.
 MINI_TEAMS = MAX_TEAMS
 TEAMS_BY_KIND = {"mega": MAX_TEAMS, "mini": MINI_TEAMS}
-ACTION_SECONDS = 7
+# Ten seconds, up from seven, so each franchise has longer to answer a bid.
+ACTION_SECONDS = 10
 BUFFER_SECONDS = 30
 BUFFERS_PER_TEAM = 3
 BID_INCREMENT = 25  # lakh, = 0.25 Cr
@@ -83,7 +86,7 @@ MARQUEE_PLAYERS: frozenset[str] = frozenset({
 
 #: How long the room holds a marquee lot before bidding opens. A shade longer
 #: than the reveal's own 9.2 seconds, so every client has handed back to the
-#: bidding screen before the 7-second window starts -- the reveal must never
+#: bidding screen before the bid window starts -- the reveal must never
 #: eat into the time a franchise has to bid.
 MARQUEE_REVEAL_SECONDS = 9.4
 
@@ -104,7 +107,16 @@ DEFAULT_RULES: dict[str, Any] = {
     #            until they do
     "mode": "online",
     # Who holds the chair in an online room: a person, or the AI auctioneer.
+    # The human in the chair can change it at any time, mid-auction included
+    # (AuctionRoom.ai_control): the AI brings players up by itself, following
+    # the flow; a manual auctioneer brings each one up by hand.
     "auctioneer": "manual",
+    # The auctioneer's marking scheme: factor keys in priority order, at most
+    # four (auction/setup_options.py). Empty means AUCTONIQ's own rating.
+    "marking_scheme": [],
+    # The order tiers of the pool come to the block in, as a priority rather
+    # than a queue (auction/flow.py).
+    "flow": list(DEFAULT_FLOW),
 }
 
 MODES = ("online", "offline")
@@ -324,6 +336,35 @@ def slot_plan(
     )
 
 
+def _setup_items(rules: dict[str, Any]) -> list[dict[str, str]]:
+    """
+    The briefing lines that come from Auction Setup's two new sections: how a
+    franchise will be marked, and the order players arrive in. A franchise that
+    is graded on its bidding should know that before it bids.
+    """
+    items: list[dict[str, str]] = []
+    scheme = [key for key in rules.get("marking_scheme") or [] if key in FACTORS]
+    if scheme:
+        parts = [
+            f"{index}. {FACTORS[key][0]} ({weight:.0%})"
+            for index, (key, weight) in enumerate(zip(scheme, weights(len(scheme))), start=1)
+        ]
+        items.append({
+            "id": "marking", "title": "How your auction is marked",
+            "body": "Your auction report grades your franchise on, in priority order: "
+                    + "; ".join(parts) + ".",
+        })
+    flow = [key for key in rules.get("flow") or [] if key in TIERS]
+    if flow and rules.get("mode") != "offline":
+        items.append({
+            "id": "flow", "title": "The order players arrive in",
+            "body": "Players come to the block in a mixed order that favours, first to last: "
+                    + ", ".join(TIERS[key][0] for key in flow)
+                    + ". The auctioneer can also call a lot of one role, such as bowlers.",
+        })
+    return items
+
+
 def rules_list(rules: dict[str, Any]) -> list[dict[str, str]]:
     """
     The briefing, as data: one entry per guideline, in the order franchises read
@@ -346,6 +387,7 @@ def rules_list(rules: dict[str, Any]) -> list[dict[str, str]]:
              "body": f"Bids rise by {crore(rules['increment'])}, or more when the auctioneer accepts a jump."},
             {"id": "briefing", "title": "Squad requirements",
              "body": f"Budget {money(rules['purse'])}. Squad of {rules['min_squad']}–{rules['max_squad']} players, with at least {rules['min_overseas']} and at most {rules['max_overseas']} overseas, and at least {rules['min_uncapped']} uncapped player."},
+            *_setup_items(rules),
         ]
     return [
         {"id": "room", "title": "Room limit",
@@ -362,4 +404,7 @@ def rules_list(rules: dict[str, Any]) -> list[dict[str, str]]:
          "body": "Not interested? Withdraw from the current player. You cannot bid on that player again, and the remaining franchises carry on."},
         {"id": "briefing", "title": "Squad requirements",
          "body": f"Budget {money(rules['purse'])}. Squad of {rules['min_squad']}–{rules['max_squad']} players, with at least {rules['min_overseas']} and at most {rules['max_overseas']} overseas, and at least {rules['min_uncapped']} uncapped player."},
+        {"id": "break", "title": "Breaks",
+         "body": "The auctioneer can pause the auction for a break. The clock stops, nobody can bid, and every screen says so until the auction resumes."},
+        *_setup_items(rules),
     ]

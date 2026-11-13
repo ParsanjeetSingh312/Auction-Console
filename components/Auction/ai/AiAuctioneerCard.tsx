@@ -70,7 +70,7 @@ export default function AiAuctioneerCard({ socket }: { socket: AuctionSocket }) 
           className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] ${
             confirming ? "border-[#FB923C] text-[#FB923C]" : "border-line text-slate-body hover:text-slate-ink"
           }`}
-          title="Run the rest of this auction yourself. The AI does not come back mid-auction."
+          title="Bring players up yourself from here. You can hand back to the AI at any time."
         >
           <UserRound size={12} />
           {confirming ? "Press again" : "Take over"}
