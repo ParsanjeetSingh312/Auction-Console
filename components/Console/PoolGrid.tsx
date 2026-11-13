@@ -373,33 +373,31 @@ function PlayerBox({
         {/* A soft pass of light on hover. */}
         <span aria-hidden className="pool-card__sheen" />
 
-        {/* The jersey number, set large behind the content and allowed to
-            bleed. Absent for most of the pool -- an unverified number at this
-            size would be the most prominent lie on the page. */}
+        {/* The jersey number, large in the bottom corner and allowed to bleed
+            off the card like the back of a shirt. Absent where the number is
+            not verified -- a guess at this size would be a lie. */}
         {player.jersey != null && (
           <span
             aria-hidden
-            className="pointer-events-none absolute -top-1 right-2 select-none font-num text-[44px] font-bold leading-none transition-transform duration-500 ease-out group-hover:scale-110"
-            style={{ color: `color-mix(in oklab, ${team ? teamColour : tint} 26%, transparent)` }}
+            className="pointer-events-none absolute -bottom-3 right-2 select-none font-num text-[52px] font-bold leading-none transition-transform duration-500 ease-out group-hover:-translate-y-1 group-hover:scale-105"
+            style={{ color: `color-mix(in oklab, ${team ? teamColour : tint} 22%, transparent)` }}
           >
             {player.jersey}
           </span>
         )}
 
         <div className="relative">
+          {/* Line 1: who, and for which side. */}
           <div className="flex items-start justify-between gap-2">
             <span className="font-ui text-[14px] font-bold leading-tight text-[var(--ink)]">
               {player.name}
             </span>
-            <span
-              className="mt-px flex-none rounded-full border px-1.5 py-px font-ui text-[8.5px] font-semibold uppercase tracking-[0.1em]"
-              style={{
-                borderColor: `color-mix(in oklab, ${tint} 45%, transparent)`,
-                color: tint,
-              }}
-            >
-              {player.cap === "CAPPED" ? "Capped" : "Uncapped"}
-            </span>
+            {team && (
+              <span className="pool-card__team mt-px flex-none font-ui text-[9px] uppercase tracking-[0.1em] text-[var(--muted)]">
+                <span aria-hidden className="pool-card__dot" />
+                {team.name}
+              </span>
+            )}
           </div>
 
           {/* The price. Base by default -- the Data Interface is the
@@ -438,18 +436,24 @@ function PlayerBox({
             </div>
           )}
 
-          <div className="mt-2 flex items-center justify-between gap-2 font-ui text-[9.5px] uppercase tracking-[0.1em] text-[var(--muted)]">
-            <span className="truncate opacity-75">
-              {player.country ?? (player.overseas ? "Overseas" : "—")}
-              <span className="mx-1 opacity-50">·</span>
-              {player.set}
-            </span>
-            {team && (
-              <span className="pool-card__team flex-none">
-                <span aria-hidden className="pool-card__dot" />
-                {team.name}
-              </span>
-            )}
+          {/* The detail line slides open on hover or keyboard focus, so the
+              grid reads as three clean lines and nothing is lost. */}
+          <div className="grid grid-rows-[0fr] opacity-0 transition-all duration-300 ease-out group-hover:grid-rows-[1fr] group-hover:opacity-100 group-focus-visible:grid-rows-[1fr] group-focus-visible:opacity-100">
+            <div className="overflow-hidden">
+              <div className="mt-2 flex items-center gap-1.5 font-ui text-[9.5px] uppercase tracking-[0.1em] text-[var(--muted)]">
+                <span className="truncate">
+                  {player.country ?? (player.overseas ? "Overseas" : "—")}
+                  <span className="mx-1 opacity-50">·</span>
+                  {player.set}
+                </span>
+                <span
+                  className="flex-none rounded-full border px-1.5 py-px text-[8.5px] font-semibold"
+                  style={{ borderColor: `color-mix(in oklab, ${tint} 45%, transparent)`, color: tint }}
+                >
+                  {player.cap === "CAPPED" ? "Capped" : "Uncapped"}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </motion.button>

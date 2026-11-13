@@ -8,9 +8,9 @@
  *
  * The elements around it are presentation only. `.console-dark` redefines
  * console.css's palette tokens for this subtree and nothing else — /console
- * keeps the white enterprise theme — and `StadiumBackdrop` is the same fixed
- * photograph the landing uses, so the two surfaces read as one product rather
- * than as a dark front door onto a white application.
+ * keeps the white enterprise theme — and `DataBackdrop` is a calm navy ground
+ * in the brand's own colours, so the data, not a photograph, is the loudest
+ * thing on the page.
  *
  * The site menu sits above the dashboard as a static bar. `.site-chrome` makes
  * the page a column the height of the viewport, so the dashboard's own shell
@@ -19,7 +19,9 @@
  */
 import AuctiqNav from "../components/Global/AuctiqNav";
 import DataDashboard from "../components/Console/DataDashboard";
-import StadiumBackdrop from "../components/Sections/StadiumBackdrop";
+// The Data Interface has its own calm backdrop; the stadium photograph stays
+// on the landing and Live Bidding, where atmosphere is the point.
+import DataBackdrop from "../components/Console/DataBackdrop";
 import TierGate from "../components/Ecosystem/TierGate";
 import { can, useAccount } from "../console/accountStore";
 
@@ -47,7 +49,7 @@ export default function DataRoom() {
   }
   return (
     <div className="console-dark site-chrome">
-      <StadiumBackdrop variant="console" />
+      <DataBackdrop />
       <AuctiqNav placement="static" />
       <DataDashboard />
     </div>
