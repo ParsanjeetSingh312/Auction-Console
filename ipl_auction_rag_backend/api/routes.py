@@ -233,6 +233,16 @@ async def ingest(request: IngestRequest | None = None) -> IngestResponse:
             except Exception as exc:  # noqa: BLE001 - ingestion itself succeeded
                 logger.warning("Could not restore current careers after ingest: %s", exc)
 
+        # Retrain SCOUT on what was just ingested (scout/knowledge.py): season
+        # lines, franchise history, the pool's patterns and any News sheet in
+        # the workbook. In the background -- it embeds a few hundred documents.
+        try:
+            from scout.knowledge import start_training
+
+            start_training("after ingest", excel_path=excel_path)
+        except Exception as exc:  # noqa: BLE001 - ingestion itself succeeded
+            logger.warning("Could not start SCOUT training after ingest: %s", exc)
+
         # Refresh the auction room's copy of the pool.
         #
         # The room reads the player table once, at startup, because it needs

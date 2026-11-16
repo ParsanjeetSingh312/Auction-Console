@@ -103,6 +103,43 @@ def _pool_names() -> list[tuple[int, str]]:
     return [(int(r["id"]), str(r["player_name"])) for r in rows]
 
 
+def named_players(question: str, *, surname_needs_capital: bool = False) -> list[tuple[int, str]]:
+    """
+    Pool players the question names, in the order they appear.
+
+    Full names first; a surname alone counts only when one pool player has it.
+    With `surname_needs_capital`, a bare surname must also be written with a
+    capital letter -- "Head" the batter, not "head to head".
+    """
+    try:
+        pool = _pool_names()
+    except Exception:  # noqa: BLE001 - no pool, no names
+        return []
+    text = question.lower()
+
+    found: list[tuple[int, str, int]] = []
+    for pid, name in sorted(pool, key=lambda p: -len(p[1])):
+        hit = re.search(rf"\b{re.escape(name.lower())}\b", text)
+        if hit and pid not in {f[0] for f in found}:
+            found.append((pid, name, hit.start()))
+    if not found:
+        surnames: dict[str, list[tuple[int, str]]] = {}
+        for pid, name in pool:
+            parts = name.split()
+            if len(parts) > 1 and len(parts[-1]) >= 4:
+                surnames.setdefault(parts[-1].lower(), []).append((pid, name))
+        for surname, owners in surnames.items():
+            if len(owners) != 1:
+                continue
+            flags = 0 if surname_needs_capital else re.IGNORECASE
+            pattern = rf"\b{re.escape(surname.capitalize() if surname_needs_capital else surname)}\b"
+            hit = re.search(pattern, question if surname_needs_capital else text, flags)
+            if hit:
+                found.append((*owners[0], hit.start()))
+    found.sort(key=lambda f: f[2])
+    return [(pid, name) for pid, name, _ in found[:5]]
+
+
 def profile_constraints(question: str) -> tuple[Constraints, list[str]] | None:
     """
     The players a profile question names, as the only filter -- or None.
@@ -112,37 +149,27 @@ def profile_constraints(question: str) -> tuple[Constraints, list[str]] | None:
     search, that became role=Batter, capped, Indian, base price 2 Cr and came
     back with five similar batters, Kohli third. A profile question is about
     the named player, so the name is the filter and the description is not.
-
-    Full names first; a surname alone counts only when one pool player has it.
     """
-    text = question.lower()
-    if not _PROFILE.search(text):
+    if not _PROFILE.search(question.lower()):
         return None
-    try:
-        pool = _pool_names()
-    except Exception:  # noqa: BLE001 - no pool, no profile; parse as a search
+    found = named_players(question)
+    if not found:
         return None
+    return _profile_of(found)
 
-    found: list[tuple[int, str]] = []
-    for pid, name in sorted(pool, key=lambda p: -len(p[1])):
-        if re.search(rf"\b{re.escape(name.lower())}\b", text) and pid not in {f[0] for f in found}:
-            found.append((pid, name))
-    if not found:
-        surnames: dict[str, list[tuple[int, str]]] = {}
-        for pid, name in pool:
-            parts = name.split()
-            if len(parts) > 1 and len(parts[-1]) >= 4:
-                surnames.setdefault(parts[-1].lower(), []).append((pid, name))
-        for surname, owners in surnames.items():
-            if len(owners) == 1 and re.search(rf"\b{re.escape(surname)}\b", text):
-                found.append(owners[0])
-    if not found:
-        return None
-    found = found[:5]
+
+def _profile_of(found: list[tuple[int, str]]) -> tuple[Constraints, list[str]]:
     return (
         Constraints(player_ids=[pid for pid, _ in found], limit=len(found)),
         [f"profile of {name}" for _, name in found],
     )
+
+
+#: Constraint fields that make a question a search however many names it has:
+#: "batters like Kohli under 5 Cr" is a search with a reference player in it.
+_SEARCH_FIELDS = frozenset(Constraints.model_fields) - {
+    "role", "cap_status", "overseas", "limit", "exclude_player_ids", "player_ids",
+}
 
 
 def parse_constraints(question: str) -> tuple[Constraints, list[str]]:
@@ -283,6 +310,15 @@ def parse_constraints(question: str) -> tuple[Constraints, list[str]]:
         fields["cap_status"] = "CAPPED"
         found.append("capped")
 
+    # A question that names players and sets no figure is about those players:
+    # "how good is Bumrah against left-handers", "compare Gill and Jaiswal".
+    # Without this only "stats of ..." phrasing reached the named player, and
+    # everything else was read as a search for players *like* him.
+    if not (set(fields) & _SEARCH_FIELDS):
+        named = named_players(question, surname_needs_capital=True)
+        if named:
+            return _profile_of(named)
+
     try:
         return Constraints(**fields), found
     except Exception as exc:  # noqa: BLE001 - a bound or the price window rejected it
@@ -317,7 +353,34 @@ Rules you must not break:
 - `suggested_max_bid_lakh` is in LAKH and must never exceed the stated ceiling.
 - Players marked [pool] or [research] are context: include them only if they
   genuinely answer the question.
+- This is a conversation. Earlier turns are above the question; use them to
+  understand follow-ups ("his", "them", "the second one", "what about spin?"),
+  and answer the NEW question rather than repeating an earlier answer.
+- `answer` is what the user reads first: direct, two to five sentences, the
+  verdict before the reasoning, no preamble about how you worked it out.
+- When the question is about a season, a franchise, a leaderboard or another
+  fact rather than a shortlist, answer it in `answer` from the TRAINED
+  KNOWLEDGE; `candidates` may then hold only the pool players it names, or none.
 """
+
+
+def system_prompt(memory_summary: str | None = None) -> str:
+    """
+    The advisor's instructions, the training brief, and what compaction kept.
+
+    The brief is rebuilt by every training run (scout/knowledge.py), so what
+    SCOUT knows about this dataset's patterns moves with each ingest without a
+    code change here.
+    """
+    from scout.knowledge import training_brief
+
+    parts = [_SYSTEM]
+    brief = training_brief()
+    if brief:
+        parts.append(brief)
+    if memory_summary:
+        parts.append("EARLIER IN THIS CONVERSATION (compacted notes):\n" + memory_summary)
+    return "\n\n".join(parts)
 
 
 def _context_block(
@@ -336,6 +399,14 @@ def _context_block(
         )
         pid = f"id={ref.player_id}" if ref.player_id else "id=unknown"
         lines.append(f"- {tag} {pid} {ref.player_name}: {' '.join(ref.text.split())[:300]}")
+        # The newest season from the trained knowledge, so a shortlist can say
+        # how a player went last season and not only over a career.
+        if ref.player_id and not ref.from_research:
+            from scout.agents.knowledge_context import latest_season_line
+
+            latest = latest_season_line(ref.player_id)
+            if latest:
+                lines.append(f"    latest season: {latest[:240]}")
 
     if team:
         lines += [
@@ -418,6 +489,7 @@ def _deterministic(
     notes: list[str],
     *,
     why: str = "No model was available, so this is a data match rather than an assessment.",
+    knowledge: str | None = None,
 ) -> AdvisorRecommendation:
     """
     A recommendation built by rule, when no model will answer.
@@ -435,8 +507,15 @@ def _deterministic(
         # A profile shows the whole record (up to the schema's eight); a
         # shortlist keeps four figures a player so the cards stay comparable.
         facts = [f.strip() for f in ref.text.split(",") if re.search(r"\d", f)][
-            : 8 if query.constraints.player_ids else 4
+            : 7 if query.constraints.player_ids else 3
         ]
+        # The newest season from the trained knowledge, so even an answer built
+        # without a model says how the player went last season.
+        from scout.agents.knowledge_context import latest_season_line
+
+        latest = latest_season_line(ref.player_id)
+        if latest:
+            facts.append(latest[:200])
         role_match = re.search(r"(All-Rounder|Wicket Keeper|Batter|Bowler)", ref.text)
         try:
             candidates.append(Candidate(
@@ -453,7 +532,10 @@ def _deterministic(
         except Exception as exc:  # noqa: BLE001 - a bound rejected it
             logger.debug("skipped deterministic candidate %s: %s", ref.player_name, exc)
 
-    if query.constraints.player_ids and candidates:
+    if knowledge and not candidates:
+        # A fact question with no model to phrase it: the data, as it is.
+        answer = "From SCOUT's IPL data:\n" + knowledge[:3000]
+    elif query.constraints.player_ids and candidates:
         answer = (
             f"{', '.join(c.player_name for c in candidates)}: the IPL career record from "
             "the pool, below. No language model was available, so there is no written "
@@ -543,21 +625,23 @@ async def advise(
     use_reranker: bool = False,
     use_web: bool | None = None,
     research_context: str | None = None,
+    history: list[dict[str, str]] | None = None,
+    memory_summary: str | None = None,
 ) -> AdvisorRecommendation:
     """
     One question, one recommendation. Callable outside the graph.
 
-    `use_web` defaults to "only when local research is stale", so a question
-    asked twice in a minute does not pay for two searches.
+    `research_context` is what the Data Researcher pulled from SCOUT's trained
+    knowledge for this turn (scout/agents/knowledge_context.py): season lines,
+    franchise history and news for the players in question. SCOUT does not
+    search the web any more; `use_web` is accepted for older callers and
+    ignored.
 
-    `research_context` is what the Data Researcher found on the live web for
-    this turn, already summarised. When it is present this function does not
-    search again whatever `use_web` would have decided -- the researcher node
-    has just made that call on this same question, and paying Tavily twice for
-    one question buys nothing but latency. Passing `use_web=True` explicitly
-    still forces a second search, because a caller outside the graph has no
-    researcher in front of it.
+    `history` and `memory_summary` are the conversation so far
+    (scout/memory.py). The history goes to the model as real turns ahead of
+    this question, so a follow-up is read as one.
     """
+    del use_web  # SCOUT answers from ingested data only; see the docstring.
     from rag import llm_provider
 
     settings = get_settings()
@@ -582,19 +666,12 @@ async def advise(
     # criteria: retrieval fell back to the nearest vector matches, and the
     # model dutifully explained why each was a fit. Checked before the web
     # search too -- news about other players cannot make a filter match.
-    if retrieval.no_match:
+    if retrieval.no_match and not research_context:
+        return no_match_recommendation(query, notes + retrieval.notes)
+    if retrieval.no_match and not query.constraints.is_empty():
+        # Filters nobody passes: the trained knowledge cannot make them pass.
         return no_match_recommendation(query, notes + retrieval.notes)
 
-    if use_web is None:
-        # The researcher already searched for this turn, so its context stands
-        # in for the staleness check that would otherwise trigger one here.
-        use_web = retrieval.is_stale and not research_context
-    if use_web:
-        from scout.tools.search_engine import web_search
-
-        web_refs, web_notes = await web_search(query.question)
-        retrieval.refs.extend(web_refs)
-        notes.extend(web_notes)
     # Pull in the pool rows for whoever the research actually named, ahead of
     # the constraint matches. Without this the advisor reads about one set of
     # players and is offered a different set to choose from -- see
@@ -627,11 +704,11 @@ async def advise(
     # the refresh they trigger.
     if research_context:
         notes.extend(n for n in retrieval.notes if not _is_ledger_freshness(n))
-        notes.append("Answered with live research gathered for this question.")
+        notes.append("Answered with SCOUT's trained IPL knowledge for this question.")
     else:
         notes.extend(retrieval.notes)
 
-    if not retrieval.refs:
+    if not retrieval.refs and not research_context:
         return AdvisorRecommendation(
             answer="Nothing in the pool matches that question.",
             candidates=[], engine_used="local_analyst",
@@ -658,47 +735,48 @@ async def advise(
     # correctly. The instruction therefore has to describe the moves that ARE
     # available: reorder the pool candidates, and write what the research says
     # into the rationale and the risks.
-    live_block = (
-        "LIVE RESEARCH -- gathered from the web for this question, minutes "
-        "ago. The CANDIDATES below come from a spreadsheet that cannot know "
-        "any of it.\n"
+    #
+    # 2026-11: the web pass is gone. What used to be live search results is now
+    # SCOUT's trained knowledge -- season-by-season IPL lines, franchise
+    # history and sourced news, all from the site's own ingests. Same rules for
+    # the model: it is the evidence for form and availability, and it never
+    # licenses a player who is not in CANDIDATES.
+    knowledge_block = (
+        "TRAINED KNOWLEDGE -- from SCOUT's ingested IPL data: season-by-season "
+        "figures, franchise history and sourced player news for this question.\n"
         f"{research_context}\n\n"
-        "USE IT AS FOLLOWS. Prefer candidates the live research speaks well "
-        "of, and rank them higher. Put anything it says about a candidate -- "
-        "form, a score, a role -- into that candidate's `evidence` or "
-        "`rationale`, and say it came from live research. Put any injury, "
-        "doubt or unavailability into their `risks`, and drop or demote a "
-        "candidate the research says is unavailable. Where the research and "
-        "the spreadsheet disagree about current form, the research is newer "
-        "and wins.\n"
-        "Do NOT recommend a player who is not in CANDIDATES, however well the "
-        "research speaks of them -- they are not in this auction pool.\n"
-        "If the research does not mention any candidate, that is normal and "
-        "not a problem: recommend from CANDIDATES on their own merits exactly "
-        "as you would without it. NEVER return an empty shortlist because the "
-        "research did not match.\n\n"
+        "USE IT AS FOLLOWS. Use the season lines for recent form and say which "
+        "season a figure is from. Put anything it says about a candidate into "
+        "that candidate's `evidence` or `rationale`. Put any injury, absence or "
+        "unavailability into their `risks`, and drop or demote a candidate the "
+        "news says is unavailable. Quote a news item's source when you use it.\n"
+        "Do NOT recommend a player who is not in CANDIDATES -- they are not in "
+        "this auction pool. If the knowledge mentions no candidate, recommend "
+        "from CANDIDATES on their own merits; NEVER return an empty shortlist "
+        "because the knowledge did not match.\n\n"
         if research_context
-        # Without live research, say so to the model in as many words. Asked
-        # for "his form in the latest season and any injury news" with nothing
-        # but pool rows in front of it, the model wrote that Kohli "finished
-        # among the top five scorers" with "no injury reports" -- invented, and
-        # in the voice of a fact. The pool holds career records, nothing more.
+        # Without it, say so to the model in as many words. Asked for "his
+        # form in the latest season and any injury news" with nothing but pool
+        # rows in front of it, the model wrote that Kohli "finished among the
+        # top five scorers" with "no injury reports" -- invented, and in the
+        # voice of a fact. The pool holds career records, nothing more.
         else (
-            "NO LIVE RESEARCH is available for this question (web search did not "
-            "return). You know ONLY the career figures in CANDIDATES. Do NOT "
-            "describe recent or current-season form, individual innings, rankings "
-            "on a season's leaderboard, injuries, fitness or availability -- not "
-            "even to say there are no injury reports. Where the question asks for "
-            "those, say plainly that live research was unavailable for this answer.\n\n"
+            "NO SEASON-LEVEL KNOWLEDGE was found for this question. You know ONLY "
+            "the career figures in CANDIDATES. Do NOT describe recent or "
+            "current-season form, individual innings, season leaderboards, "
+            "injuries, fitness or availability -- not even to say there are no "
+            "injury reports. Where the question asks for those, say plainly that "
+            "the ingested data does not hold it.\n\n"
         )
     )
 
     prompt = (
-        f"{live_block}{_context_block(retrieval.refs, query.team, wanted=query.constraints.limit)}\n\n"
+        f"{knowledge_block}{_context_block(retrieval.refs, query.team, wanted=query.constraints.limit)}\n\n"
         f"QUESTION: {query.question}\n\n"
         f"Reply with JSON matching this schema:\n"
         f"{json.dumps(AdvisorRecommendation.model_json_schema())}"
     )
+    messages = [*(history or []), {"role": "user", "content": prompt}]
 
     # Gated, not automatic. Hermes being reachable says nothing about whether
     # it is the right engine for THIS agent: the advisor has to return JSON
@@ -719,7 +797,7 @@ async def advise(
         # question would freeze every bidder in the room. Off to a thread.
         raw = await asyncio.to_thread(
             llm_provider.complete,
-            _SYSTEM, [{"role": "user", "content": prompt}],
+            system_prompt(memory_summary), messages,
             task="rag", temperature=0.2, max_tokens=2600, timeout=timeout,
             prefer=prefer,  # type: ignore[arg-type]
             json_object=True,
@@ -727,7 +805,7 @@ async def advise(
         )
     except llm_provider.LLMError as exc:
         notes.append(f"No model answered ({exc}); built the shortlist by rule instead.")
-        return _deterministic(query, retrieval, notes)
+        return _deterministic(query, retrieval, notes, knowledge=research_context)
     except Exception as exc:  # noqa: BLE001 - see below
         # Deliberately broad, and not a substitute for the arm above.
         #
@@ -747,12 +825,12 @@ async def advise(
             f"The model call failed unexpectedly ({type(exc).__name__}); "
             "built the shortlist by rule instead."
         )
-        return _deterministic(query, retrieval, notes)
+        return _deterministic(query, retrieval, notes, knowledge=research_context)
 
     payload = _extract_json(raw)
     if payload is None:
         notes.append("The model's reply was not valid JSON; built the shortlist by rule instead.")
-        return _deterministic(query, retrieval, notes)
+        return _deterministic(query, retrieval, notes, knowledge=research_context)
 
     # The engine names itself, not the model: a model asked which vendor is
     # serving it will guess. And it is the rung that answered, not the one
@@ -867,7 +945,7 @@ async def advise(
     except Exception as exc:  # noqa: BLE001 - the reply itself was unusable
         notes.append(f"The model's reply did not satisfy the contract ({str(exc)[:150]}); "
                      "built the shortlist by rule instead.")
-        return _deterministic(query, retrieval, notes)
+        return _deterministic(query, retrieval, notes, knowledge=research_context)
 
 
 async def cricket_advisor_node(state: ScoutState) -> dict:
@@ -883,6 +961,25 @@ async def cricket_advisor_node(state: ScoutState) -> dict:
     team = state.get("team")
     if isinstance(team, dict):
         team = TeamContext.model_validate(team)
+    timeout = min(budget if budget != float("inf") else 30.0, 30.0)
+
+    if state.get("intent") == "news":
+        from scout.agents.news_desk import answer_news
+
+        recommendation = await answer_news(
+            state["question"],
+            subjects=state.get("subjects") or [],
+            knowledge=state.get("research_context"),
+            history=state.get("history") or [],
+            memory_summary=state.get("memory_summary"),
+            team=team,
+            timeout=timeout,
+        )
+        return {
+            "recommendation": recommendation,
+            "engine_used": recommendation.engine_used,
+            "notes": list(recommendation.notes),
+        }
 
     constraints = state.get("constraints") or Constraints()
     parse_notes: list[str] = []
@@ -898,8 +995,10 @@ async def cricket_advisor_node(state: ScoutState) -> dict:
 
     recommendation = await advise(
         query,
-        timeout=min(budget if budget != float("inf") else 30.0, 30.0),
+        timeout=timeout,
         research_context=state.get("research_context"),
+        history=state.get("history") or [],
+        memory_summary=state.get("memory_summary"),
     )
 
     notes = list(recommendation.notes)

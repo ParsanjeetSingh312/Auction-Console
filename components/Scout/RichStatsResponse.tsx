@@ -136,14 +136,9 @@ function CandidateCard({ candidate }: { candidate: Candidate }) {
 
 export interface RichStatsResponseProps {
   recommendation: AdvisorRecommendation;
-  /** Seconds the whole turn took, from the stream's final event. */
-  elapsedSeconds?: number;
 }
 
-export default function RichStatsResponse({
-  recommendation,
-  elapsedSeconds,
-}: RichStatsResponseProps) {
+export default function RichStatsResponse({ recommendation }: RichStatsResponseProps) {
   const container = useRef<HTMLDivElement>(null);
 
   // The dossier arrives all at once — the stream sends one `result` event —
@@ -161,13 +156,20 @@ export default function RichStatsResponse({
     { scope: container },
   );
 
-  const { answer, candidates, engine_used, max_bid_lakh, refresh_cycles, notes } =
-    recommendation;
+  const { answer, candidates, max_bid_lakh } = recommendation;
 
+  /*
+    The answer and the cards, and nothing about how they were made.
+
+    The provenance strip (which model answered, refresh counts, timing) and the
+    pipeline's notes used to sit under every answer. They read as filler to the
+    people the answer is for, so they are gone; the backend still returns them
+    for anyone debugging. The bid ceiling stays, because a "bid up to" figure
+    means nothing without the purse it was worked out against.
+  */
   return (
     <div ref={container} className="space-y-3">
-      {/* The prose answer. The backend's own comment calls this "the only part
-          that survives if the structured half fails to parse", so it leads. */}
+      {/* The prose answer leads: it is the verdict. */}
       <p className="whitespace-pre-wrap font-tech text-[12.5px] leading-relaxed text-auctiq-text">
         {answer}
       </p>
@@ -180,32 +182,11 @@ export default function RichStatsResponse({
         </ul>
       )}
 
-      {notes.length > 0 && (
-        <ul className="space-y-0.5 rounded-lg border border-white/10 bg-black/20 p-2">
-          {notes.map((note, index) => (
-            <li
-              key={index}
-              className="font-tech text-[10px] leading-snug text-auctiq-dim/85"
-            >
-              {note}
-            </li>
-          ))}
-        </ul>
+      {max_bid_lakh != null && candidates.some((c) => c.suggested_max_bid_lakh != null) && (
+        <p className="font-tech text-[10px] uppercase tracking-[0.12em] text-auctiq-dim/70">
+          Your ceiling {money(max_bid_lakh)}
+        </p>
       )}
-
-      {/* The provenance strip. Which engine wrote this, what ceiling it was
-          working to, and how long it took — so a slow or degraded answer has a
-          visible reason rather than an inferred one. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-white/10 pt-2 font-tech text-[9.5px] uppercase tracking-[0.12em] text-auctiq-dim/70">
-        <span>{engine_used}</span>
-        {max_bid_lakh != null && <span>ceiling {money(max_bid_lakh)}</span>}
-        {refresh_cycles > 0 && (
-          <span className="text-auctiq-gold">
-            {refresh_cycles} refresh{refresh_cycles === 1 ? "" : "es"}
-          </span>
-        )}
-        {elapsedSeconds != null && <span>{elapsedSeconds.toFixed(1)}s</span>}
-      </div>
     </div>
   );
 }

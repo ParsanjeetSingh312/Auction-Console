@@ -13,8 +13,12 @@
  *     Cricket Advisor with live status and run counts (the researcher can run
  *     twice). Nothing here is on a timer.
  *   - The answer card holds the typed dossier (`RichStatsResponse`), or the
- *     error, or a research pass's notes, plus the full `AgentOrchestration`
- *     trail behind a disclosure.
+ *     error, or a research pass's notes — and nothing about how it was made.
+ *     The pipeline trail and the "answered by" strip were removed as filler.
+ *   - SCOUT remembers the conversation (scout/memory.py on the server), so a
+ *     follow-up like "and his economy?" is answered about the right player.
+ *     The header shows how full that memory is, with Compact (fold older
+ *     turns into a summary) and New chat (forget it and start over).
  *   - Finished turns move to a transcript above the pill. Once the answer card
  *     has played in it files itself there and the pill comes back, ready for
  *     the next question — there is no "Ask another" step.
@@ -34,7 +38,7 @@
  * is consulted during a lot, and covering the block to answer a question about
  * it would defeat the point. Below `md` the sheet is the full width.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
@@ -48,9 +52,14 @@ import {
   useScoutOpen,
 } from "../../console/scoutStore";
 import { useScoutOrchestrator } from "../../console/useScoutOrchestrator";
-import type { AgentStep, ScoutAdvice } from "../../console/scoutOrchestrator";
+import {
+  clearThread,
+  compactThread,
+  type AgentStep,
+  type ScoutAdvice,
+  type ScoutContext,
+} from "../../console/scoutOrchestrator";
 import { AuctiqMark } from "../Global/AuctiqLogo";
-import AgentOrchestration from "./AgentOrchestration";
 import RichStatsResponse from "./RichStatsResponse";
 import ScoutEmblem from "./ScoutEmblem";
 import ScoutQuotaMeter from "./ScoutQuotaMeter";
@@ -80,8 +89,15 @@ interface ArchivedTurn {
   question: string;
   result: ScoutAdvice | null;
   error: string | null;
-  steps: AgentStep[];
-  notes: string[];
+  /** Set on the first turn after a compaction: a divider is drawn above it. */
+  compactedBefore?: boolean;
+}
+
+/** Turns kept word for word when a conversation is compacted (server default). */
+const KEEP_TURNS = 2;
+
+function newThreadId(): string {
+  return `ui-${Math.random().toString(36).slice(2, 12)}`;
 }
 
 export default function ScoutDrawer() {
@@ -103,15 +119,61 @@ export default function ScoutDrawer() {
   const [phase, setPhase] = useState<ScoutOrbPhase>("idle");
 
   /*
-    One thread id for the life of the sheet.
+    One thread id per conversation.
 
-    The backend starts a fresh conversation for every request that does not name
-    a thread, so without this each follow-up would be answered with no memory of
-    the question before it. Generated once rather than fixed, because a constant
-    would make every browser in the building share one checkpoint — which is the
-    exact bug `AdviseRequest.thread_id` carries a comment about.
+    The backend remembers a conversation by this id, so every follow-up on it
+    is read with the turns before it. Random rather than fixed, because a
+    constant would make every browser in the building share one memory — the
+    exact bug `AdviseRequest.thread_id` carries a comment about. New chat
+    replaces it.
   */
-  const threadId = useMemo(() => `ui-${Math.random().toString(36).slice(2, 12)}`, []);
+  const [threadId, setThreadId] = useState(newThreadId);
+  const [context, setContext] = useState<ScoutContext | null>(null);
+  const [compacting, setCompacting] = useState(false);
+  const [memoryNote, setMemoryNote] = useState<string | null>(null);
+  const compactPending = useRef(false);
+
+  // Each answer reports how full the memory is now. A thread that passed its
+  // limit compacted itself on the server; the transcript marks where.
+  useEffect(() => {
+    const next = result?.context;
+    if (!next) return;
+    setContext((previous) => {
+      if (previous && next.compactions > previous.compactions) compactPending.current = true;
+      return next;
+    });
+  }, [result]);
+
+  const onCompact = useCallback(async () => {
+    if (compacting || isRunning) return;
+    setCompacting(true);
+    setMemoryNote(null);
+    try {
+      const after = await compactThread(threadId);
+      setContext(after);
+      compactPending.current = true;
+      setMemoryNote(
+        after.tokens_before != null && after.tokens_before > after.tokens
+          ? `Compacted: ${after.tokens_before.toLocaleString()} → ${after.tokens.toLocaleString()} tokens`
+          : "Nothing to compact yet",
+      );
+    } catch {
+      setMemoryNote("Could not compact this conversation");
+    } finally {
+      setCompacting(false);
+    }
+  }, [compacting, isRunning, threadId]);
+
+  const onNewChat = useCallback(() => {
+    if (isRunning) return;
+    void clearThread(threadId);
+    setThreadId(newThreadId());
+    setHistory([]);
+    setContext(null);
+    setMemoryNote(null);
+    compactPending.current = false;
+    reset();
+  }, [isRunning, threadId, reset]);
 
   /* ---- the sheet itself ------------------------------------------------- */
 
@@ -180,11 +242,13 @@ export default function ScoutDrawer() {
   /** Move the live turn into the transcript. */
   const archive = useCallback(() => {
     if (!question) return;
+    const compactedBefore = compactPending.current;
+    compactPending.current = false;
     setHistory((current) => [
       ...current,
-      { id: nextId.current++, question, result, error, steps, notes },
+      { id: nextId.current++, question, result, error, compactedBefore },
     ]);
-  }, [question, result, error, steps, notes]);
+  }, [question, result, error]);
 
   /*
     The live turn is cleared only once the stage is back at rest. Clearing it on
@@ -238,7 +302,7 @@ export default function ScoutDrawer() {
 
   const answer =
     question && (result || error) ? (
-      <TurnAnswer question={question} result={result} error={error} steps={steps} notes={notes} reveal />
+      <TurnAnswer question={question} result={result} error={error} reveal />
     ) : null;
 
   const idle = phase === "idle";
@@ -271,6 +335,14 @@ export default function ScoutDrawer() {
             </div>
             <StatsFreshness tone="dark" className="mt-1" />
           </div>
+          <MemoryControls
+            context={context}
+            hasTurns={history.length > 0 || Boolean(result)}
+            busy={isRunning || compacting}
+            compacting={compacting}
+            onCompact={onCompact}
+            onNewChat={onNewChat}
+          />
           <button
             type="button"
             onClick={closeScout}
@@ -282,6 +354,14 @@ export default function ScoutDrawer() {
             </svg>
           </button>
         </header>
+        {memoryNote && (
+          <p
+            role="status"
+            className="border-b border-white/[0.06] px-4 py-1.5 text-center font-tech text-[10.5px] text-auctiq-dim sm:px-5"
+          >
+            {memoryNote}
+          </p>
+        )}
         <ScoutQuotaMeter open={open} />
 
         <div className="relative min-h-0 flex-1">
@@ -293,9 +373,9 @@ export default function ScoutDrawer() {
           >
             <ScoutEmblem variant="full" className="h-[min(26vh,210px)] w-[min(26vh,210px)]" paused={!open || !showWelcome} />
             <p className="mt-3 max-w-[30rem] font-tech text-[12.5px] leading-relaxed text-auctiq-dim">
-              Ask about any player, any franchise, or the shape of the market. A
-              Data Researcher and a Cricket Advisor answer together, and you can
-              watch them work.
+              Ask about any player, a season, a trade or the shape of the market.
+              SCOUT is trained on the site&rsquo;s IPL data and remembers the
+              conversation, so follow-ups like &ldquo;and his economy?&rdquo; just work.
             </p>
           </div>
 
@@ -314,19 +394,22 @@ export default function ScoutDrawer() {
             <div className="mx-auto max-w-[600px] space-y-6">
               {history.map((turn) => (
                 <div key={turn.id} className="space-y-2.5">
+                  {turn.compactedBefore && (
+                    <div className="flex items-center gap-2 py-1" role="separator">
+                      <span className="h-px flex-1 bg-white/10" />
+                      <span className="font-tech text-[9.5px] uppercase tracking-[0.16em] text-auctiq-dim/70">
+                        Compacted · older turns kept as a summary
+                      </span>
+                      <span className="h-px flex-1 bg-white/10" />
+                    </div>
+                  )}
                   <div className="ml-auto max-w-[85%] rounded-xl rounded-br-sm border border-auctiq-gold/25 bg-auctiq-gold/[0.08] px-3 py-2">
                     <p className="whitespace-pre-wrap font-tech text-[12.5px] leading-relaxed text-auctiq-text">
                       {turn.question}
                     </p>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-[#0d1a3d]/80 p-4">
-                    <TurnAnswer
-                      question={turn.question}
-                      result={turn.result}
-                      error={turn.error}
-                      steps={turn.steps}
-                      notes={turn.notes}
-                    />
+                    <TurnAnswer question={turn.question} result={turn.result} error={turn.error} />
                   </div>
                 </div>
               ))}
@@ -365,6 +448,73 @@ export default function ScoutDrawer() {
 
 /* ------------------------------------------------------------------------ */
 
+/**
+ * How much of the conversation SCOUT is carrying, and the two things to do
+ * about it: Compact folds older turns into a summary (fewer tokens, same
+ * meaning), New chat forgets the conversation entirely.
+ */
+function MemoryControls({
+  context,
+  hasTurns,
+  busy,
+  compacting,
+  onCompact,
+  onNewChat,
+}: {
+  context: ScoutContext | null;
+  hasTurns: boolean;
+  busy: boolean;
+  compacting: boolean;
+  onCompact: () => void;
+  onNewChat: () => void;
+}) {
+  if (!hasTurns) return null;
+  const percent = context?.percent ?? 0;
+  const canCompact = !busy && (context?.live_turns ?? 0) > KEEP_TURNS;
+  const tone = percent >= 80 ? "bg-auctiq-out" : percent >= 50 ? "bg-auctiq-gold" : "bg-emerald-400";
+  const title = context
+    ? `SCOUT remembers ${context.turns} turn${context.turns === 1 ? "" : "s"} · ` +
+      `${context.tokens.toLocaleString()} of ${context.limit.toLocaleString()} tokens` +
+      (context.compactions ? ` · compacted ${context.compactions}×` : "")
+    : "SCOUT remembers this conversation";
+
+  const button =
+    "rounded-md border border-white/10 px-2 py-1 font-tech text-[10px] uppercase tracking-[0.12em] text-auctiq-dim transition-colors hover:border-white/25 hover:text-auctiq-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 disabled:cursor-not-allowed disabled:opacity-40";
+
+  return (
+    <div className="flex flex-none items-center gap-1.5">
+      <div className="hidden items-center gap-1.5 sm:flex" title={title} aria-label={title}>
+        <span className="font-tech text-[9.5px] uppercase tracking-[0.12em] text-auctiq-dim/70">Context</span>
+        <span className="relative h-1.5 w-12 overflow-hidden rounded-full bg-white/10">
+          <span
+            className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-500 ${tone}`}
+            style={{ width: `${Math.max(3, percent)}%` }}
+          />
+        </span>
+        <span className="font-num text-[10px] text-auctiq-dim">{percent}%</span>
+      </div>
+      <button
+        type="button"
+        className={button}
+        onClick={onCompact}
+        disabled={!canCompact}
+        title="Fold older turns into a short summary so the conversation uses less context"
+      >
+        {compacting ? "Compacting…" : "Compact"}
+      </button>
+      <button
+        type="button"
+        className={button}
+        onClick={onNewChat}
+        disabled={busy}
+        title="Forget this conversation and start a new one"
+      >
+        New chat
+      </button>
+    </div>
+  );
+}
+
 const RAIL_TONE: Record<AgentStep["status"], string> = {
   idle: "border-white/12 text-auctiq-dim/70",
   running: "border-auctiq-gold/70 text-auctiq-gold shadow-[0_0_16px_-4px_rgba(245,185,43,0.8)]",
@@ -381,9 +531,9 @@ const DOT_TONE: Record<AgentStep["status"], string> = {
 };
 
 /**
- * The pipeline at a glance, under the thinking ball: each agent with its live
- * status, how many times it has run, and the latest thing anyone said. The full
- * trail, notes and all, is in the answer card behind "How SCOUT worked it out".
+ * The pipeline at a glance, under the thinking ball while SCOUT works: each
+ * agent with its live status and the latest thing anyone said. It is shown
+ * only while a question is in flight; answers carry no pipeline trail.
  */
 function AgentRail({ steps, notes }: { steps: AgentStep[]; notes: string[] }) {
   const latest =
@@ -426,23 +576,18 @@ function AgentRail({ steps, notes }: { steps: AgentStep[]; notes: string[] }) {
 }
 
 /**
- * One turn's answer: the dossier, the error, or a research pass's notes, and
- * the pipeline behind a disclosure. `reveal` marks the blocks the answer card
- * brings in one by one.
+ * One turn's answer: the dossier, the error, or a research pass's notes.
+ * `reveal` marks the blocks the answer card brings in one by one.
  */
 function TurnAnswer({
   question,
   result,
   error,
-  steps,
-  notes,
   reveal = false,
 }: {
   question: string;
   result: ScoutAdvice | null;
   error: string | null;
-  steps: AgentStep[];
-  notes: string[];
   reveal?: boolean;
 }) {
   const r = reveal ? { "data-reveal": "" } : {};
@@ -462,7 +607,7 @@ function TurnAnswer({
 
       {result?.recommendation && (
         <div {...r}>
-          <RichStatsResponse recommendation={result.recommendation} elapsedSeconds={result.elapsed_seconds} />
+          <RichStatsResponse recommendation={result.recommendation} />
         </div>
       )}
 
@@ -483,18 +628,6 @@ function TurnAnswer({
         <p {...r} className="font-tech text-[12.5px] leading-relaxed text-auctiq-dim">
           SCOUT finished without a recommendation for this one. Try naming a player, a team or a role.
         </p>
-      )}
-
-      {steps.length > 0 && (
-        <details {...r} className="group rounded-xl border border-white/10 bg-black/20">
-          <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 font-tech text-[10.5px] uppercase tracking-[0.14em] text-auctiq-dim transition-colors hover:text-auctiq-text">
-            How SCOUT worked it out
-            <span aria-hidden className="transition-transform duration-200 group-open:rotate-180">▾</span>
-          </summary>
-          <div className="px-3 pb-3">
-            <AgentOrchestration steps={steps} notes={notes} />
-          </div>
-        </details>
       )}
     </div>
   );

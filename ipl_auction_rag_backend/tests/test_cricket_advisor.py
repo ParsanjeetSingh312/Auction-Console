@@ -374,22 +374,26 @@ class TestLiveResearchAndTheLedger:
         ))
 
     @pytest.mark.parametrize("ledger_note", [LEDGER_EMPTY, LEDGER_OLD])
-    def test_live_research_replaces_the_ledger_note(self, ledger_note):
-        rec = self.run(ledger_note, "Player 1 made 80 off 41 last week.")
+    def test_trained_knowledge_replaces_the_ledger_note(self, ledger_note):
+        rec = self.run(ledger_note, "IPL 2026 (Player 1's side): 80 off 41.")
         assert ledger_note not in rec.notes
-        assert any("live research" in n for n in rec.notes)
+        assert any("trained IPL knowledge" in n for n in rec.notes)
 
     @pytest.mark.parametrize("ledger_note", [LEDGER_EMPTY, LEDGER_OLD])
-    def test_with_live_research_the_turn_is_not_sent_back(self, ledger_note):
+    def test_with_trained_knowledge_the_turn_is_not_sent_back(self, ledger_note):
         from scout.graph.workflow import route_from_advisor
-        rec = self.run(ledger_note, "Player 1 made 80 off 41 last week.")
+        rec = self.run(ledger_note, "IPL 2026 (Player 1's side): 80 off 41.")
         assert route_from_advisor({"recommendation": rec, "refresh_cycles": 0}) == "done"
 
-    def test_without_live_research_the_ledger_note_stands_and_may_refresh(self):
+    def test_without_knowledge_the_ledger_note_stands_but_nothing_is_refetched(self):
+        """
+        The refresh cycle existed to search the web again. SCOUT no longer
+        searches the web, so a second read could not be fresher: the turn ends.
+        """
         from scout.graph.workflow import route_from_advisor
         rec = self.run(self.LEDGER_EMPTY, None)
         assert self.LEDGER_EMPTY in rec.notes
-        assert route_from_advisor({"recommendation": rec, "refresh_cycles": 0}) == "refresh"
+        assert route_from_advisor({"recommendation": rec, "refresh_cycles": 0}) == "done"
 
 
 class TestProfileQuestions:

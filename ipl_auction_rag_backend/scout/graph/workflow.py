@@ -1,26 +1,25 @@
 """
 workflow.py
-The graph. Three nodes, two conditional edges, and one cycle.
+The graph. Three nodes and the conversation around them.
 
-    START -> supervisor -> researcher -+-- research --> END
+    START -> supervisor -> researcher -+-- research --------> END
                                        |
-                                       +-- advise ----> advisor
-                                                          |  ^
-                                                 refresh  |  |
-                                                          +--+
-                                                          |
-                                                        done
-                                                          |
-                                                         END
+                                       +-- advise / news --> advisor --> END
 
-**The cycle is the reason this is a graph.** Everything else here could be a
-function that calls three others in order. The advisor handing a turn back to
-the researcher -- "I can answer this, but the form data is nine days old" --
-and then answering again with what came back is a loop, and a loop with state
-is what LangGraph is for. `may_refresh` bounds it on two axes at once: a
-counter, so it cannot run forever, and a wall clock, so it cannot run long.
-Either alone is insufficient. The counter would permit one refresh that
-overruns the bid window; the clock would permit an endless series of fast ones.
+**The supervisor opens every turn with the conversation.** It reads the
+thread's memory (scout/memory.py), works out who the question is about --
+named in it, or carried over from earlier turns when it says "he" or "them" --
+and classifies it: a shortlist search (advise), a trade or availability
+question (news), or a request to ingest (research).
+
+**The researcher reads what SCOUT was trained on, not the web.** Since 2026-11
+SCOUT learns from the site's own ingests (scout/knowledge.py): season lines,
+franchise history, league leaders, the dataset's patterns and the news ledger.
+The advisor used to send stale turns back for another web search; with no web
+pass a second read could not be fresher, so that cycle is gone.
+
+**After the graph, the turn is remembered** (`remember_turn`), so the next
+question on the thread is read as a follow-up to this one.
 
 **The entry node seeds the clock, and that is not optional.**
 `StateGraph(..., input_schema=ScoutInput)` filters the invoke payload down to
@@ -33,10 +32,9 @@ returns infinity and nothing is ever bounded.
 differs.** It used to be reached only by a keyword or by the advisor's
 staleness edge, which left it unscheduled on ordinary questions -- and an
 unscheduled node renders in the interface as one that started and never
-finished. Now the supervisor always hands off to it: a research turn ingests
-and ends, an advise turn picks up live web context and continues to the
-advisor. The node itself chooses which of its two speeds to run at; see
-`researcher_node`.
+finished. Now the supervisor always hands off to it: a research turn ingests,
+retrains and ends; an advise or news turn picks up trained knowledge and
+continues to the advisor.
 """
 from __future__ import annotations
 
@@ -56,18 +54,15 @@ from scout.agents.cricket_advisor import (
     parse_constraints,
 )
 from scout.agents.data_researcher import data_researcher_node
-from scout.agents.live_context import live_context_node
+from scout.agents.knowledge_context import knowledge_context_node
 from scout.graph.state import (
     NOTES_RESET,
     Intent,
     ScoutInput,
     ScoutOutput,
     ScoutState,
-    elapsed,
     make_serde,
-    may_refresh,
     open_turn,
-    seconds_left,
 )
 from scout.schemas.queries import AdvisorQuery, Constraints, TeamContext
 
@@ -83,17 +78,39 @@ _RESEARCH_INTENT = re.compile(
 )
 
 
-def classify_intent(question: str) -> Intent:
+#: Words that make a question news whoever it is about.
+_STRONG_NEWS = re.compile(
+    r"\b(trade[ds]?|trading|transferr?(?:ed|s)?|retain(?:ed|s)?|retention|releas(?:ed|es)|"
+    r"injur(?:y|ed|ies)|ruled out|withdr[ae]wn?|withdrawal|pulled out|unavailab\w*|"
+    r"availability|replace(?:d|ment)|suspen(?:ded|sion)|banned|news|comeback|fitness)\b"
+    r"|\bmiss(?:ed|es|ing)?\b.*\b(?:ipl|season|20\d\d)\b",
+    re.IGNORECASE,
+)
+#: Words that make a question news only when it is about a particular player:
+#: "which team does Kohli play for" is news, "which team needs a keeper" is not.
+_WEAK_NEWS = re.compile(
+    r"\b(?:which|what) (?:team|franchise)\b|\bplay(?:s|ing|ed)? for\b|\bjoin(?:ed|s|ing)?\b|"
+    r"\bsigned\b|\bmoved?\b|\bbought by\b|\bmiss(?:ed|es|ing)?\b|\bavailable\b|\bwhere is\b",
+    re.IGNORECASE,
+)
+
+
+def classify_intent(question: str, *, about_a_player: bool = False) -> Intent:
     """
     Which branch a question belongs on.
 
     A keyword rule rather than a model call. Routing is the cheapest decision in
-    the graph and the most frequent, and spending a request on it -- against a
-    free tier of twenty a day -- to distinguish "refresh the data" from
-    everything else would be a poor trade. Anything unrecognised is an advise
-    turn, because that is what the console asks for.
+    the graph and the most frequent, and spending a request on it to tell
+    "refresh the data" from "was he traded?" from everything else would be a
+    poor trade. Anything unrecognised is an advise turn, because that is what
+    the console asks for.
     """
-    return "research" if _RESEARCH_INTENT.search(question or "") else "advise"
+    text = question or ""
+    if _RESEARCH_INTENT.search(text):
+        return "research"
+    if _STRONG_NEWS.search(text) or (about_a_player and _WEAK_NEWS.search(text)):
+        return "news"
+    return "advise"
 
 
 # ---------------------------------------------------------------------------
@@ -109,39 +126,46 @@ async def supervisor_node(state: ScoutState) -> dict:
     cycle does not re-parse them, and so a caller can see what was understood
     even on a turn that never reaches the advisor.
     """
-    settings = get_settings()
+    from scout import memory as conversation
+    from scout import news as news_ledger
+    from scout.agents.cricket_advisor import named_players
 
-    # Intent first, because it decides the clock. A deliberate research turn
+    settings = get_settings()
+    question = state.get("question", "")
+
+    # --- the conversation so far -----------------------------------------
+    # Read before anything else, because it decides who "he" is -- and that
+    # decides both the intent and the filters below.
+    memory = await asyncio.to_thread(conversation.load, state.get("thread_id"))
+    named = await asyncio.to_thread(named_players, question, surname_needs_capital=True)
+    subjects = [{"id": pid, "name": name} for pid, name in named]
+    carried: list[dict[str, Any]] = []
+    if not subjects:
+        carried = conversation.followup_players(question, memory)
+    outside_pool = news_ledger.names_in_question(question)
+
+    # Intent next, because it decides the clock. A deliberate research turn
     # and a question asked over a live bid window are not the same kind of
     # wait: one is an ingest somebody chose to sit through, the other has
-    # seven seconds before the hammer. Giving both the advise budget is what
-    # made the Hermes sub-agent unreachable -- it needs more time than an
-    # advise turn has, and there was no turn that had more.
-    intent = state.get("intent") or classify_intent(state.get("question", ""))
+    # seven seconds before the hammer.
+    intent = state.get("intent") or classify_intent(
+        question, about_a_player=bool(subjects or carried or outside_pool)
+    )
     if intent == "research":
         default_budget = settings.SCOUT_RESEARCH_BUDGET
     else:
         default_budget = settings.SCOUT_CYCLE_TIMEOUT * 3
-        # An advise turn that is configured to reason with Hermes is widened
-        # by what Hermes costs, rather than being asked to fit it into a
-        # budget sized for a 3-second web search. Added, not carved out: the
-        # advisor's share is unchanged and the researcher's is real.
-        #
-        # This is the line that makes SCOUT_RESEARCHER_USES_HERMES take effect
-        # on ordinary questions. Without it the sub-agent needed 30s, the turn
-        # allowed 8, and the rung was skipped on every single advise turn --
-        # configured, verified working, and never once reached in the product.
-        from rag.llm_provider import hermes_configured
-
-        if settings.SCOUT_RESEARCHER_USES_HERMES and hermes_configured():
-            default_budget += settings.SCOUT_HERMES_AGENT_TIMEOUT
 
     update: dict[str, Any] = open_turn(state, default_budget=default_budget)
     update["intent"] = intent
+    update["history"] = memory.messages()
+    update["memory_summary"] = memory.summary or None
 
     # NOTES_RESET first: this node opens the turn, so anything the thread
     # accumulated on a previous question stops here.
     notes = [NOTES_RESET, f"intent: {intent}"]
+    if not memory.is_empty():
+        notes.append(f"remembering {len(memory.turns)} earlier turn(s) of this conversation")
 
     # Flush EVERYTHING that belongs to one question before reading this one.
     #
@@ -167,11 +191,29 @@ async def supervisor_node(state: ScoutState) -> dict:
         "recommendation": None,
         "engine_used": None,
         "refresh_cycles": 0,
+        "subjects": [],
     })
+
+    if intent == "news":
+        subjects = subjects or carried
+        if carried:
+            notes.append("following up on " + ", ".join(p["name"] for p in carried))
 
     if intent == "advise":
         # Parsed from THIS question only; `parse_constraints` holds no state.
-        constraints, recognised = parse_constraints(state.get("question", ""))
+        constraints, recognised = parse_constraints(question)
+
+        # A follow-up about someone already discussed: "and his economy?",
+        # "what about against spin?". Taken only when the question either
+        # points back in so many words or sets no filter of its own -- "what
+        # about spin bowlers?" is a new search, not a question about him.
+        if carried and (conversation.points_back(question) or constraints.is_empty()):
+            constraints = Constraints(player_ids=[p["id"] for p in carried], limit=len(carried))
+            recognised = [f"follow-up on {p['name']}" for p in carried]
+            subjects = carried
+        elif constraints.player_ids and not subjects:
+            subjects = [{"id": pid, "name": name} for pid, name in named]
+
         update["constraints"] = constraints
         notes.append("understood as: " + (", ".join(recognised) or "no filters, semantic only"))
 
@@ -195,6 +237,7 @@ async def supervisor_node(state: ScoutState) -> dict:
                 update["engine_used"] = recommendation.engine_used
                 notes.append("no player in the pool matches these filters; answered without research")
 
+    update["subjects"] = subjects
     update["notes"] = notes
     return update
 
@@ -238,52 +281,38 @@ async def researcher_node(state: ScoutState) -> dict:
 
     **Two speeds, because the two jobs are not the same job.** A `research`
     turn is a deliberate ingest -- `POST /scout/research`, or a question that
-    asks for one in so many words -- and it downloads an archive and writes to
-    the pool: 17.6 seconds for 101 player updates, measured. An `advise` turn
-    gets `live_context`: one search, one summary, nothing written, bounded to
-    half of whatever is left of the turn. Putting the heavy pass on every
-    question would mean every question arriving after the hammer.
-
-    **The refresh counter is incremented here and only on a genuine refresh.**
-    A researcher run reached from START is the normal path; one reached from
-    the advisor is the cycle `SCOUT_MAX_REFRESH_CYCLES` exists to bound. The
-    advisor having already produced a recommendation is what distinguishes
-    them, and it is the only signal in the state that does.
+    asks for one in so many words -- and it downloads an archive, writes to
+    the pool and retrains SCOUT. An advise or news turn reads the trained
+    knowledge for the players in question: a file read and, for questions
+    about nobody in particular, one vector search. Nothing leaves the machine.
     """
     if state.get("intent") == "research":
-        # A caller waiting on an ingest gets the whole ingest -- and the live
-        # pass alongside it, concurrently, because this is the only turn with
-        # enough budget for the Hermes sub-agent to run at all. The archive
-        # download is I/O and thread work while Hermes is a local socket, so
-        # the two overlap rather than add up.
-        heavy, live = await asyncio.gather(
-            data_researcher_node(state),
-            live_context_node(state, budget_override=seconds_left(state)),
-            return_exceptions=True,
-        )
+        # A caller waiting on an ingest gets the whole ingest, and then SCOUT
+        # is retrained on what it brought in. No web pass: since 2026-11 SCOUT
+        # learns from ingested IPL data only (scout/knowledge.py).
+        from scout import knowledge
 
         merged: dict[str, Any] = {}
         notes: list[str] = []
-        for part in (heavy, live):
-            if isinstance(part, BaseException):
-                # One half failing is a thinner research turn, not a failed
-                # one: the ingest and the live pass answer different questions
-                # and neither depends on the other.
-                logger.warning("research half failed: %s", part)
-                notes.append(f"Part of the research pass failed ({type(part).__name__}).")
-                continue
-            notes.extend(part.pop("notes", []) or [])
-            merged.update(part)
-
+        try:
+            heavy = await data_researcher_node(state)
+            notes.extend(heavy.pop("notes", []) or [])
+            merged.update(heavy)
+        except Exception as exc:  # noqa: BLE001 - a thinner research turn, not a failed one
+            logger.warning("research ingest failed: %s", exc)
+            notes.append(f"The ingest failed ({type(exc).__name__}).")
+        trained = await knowledge.train(reason="research turn")
+        if trained.get("state") == "running":
+            notes.append("A training run was already in progress; SCOUT will pick up this data from it.")
+        else:
+            notes.append(f"Retrained SCOUT on the ingested data: {trained.get('documents')} documents.")
         merged["notes"] = notes
         return merged
 
-    update = await live_context_node(state)
-
-    if state.get("recommendation") is not None:
-        update["refresh_cycles"] = state.get("refresh_cycles", 0) + 1
-
-    return update
+    # Advise and news turns read what SCOUT was trained on -- season lines,
+    # franchise history, archive events and the news ledger -- exactly, for
+    # the players in question. Nothing leaves the machine.
+    return await knowledge_context_node(state)
 
 
 async def advisor_node(state: ScoutState) -> dict:
@@ -297,29 +326,18 @@ async def advisor_node(state: ScoutState) -> dict:
 
 def route_from_advisor(state: ScoutState) -> str:
     """
-    Answer, or go back for fresher data.
+    Always "done" now.
 
-    A refresh is only worth it when three things hold: the advisor said the
-    context was stale, the budget allows it, and there is somewhere to get
-    fresher data from. The third is easy to forget -- with every HTML source
-    refusing an identified crawler and no search key, a refresh would scrape
-    nothing and return, having spent the budget to learn that.
+    The advisor used to send a turn back to the researcher when its data was
+    stale, so the researcher could search the web again. SCOUT no longer
+    searches the web: the researcher reads the trained knowledge, which a
+    second read within the same second cannot make any fresher. A refresh
+    would only pay for a second model call to write the same answer, so the
+    cycle is gone. Fresh data arrives through an ingest, which retrains SCOUT
+    (scout/knowledge.py).
     """
-    recommendation = state.get("recommendation")
-    if recommendation is None:
-        return "done"
-
-    stale = any(
-        "days old" in note or "No research recorded" in note
-        for note in (recommendation.notes or [])
-    )
-    if not stale:
-        return "done"
-
-    if not may_refresh(state, max_cycles=get_settings().SCOUT_MAX_REFRESH_CYCLES):
-        return "done"
-
-    return "refresh"
+    del state
+    return "done"
 
 
 def route_from_supervisor(state: ScoutState) -> str:
@@ -335,8 +353,8 @@ def route_from_supervisor(state: ScoutState) -> str:
 
 
 def route_from_researcher(state: ScoutState) -> str:
-    """Back to the advisor if this was an advise turn; otherwise finish."""
-    return "advise" if state.get("intent") == "advise" else "done"
+    """On to the advisor for an advise or news turn; a research turn ends here."""
+    return "advise" if state.get("intent") in ("advise", "news") else "done"
 
 
 # ---------------------------------------------------------------------------
@@ -364,10 +382,7 @@ def build() -> StateGraph:
         "supervisor", route_from_supervisor,
         {"research": "researcher", "answered": END},
     )
-    graph.add_conditional_edges(
-        "advisor", route_from_advisor,
-        {"refresh": "researcher", "done": END},
-    )
+    graph.add_edge("advisor", END)
     graph.add_conditional_edges(
         "researcher", route_from_researcher,
         {"advise": "advisor", "done": END},
@@ -456,12 +471,50 @@ async def run(payload: ScoutInput, *, thread_id: str = "default") -> ScoutOutput
     """
     app = await compiled()
     started = time.perf_counter()
+    if payload.thread_id is None:
+        payload = payload.model_copy(update={"thread_id": thread_id})
 
     final: ScoutState = await app.ainvoke(
         payload.model_dump(), {"configurable": {"thread_id": thread_id}}
     )
 
-    return output_from(final, time.perf_counter() - started)
+    output = output_from(final, time.perf_counter() - started)
+    return await remember_turn(payload.thread_id, payload.question, output)
+
+
+def memory_text(output: ScoutOutput) -> str:
+    """What the conversation remembers SCOUT said: the answer and its cards."""
+    rec = output.recommendation
+    if rec is None:
+        return " ".join(output.notes[-3:]) or "Research pass finished."
+    lines = [rec.answer]
+    for c in rec.candidates[:5]:
+        lines.append(f"- {c.player_name} ({c.role}): " + "; ".join(c.evidence[:3]))
+    return "\n".join(lines)
+
+
+async def remember_turn(thread_id: str | None, question: str, output: ScoutOutput) -> ScoutOutput:
+    """
+    Write the finished turn into the conversation memory and report its size.
+
+    Never fails the turn: an answer the user can read is worth more than a
+    memory write, so a storage error is logged and the answer goes out.
+    """
+    from scout import memory as conversation
+
+    if not thread_id or output.intent == "research":
+        return output
+    try:
+        remembered = await asyncio.to_thread(
+            conversation.remember, thread_id, question, memory_text(output),
+            output.players, intent=output.intent,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("could not remember the turn on %s: %s", thread_id, exc)
+        return output
+    if remembered is None:
+        return output
+    return output.model_copy(update={"context": remembered.usage()})
 
 
 def output_from(final: ScoutState, elapsed_seconds: float) -> ScoutOutput:
@@ -474,9 +527,17 @@ def output_from(final: ScoutState, elapsed_seconds: float) -> ScoutOutput:
     would drift the first time a field is added, and the drift would show up as
     a field that is present over one transport and missing over the other.
     """
+    recommendation = final.get("recommendation")
+    players = [
+        {"id": c.player_id, "name": c.player_name}
+        for c in (recommendation.candidates if recommendation else [])
+    ] or [
+        {"id": int(s["id"]), "name": str(s["name"])} for s in (final.get("subjects") or [])
+    ]
     return ScoutOutput(
         intent=final.get("intent") or "advise",
-        recommendation=final.get("recommendation"),
+        players=players,
+        recommendation=recommendation,
         research=final.get("research"),
         engine_used=final.get("engine_used"),
         research_context=final.get("research_context"),

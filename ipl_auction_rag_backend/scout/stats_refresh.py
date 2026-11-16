@@ -209,7 +209,13 @@ async def _refresh(
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not refresh the auction room pools: %s", exc)
 
-    # --- 6. status -----------------------------------------------------------------------
+    # --- 6. SCOUT learns the refreshed seasons (scout/knowledge.py) ------------------------
+    from scout.knowledge import start_training
+
+    if start_training("after stats refresh"):
+        notes.append("Started retraining SCOUT on the refreshed data.")
+
+    # --- 7. status -----------------------------------------------------------------------
     finished = datetime.now(timezone.utc)
     status = {
         "state": "ok",

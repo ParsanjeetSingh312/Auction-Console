@@ -59,15 +59,40 @@ export interface AdvisorRecommendation {
   refresh_cycles: number;
 }
 
+/**
+ * How full a conversation's memory is. Mirrors `scout/memory.py::Memory.usage`.
+ *
+ * `tokens` is what the remembered turns cost in every prompt; past `limit` the
+ * backend compacts on its own, and the drawer's Compact button does it early.
+ */
+export interface ScoutContext {
+  thread_id: string;
+  turns: number;
+  live_turns: number;
+  compacted_turns: number;
+  compactions: number;
+  tokens: number;
+  limit: number;
+  percent: number;
+  has_summary: boolean;
+  focus: string[];
+  /** Only on a compaction's reply: the size before it. */
+  tokens_before?: number;
+}
+
 /** Mirrors `scout/graph/state.py::ScoutOutput`. */
 export interface ScoutAdvice {
-  intent: "advise" | "research" | string;
+  intent: "advise" | "research" | "news" | string;
   recommendation: AdvisorRecommendation | null;
   research: Record<string, unknown> | null;
   engine_used: string | null;
   notes: string[];
   refresh_cycles: number;
   elapsed_seconds: number;
+  /** The pool players this answer was about — "him" in the next question. */
+  players?: { id: number; name: string }[];
+  /** The conversation's memory after this turn; null without a thread. */
+  context?: ScoutContext | null;
 }
 
 /* -------------------------------------------------------------------------
@@ -171,6 +196,39 @@ function stepsFrom(labels: NodeLabels): AgentStep[] {
     notes: [],
     runs: 0,
   }));
+}
+
+/* -------------------------------------------------------------------------
+ * Conversation memory
+ * ---------------------------------------------------------------------- */
+
+async function threadCall(
+  threadId: string,
+  path: string,
+  method: "GET" | "POST" | "DELETE",
+): Promise<Response> {
+  const response = await fetch(
+    apiUrl(`/api/v1/scout/thread/${encodeURIComponent(threadId)}${path}`),
+    { method },
+  );
+  if (!response.ok) {
+    throw new RagError(`SCOUT could not update this conversation (${response.status}).`, response.status, false);
+  }
+  return response;
+}
+
+/** Fold older turns into a summary so the conversation costs fewer tokens. */
+export async function compactThread(threadId: string): Promise<ScoutContext> {
+  return (await (await threadCall(threadId, "/compact", "POST")).json()) as ScoutContext;
+}
+
+/** Forget a conversation on the server. Best effort: a new id starts fresh anyway. */
+export async function clearThread(threadId: string): Promise<void> {
+  try {
+    await threadCall(threadId, "", "DELETE");
+  } catch {
+    // The drawer already moved to a new thread; nothing to recover.
+  }
 }
 
 /**

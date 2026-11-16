@@ -500,8 +500,19 @@ def _count_vectors(chroma_dir: Path) -> Finding | None:
         )
 
     try:
+        # The pool's collection only. SCOUT keeps its research and its trained
+        # knowledge in collections of their own in the same file, and counting
+        # those would report a pool of 284 players as 1,248 vectors.
         with sqlite3.connect(f"file:{store}?mode=ro", uri=True) as conn:
-            count = conn.execute("SELECT COUNT(*) FROM embeddings").fetchone()[0]
+            count = conn.execute(
+                """
+                SELECT COUNT(e.id)
+                  FROM collections c
+                  JOIN segments s ON s.collection = c.id
+                  JOIN embeddings e ON e.segment_id = s.id
+                 WHERE c.name = 'ipl_players'
+                """
+            ).fetchone()[0]
     except Exception:  # noqa: BLE001
         return Finding(
             "CHROMA_DB_PATH",

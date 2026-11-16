@@ -23,6 +23,7 @@ straight out of Chroma's own SQLite file, and the one genuinely remote check
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import sqlite3
@@ -34,6 +35,7 @@ from typing import Any, Literal
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import Path as Path_
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -284,6 +286,7 @@ async def advise(request: AdviseRequest) -> ScoutOutput:
                 team=team,
                 on_block_player_id=request.on_block_player_id,
                 budget_seconds=request.budget_seconds,
+                thread_id=request.thread_id,
             ),
             thread_id=request.thread_id or f"req-{uuid.uuid4().hex[:16]}",
         )
@@ -316,8 +319,8 @@ NODE_LABELS: dict[str, dict[str, str]] = {
     },
     "researcher": {
         "title": "Data Researcher",
-        "running": "Gathering IPL stats, economy rates and recent form",
-        "done": "Research gathered",
+        "running": "Reading SCOUT's IPL knowledge: seasons, franchises and news",
+        "done": "Knowledge gathered",
     },
     "advisor": {
         "title": "Cricket Advisor",
@@ -364,7 +367,7 @@ async def advise_stream(request: AdviseRequest) -> StreamingResponse:
     this same event loop, and a synchronous call in here would stall them.
     """
     from scout.graph.state import NOTES_RESET
-    from scout.graph.workflow import compiled, output_from
+    from scout.graph.workflow import compiled, output_from, remember_turn
 
     team, team_notes = _team_context(request.team_id, request.room)
     thread_id = request.thread_id or f"req-{uuid.uuid4().hex[:16]}"
@@ -388,6 +391,7 @@ async def advise_stream(request: AdviseRequest) -> StreamingResponse:
                 team=team,
                 on_block_player_id=request.on_block_player_id,
                 budget_seconds=request.budget_seconds,
+                thread_id=request.thread_id,
             )
 
             async for mode, chunk in app.astream(
@@ -430,6 +434,7 @@ async def advise_stream(request: AdviseRequest) -> StreamingResponse:
 
             output = output_from(final, time.perf_counter() - started)
             output = output.model_copy(update={"notes": team_notes + output.notes})
+            output = await remember_turn(request.thread_id, request.question, output)
             yield _sse({"type": "result", "output": output.model_dump(mode="json")})
 
         except Exception as exc:  # noqa: BLE001
@@ -492,6 +497,115 @@ async def research(request: ResearchRequest | None = None) -> ScoutOutput:
     )
 
 
+# ---------------------------------------------------------------------------
+# Conversation memory (scout/memory.py)
+# ---------------------------------------------------------------------------
+
+_THREAD_ID = Path_(pattern=r"^[A-Za-z0-9_.:-]{1,64}$")
+
+
+@router.get("/thread/{thread_id}")
+async def thread_usage(thread_id: str = _THREAD_ID) -> dict[str, Any]:
+    """How much this conversation remembers: turns, tokens and the limit."""
+    from scout import memory
+
+    return await asyncio.to_thread(memory.thread_usage, thread_id)
+
+
+@router.post("/thread/{thread_id}/compact")
+async def thread_compact(thread_id: str = _THREAD_ID) -> dict[str, Any]:
+    """
+    Fold every turn but the last few into a short summary.
+
+    The drawer's Compact button. The conversation keeps its meaning -- who was
+    discussed, the figures quoted, the budget set -- in a fraction of the
+    prompt tokens, so a long session stays fast and cheap.
+    """
+    from scout import memory
+
+    before = await asyncio.to_thread(memory.thread_usage, thread_id)
+    after = (await asyncio.to_thread(memory.compact, thread_id)).usage()
+    return {**after, "tokens_before": before["tokens"]}
+
+
+@router.delete("/thread/{thread_id}")
+async def thread_clear(thread_id: str = _THREAD_ID) -> dict[str, Any]:
+    """Forget a conversation: the drawer's New chat."""
+    from scout import memory
+
+    return {"cleared": await asyncio.to_thread(memory.clear, thread_id)}
+
+
+# ---------------------------------------------------------------------------
+# Training and the news ledger (scout/knowledge.py, scout/news.py)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/knowledge")
+async def knowledge_status() -> dict[str, Any]:
+    """When SCOUT was last trained, on what, and the training brief it reads."""
+    from scout import knowledge
+
+    status = await asyncio.to_thread(knowledge.status)
+    return {**status, "brief": await asyncio.to_thread(knowledge.training_brief)}
+
+
+@router.post("/train", dependencies=[Depends(require_admin)])
+async def train_now() -> dict[str, Any]:
+    """Retrain SCOUT on the current data, in the background."""
+    from scout import knowledge
+
+    started = knowledge.start_training("manual")
+    return {"started": started, **knowledge.status()}
+
+
+class NewsRequest(BaseModel):
+    items: list[dict[str, Any]] = Field(min_length=1, max_length=200)
+    #: Retrain straight after, so SCOUT can answer about these records now.
+    retrain: bool = True
+
+
+@router.get("/news")
+async def news_list(player: str | None = Query(default=None, max_length=120)) -> dict[str, Any]:
+    """The player-news ledger, optionally for one player."""
+    from scout import news
+
+    items = await asyncio.to_thread(news.load_news)
+    if player:
+        items = news.items_for([player], [], items)
+    return {"count": len(items), "items": [i.model_dump(mode="json") for i in items]}
+
+
+@router.post("/news", dependencies=[Depends(require_admin)])
+async def news_add(request: NewsRequest) -> dict[str, Any]:
+    """
+    Add trade, injury or availability records. Each needs a player, a kind, a
+    summary and the credible source it was reported in.
+    """
+    from scout import knowledge, news
+
+    valid, errors = [], []
+    for index, raw in enumerate(request.items):
+        try:
+            valid.append(news.NewsItem.model_validate(raw))
+        except Exception as exc:  # noqa: BLE001 - reported per record
+            errors.append({"index": index, "error": str(exc).splitlines()[-1][:200]})
+    added, updated = (await asyncio.to_thread(news.upsert, valid)) if valid else (0, 0)
+    flagged = [i.player_name for i in valid if not i.credible]
+    retraining = bool(valid) and request.retrain and knowledge.start_training("news added")
+    return {
+        "added": added, "updated": updated, "errors": errors, "retraining": retraining,
+        "not_from_a_credible_source": flagged,
+    }
+
+
+@router.delete("/news/{item_id}", dependencies=[Depends(require_admin)])
+async def news_delete(item_id: str) -> dict[str, Any]:
+    from scout import news
+
+    return {"deleted": await asyncio.to_thread(news.delete, item_id)}
+
+
 @router.get("/quota")
 async def quota(request: Request) -> dict[str, Any]:
     """This caller's SCOUT allowance: unlimited, or used and left in the window."""
@@ -543,11 +657,18 @@ async def scout_health(
             "crawler; prose research goes through the search fallback instead."
         )
 
-    search_on = bool((config or {}).get("search_fallback", {}).get("enabled"))
-    if search_on and not settings.TAVILY_API_KEY:
+    # SCOUT no longer searches the web to answer; it is trained on ingests.
+    search_on = False
+    from scout import knowledge
+
+    trained = knowledge.status()
+    if not trained.get("trained"):
+        notes.append("SCOUT has not been trained yet: run an ingest or POST /api/v1/scout/train.")
+    else:
         notes.append(
-            "Search fallback is enabled in sources.yaml but TAVILY_API_KEY is "
-            "unset, so it will report itself unavailable."
+            f"Trained {str(trained.get('trained_at'))[:10]} on IPL data through "
+            f"{trained.get('season_through')}: {trained.get('documents')} knowledge documents, "
+            f"{trained.get('news_items')} news record(s)."
         )
 
     # --- stores ------------------------------------------------------------

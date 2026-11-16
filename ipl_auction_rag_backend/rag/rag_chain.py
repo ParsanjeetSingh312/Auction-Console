@@ -5,7 +5,6 @@ and user query into a structured prompt, then generates the final
 analytical response using whichever LLM provider is configured.
 """
 import asyncio
-import concurrent.futures
 import logging
 import re
 from datetime import datetime
@@ -200,12 +199,12 @@ def system_prompt() -> str:
             f"career figures through the IPL {season} season{when}."
         )
     lines += [
-        "- The data context and the live web research are more current than "
+        "- The data context and SCOUT KNOWLEDGE are more current than "
         "your own memory. Where they disagree with what you remember, they win. "
         "Never quote a career total, season figure or squad from memory.",
-        "- When LIVE WEB RESEARCH is present it comes from ESPNcricinfo, Cricbuzz "
-        "and other reference sites; use it for form, injuries, availability and "
-        "anything after the last completed season, and name the source.",
+        "- When SCOUT KNOWLEDGE is present it is SCOUT's trained IPL data: season "
+        "lines, franchise history and sourced player news. Use it for form, moves "
+        "and availability, and name the source of any news you quote.",
     ]
     return SYSTEM_PROMPT + "\n".join(lines) + "\n"
 
@@ -231,34 +230,25 @@ def _mentions_player(query: str) -> bool:
 
 def live_research(query: str) -> tuple[str | None, list[str]]:
     """
-    Live web context for a question, from the same researcher the SCOUT drawer uses.
+    SCOUT's trained knowledge for a question: season lines, franchise history
+    and sourced news for the players it names (scout/agents/knowledge_context.py).
 
+    Kept under its old name so the chain reads the same; since 2026-11 it no
+    longer searches the web. SCOUT learns from the site's own ingests instead.
     Only for questions about the present or about a named player -- "top five
-    economies" is answered by the table and needs no search. Runs its own event
-    loop on a worker thread, so it is safe from both a request thread and a
-    coroutine, and is bounded by SCOUT_LIVE_CONTEXT_TIMEOUT either way.
+    economies" is answered by the table and needs nothing more.
     """
-    from config.settings import get_settings
-    from scout.agents.live_context import gather
-    from scout.tools.search_engine import search_available
-
-    if not search_available():
-        return None, []
     if not (_RECENCY.search(query) or _mentions_player(query)):
         return None, []
-
-    timeout = get_settings().SCOUT_LIVE_CONTEXT_TIMEOUT
-
-    def _run():
-        return asyncio.run(asyncio.wait_for(gather(query, timeout=timeout), timeout=timeout + 1))
-
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            found = pool.submit(_run).result(timeout=timeout + 3)
+        from scout.agents.cricket_advisor import named_players
+        from scout.agents.knowledge_context import gather
+
+        subjects = [{"id": pid, "name": name} for pid, name in named_players(query)]
+        return gather(query, subjects, intent="advise")
     except Exception as exc:  # noqa: BLE001 - the table still answers
-        logger.warning("Live research failed: %s", exc)
-        return None, [f"Live web research did not finish ({type(exc).__name__}); answered from the data."]
-    return found.text, found.notes
+        logger.warning("Trained knowledge unavailable: %s", exc)
+        return None, []
 
 
 def _format_sql_context(sql_result: dict[str, Any]) -> str:
@@ -412,7 +402,7 @@ def _build_context(
     """Assemble everything retrieved into one prompt context."""
     parts: list[str] = []
     if web:
-        parts.append(f"**LIVE WEB RESEARCH (ESPNcricinfo, Cricbuzz and reference sites):**\n{web}")
+        parts.append(f"**SCOUT KNOWLEDGE (trained on ingested IPL data):**\n{web}")
     if sql_result.get("results") or sql_result.get("error"):
         parts.append(_format_sql_context(sql_result))
     if documents:

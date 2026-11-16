@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import operator
 import time
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -76,7 +76,11 @@ SCOUT_CHECKPOINT_TYPES: tuple[tuple[str, str], ...] = (
 #: Which branch the supervisor sends a turn down. Named for what the user wants,
 #: not for which node runs, so a future third branch does not require renaming
 #: the two that exist.
-Intent = Literal["research", "advise"]
+#:
+#: `news` is a question about a trade, a move or a player's availability --
+#: answered from the news ledger and the franchise history SCOUT was trained
+#: on, not from a shortlist search.
+Intent = Literal["research", "advise", "news"]
 
 #: Sentinel a node puts first in its `notes` list to clear what came before.
 NOTES_RESET = "\x00reset"
@@ -166,6 +170,11 @@ class ScoutInput(BaseModel):
     #: an answer that arrives after the hammer is not an answer.
     budget_seconds: float | None = Field(default=None, gt=0, le=120)
 
+    #: The conversation this question belongs to (scout/memory.py). Set, the
+    #: turns before it are read back so a follow-up is understood; unset, the
+    #: question stands alone.
+    thread_id: str | None = Field(default=None, max_length=64)
+
 
 class ScoutOutput(BaseModel):
     """
@@ -192,6 +201,13 @@ class ScoutOutput(BaseModel):
     refresh_cycles: int = Field(default=0, ge=0, le=5)
     elapsed_seconds: float = Field(default=0.0, ge=0)
 
+    #: The pool players this answer was about, [{"id", "name"}]. What the
+    #: conversation memory remembers as "him" for the next question.
+    players: list[dict[str, Any]] = Field(default_factory=list)
+    #: How full the conversation's memory is, for the drawer's context meter
+    #: (scout/memory.py `Memory.usage`). None when the turn had no thread.
+    context: dict[str, Any] | None = None
+
 
 # ---------------------------------------------------------------------------
 # The internal state
@@ -214,9 +230,19 @@ class ScoutState(TypedDict, total=False):
     intent: Intent | None
     team: TeamContext | None
     on_block_player_id: int | None
+    thread_id: str | None
 
     # --- supervisor ---
     constraints: Constraints
+
+    #: The conversation so far, as OpenAI-shape messages, oldest first, and the
+    #: compacted summary of anything older. Read from scout/memory.py at the
+    #: start of every turn; the model sees them ahead of the new question.
+    history: list[dict[str, str]]
+    memory_summary: str | None
+    #: Pool players this turn is about: named in the question, or carried over
+    #: from the conversation when the question says "he" or "them".
+    subjects: list[dict[str, Any]]
 
     # --- researcher ---
     research: ResearchBatch | None

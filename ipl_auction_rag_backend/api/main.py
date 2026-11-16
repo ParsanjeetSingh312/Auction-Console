@@ -328,6 +328,22 @@ async def lifespan(app: FastAPI):
 
     stats_task = asyncio.create_task(run_scheduler(), name="stats-refresh")
 
+    # SCOUT's conversation memory and trained knowledge. Old threads are
+    # pruned; a deployment that has never trained SCOUT does so now, in the
+    # background, so the first question has the IPL knowledge to read.
+    try:
+        from scout import knowledge
+        from scout import memory as scout_memory
+
+        pruned = await asyncio.to_thread(scout_memory.prune)
+        if pruned:
+            logger.info("Pruned %d idle SCOUT conversation(s)", pruned)
+        if not knowledge.status().get("trained"):
+            knowledge.start_training("startup: no trained knowledge yet")
+            logger.info("SCOUT has no trained knowledge yet; training in the background")
+    except Exception as exc:  # noqa: BLE001 - startup must not die here
+        logger.warning("SCOUT memory/knowledge startup step failed: %s", exc)
+
     logger.info("=" * 60)
 
     yield

@@ -593,7 +593,36 @@ class Settings(BaseSettings):
     # path, which this does not use.
     SCOUT_HERMES_AGENT_TIMEOUT: float = 180.0
 
-    model_config = {'env_file': '.env', 'env_file_encoding': 'utf-8', 'extra': 'ignore'}
+    # --- Conversation memory (scout/memory.py) ---
+    # Every drawer conversation is one thread. Its turns are kept here so a
+    # follow-up ("and his economy?") is answered with the turns before it.
+    SCOUT_MEMORY_PATH: str = str(
+        Path(__file__).resolve().parent.parent / "data" / "database" / "scout_memory.db"
+    )
+    # Rough token budget for the remembered conversation that goes into each
+    # prompt. Past it the older turns are compacted into a summary on their
+    # own; the drawer's Compact button does the same on demand.
+    SCOUT_MEMORY_TOKEN_LIMIT: int = 6000
+    # Turns kept word-for-word when a conversation is compacted.
+    SCOUT_MEMORY_KEEP_TURNS: int = 2
+    # Threads untouched for this many days are deleted at startup.
+    SCOUT_MEMORY_RETENTION_DAYS: int = 30
+
+    # --- Trained knowledge (scout/knowledge.py) ---
+    # What SCOUT learns from each data ingest and stats refresh: season-by-
+    # season IPL lines, franchise history, league leaders, the dataset's own
+    # patterns, and the player-news ledger. Rebuilt in full every time, so it
+    # has its own Chroma collection rather than sharing `scout_research`.
+    SCOUT_KNOWLEDGE_COLLECTION: str = "scout_knowledge"
+    SCOUT_KNOWLEDGE_PATH: str = str(
+        Path(__file__).resolve().parent.parent / "data" / "scout_knowledge.json"
+    )
+    # Trades, retentions, releases, injuries and withdrawals, one record each,
+    # always with the credible source it came from (scout/news.py).
+    SCOUT_NEWS_PATH: str = str(
+        Path(__file__).resolve().parent.parent / "data" / "player_news.json"
+    )
+    model_config ={'env_file': '.env', 'env_file_encoding': 'utf-8', 'extra': 'ignore'}
 
     @property
     def effective_sql_key(self) -> str:
